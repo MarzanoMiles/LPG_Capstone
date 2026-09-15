@@ -48,6 +48,8 @@ app.use(`${API_PREFIX}/ar`, arRouter);
 app.use(`${API_PREFIX}/mobile`, mobileHomeRouter);
 app.use(`${API_PREFIX}/reports`, reportsRouter);
 app.use(`${API_PREFIX}/data`, dataRouter);
+app.use(`${API_PREFIX}/restock`, restockRouter);
+app.use(`${API_PREFIX}/settings`, settingsRouter);
 
 app.get("/", (req, res) => {
     res.send("GasTrack API is running.");
