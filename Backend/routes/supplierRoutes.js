@@ -31,36 +31,70 @@ router.get(
   })
 );
 
-router.get("/:id", asyncHandler(async (req, res) => {
-  const [rows] = await pool.query(`SELECT * FROM Supplier WHERE SupplierID = :id`, { id: req.params.id });
-  if (!rows[0]) throw new ApiError(404, "Supplier not found.");
-  res.json(rows[0]);
-}));
+router.get(
+  "/:id",
+  asyncHandler(async (req, res) => {
+    const [rows] = await pool.query(
+      `SELECT SupplierID AS id, SupplierName AS name, ContactPerson AS contactPerson,
+              Email AS email, Address AS address, Contact AS phone,
+              LeadTimeDays AS leadTime, Status AS status
+       FROM Supplier WHERE SupplierID = :id`,
+      { id: req.params.id }
+    );
+    if (!rows[0]) throw new ApiError(404, "Supplier not found.");
+    res.json(rows[0]);
+  })
+);
 
 // Supplier products / PO history / delivery history — powers ViewSupplierModal.jsx
-router.get("/:id/products", asyncHandler(async (req, res) => {
-  const [rows] = await pool.query(
-    `SELECT ProductID AS id, ProductName AS name, CostPrice AS costPrice, ReorderLevel AS reorderLevel, Status AS status
-     FROM Product WHERE SupplierID = :id`,
-    { id: req.params.id }
-  );
-  res.json(rows);
-}));
+router.get(
+  "/:id/products",
+  asyncHandler(async (req, res) => {
+    const [rows] = await pool.query(
+      `SELECT ProductID AS id, ProductName AS name, CostPrice AS costPrice, Unit AS unit,
+              ReorderLevel AS reorderLevel, Status AS status
+       FROM Product WHERE SupplierID = :id ORDER BY ProductID`,
+      { id: req.params.id }
+    );
+    res.json(rows);
+  })
+);
 
-router.get("/:id/purchase-orders", asyncHandler(async (req, res) => {
-  const [rows] = await pool.query(
-    `SELECT PurchaseOrderID AS id, PONo AS poNo, OrderDate AS orderDate,
-            ExpectedDeliveryDate AS expectedDeliveryDate, TotalAmount AS totalAmount, Status AS status
-     FROM PurchaseOrder WHERE SupplierID = :id ORDER BY OrderDate DESC`,
-    { id: req.params.id }
-  );
-  res.json(rows);
-}));
+router.get(
+  "/:id/purchase-orders",
+  asyncHandler(async (req, res) => {
+    const [rows] = await pool.query(
+      `SELECT PurchaseOrderID AS id, PONo AS poNo, OrderDate AS orderDate,
+              ExpectedDeliveryDate AS expectedDeliveryDate, TotalAmount AS totalAmount, Status AS status
+       FROM PurchaseOrder WHERE SupplierID = :id ORDER BY OrderDate DESC`,
+      { id: req.params.id }
+    );
+    res.json(rows);
+  })
+);
+
+// Delivery history for a supplier = received purchase orders + their items, flattened
+router.get(
+  "/:id/deliveries",
+  asyncHandler(async (req, res) => {
+    const [rows] = await pool.query(
+      `SELECT po.PurchaseOrderID AS poId, po.PONo AS poNo, po.OrderDate AS orderDate,
+              SUM(poi.Quantity) AS totalQty, po.Status AS status
+       FROM PurchaseOrder po
+       JOIN PurchaseOrderItem poi ON poi.PurchaseOrderID = po.PurchaseOrderID
+       WHERE po.SupplierID = :id AND po.Status = 'Received'
+       GROUP BY po.PurchaseOrderID
+       ORDER BY po.OrderDate DESC`,
+      { id: req.params.id }
+    );
+    res.json(rows);
+  })
+);
 
 router.post(
   "/",
   asyncHandler(async (req, res) => {
-    const { fullName, supplierType, defaultLeadTime, status, contactPerson, email, phone, address } = req.body;
+    const { fullName, defaultLeadTime, status, contactPerson, email, phone, address } = req.body;
     if (!fullName) throw new ApiError(400, "fullName is required.");
     const [result] = await pool.query(
       `INSERT INTO Supplier (SupplierName, ContactPerson, Email, Address, Contact, LeadTimeDays, Status)
@@ -86,10 +120,10 @@ router.put(
     const [result] = await pool.query(
       `UPDATE Supplier SET
          SupplierName = COALESCE(:name, SupplierName),
-         ContactPerson = :contactPerson,
-         Email = :email,
-         Address = :address,
-         Contact = :phone,
+         ContactPerson = COALESCE(:contactPerson, ContactPerson),
+         Email = COALESCE(:email, Email),
+         Address = COALESCE(:address, Address),
+         Contact = COALESCE(:phone, Contact),
          LeadTimeDays = COALESCE(:leadTime, LeadTimeDays),
          Status = COALESCE(:status, Status)
        WHERE SupplierID = :id`,
@@ -109,10 +143,17 @@ router.put(
   })
 );
 
-router.delete("/:id", asyncHandler(async (req, res) => {
-  const [result] = await pool.query(`DELETE FROM Supplier WHERE SupplierID = :id`, { id: req.params.id });
-  if (!result.affectedRows) throw new ApiError(404, "Supplier not found.");
-  res.json({ message: "Supplier deleted." });
-}));
+// DELETE /suppliers/:id — soft delete: suppliers are referenced by Product, PurchaseOrder, RestockRecommendation.
+router.delete(
+  "/:id",
+  asyncHandler(async (req, res) => {
+    const [result] = await pool.query(
+      `UPDATE Supplier SET Status = 'Inactive' WHERE SupplierID = :id`,
+      { id: req.params.id }
+    );
+    if (!result.affectedRows) throw new ApiError(404, "Supplier not found.");
+    res.json({ message: "Supplier deactivated." });
+  })
+);
 
 module.exports = router;

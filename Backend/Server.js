@@ -21,6 +21,7 @@ const restockRoutes = require("./routes/restockRoutes");
 const purchaseOrderRoutes = require("./routes/purchaseOrderRoutes");
 const dataRoutes = require("./routes/dataRoutes");
 const dashboardRoutes = require("./routes/dashboardRoutes");
+const reportRoutes = require("./routes/reportRoutes");
 
 const app = express();
 
@@ -46,6 +47,7 @@ app.use("/restocking", restockRoutes);
 app.use("/purchase-orders", purchaseOrderRoutes);
 app.use("/data", dataRoutes);
 app.use("/dashboard", dashboardRoutes);
+app.use("/reports", reportRoutes);
 
 app.use(notFound);
 app.use(errorHandler);

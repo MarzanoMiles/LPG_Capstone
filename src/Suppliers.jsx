@@ -1,63 +1,44 @@
-import React, { useState } from "react";
+import React, { useEffect, useMemo, useState } from "react";
 import { Search, ChevronDown, Plus, FileText, Edit, Trash2 } from "lucide-react";
 import AddSupplierModal from "./AddSupplierModal";
 import ViewSupplierModal from "./ViewSupplierModal";
+import { apiRequest } from "./api";
 import "./Suppliers.css";
 
-const initialSuppliers = [
-  {
-    id: "S-001",
-    name: "ABC Company",
-    contactPerson: "Juan",
-    phone: "0956478512354",
-    address: "#59 Kahoy St",
-    status: "Active",
-  },
-  {
-    id: "S-002",
-    name: "XYZ Inc",
-    contactPerson: "Juan",
-    phone: "0956478512354",
-    address: "#59 Kahoy St",
-    status: "Active",
-  },
-  {
-    id: "S-003",
-    name: "DEF Company",
-    contactPerson: "Juan",
-    phone: "0956478512354",
-    address: "#59 Kahoy St",
-    status: "Inactive",
-  },
-  {
-    id: "S-004",
-    name: "NOV Inc",
-    contactPerson: "Juan",
-    phone: "0956478512354",
-    address: "#59 Kahoy St",
-    status: "Active",
-  },
-  {
-    id: "S-005",
-    name: "POW Co",
-    contactPerson: "Juan",
-    phone: "0956478512354",
-    address: "#59 Kahoy St",
-    status: "Inactive",
-  },
-];
-
 export default function Suppliers() {
-  const [suppliers, setSuppliers] = useState(initialSuppliers);
+  const [suppliers, setSuppliers] = useState([]);
+  const [isLoading, setIsLoading] = useState(true);
+  const [loadError, setLoadError] = useState("");
+  const [actionError, setActionError] = useState("");
+
   const [search, setSearch] = useState("");
-  const [performanceFilter, setPerformanceFilter] = useState("All Performance");
   const [statusFilter, setStatusFilter] = useState("All Status");
-  const [locationFilter, setLocationFilter] = useState("All Locations");
 
   // Modal Control States
   const [isModalOpen, setIsModalOpen] = useState(false);
   const [isViewModalOpen, setIsViewModalOpen] = useState(false);
   const [selectedSupplier, setSelectedSupplier] = useState(null);
+
+  const loadSuppliers = () => {
+    setIsLoading(true);
+    const params = new URLSearchParams();
+    if (search.trim()) params.set("search", search.trim());
+    if (statusFilter !== "All Status") params.set("status", statusFilter);
+    const endpoint = params.toString() ? `/suppliers?${params.toString()}` : "/suppliers";
+
+    apiRequest(endpoint)
+      .then((data) => {
+        setSuppliers(data);
+        setLoadError("");
+      })
+      .catch((err) => setLoadError(err.message || "Failed to load suppliers."))
+      .finally(() => setIsLoading(false));
+  };
+
+  useEffect(() => {
+    loadSuppliers();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [search, statusFilter]);
 
   // Open Modal for "Add Supplier"
   const handleOpenAddModal = () => {
@@ -77,39 +58,27 @@ export default function Suppliers() {
     setIsViewModalOpen(true);
   };
 
-  // Save/Update Handler
-  const handleSaveSupplier = (data) => {
-    if (data.isEditing) {
-      setSuppliers((prev) =>
-        prev.map((item) =>
-          item.id === data.supplierId
-            ? {
-                ...item,
-                name: data.fullName,
-                contactPerson: data.contactPerson,
-                phone: data.phone,
-                address: data.address,
-                status: data.status,
-              }
-            : item
-        )
-      );
-    } else {
-      const newSupplier = {
-        id: data.supplierId || `S-00${suppliers.length + 1}`,
-        name: data.fullName || "New Supplier",
-        contactPerson: data.contactPerson || "N/A",
-        phone: data.phone || "N/A",
-        address: data.address || "N/A",
-        status: data.status || "Active",
-      };
-      setSuppliers((prev) => [...prev, newSupplier]);
+  const handleDelete = async (supplier) => {
+    const confirmed = window.confirm(
+      `Deactivate "${supplier.name}"? Their product and purchase order history will be kept, and they'll stop appearing as an option when adding new products.`
+    );
+    if (!confirmed) return;
+
+    setActionError("");
+    try {
+      await apiRequest(`/suppliers/${supplier.id}`, { method: "DELETE" });
+      loadSuppliers();
+    } catch (err) {
+      setActionError(err.message || "Failed to deactivate supplier.");
     }
   };
 
   return (
     <div className="suppliers-page">
       <h1 className="suppliers-title">Suppliers</h1>
+
+      {loadError && <p style={{ color: "#dc2626", fontWeight: 600 }}>{loadError}</p>}
+      {actionError && <p style={{ color: "#dc2626", fontWeight: 600 }}>{actionError}</p>}
 
       {/* Toolbar Controls */}
       <div className="suppliers-toolbar">
@@ -127,17 +96,6 @@ export default function Suppliers() {
         <div className="suppliers-select-wrap">
           <select
             className="suppliers-select"
-            value={performanceFilter}
-            onChange={(e) => setPerformanceFilter(e.target.value)}
-          >
-            <option value="All Performance">All Performance</option>
-          </select>
-          <ChevronDown size={16} className="suppliers-select-icon" />
-        </div>
-
-        <div className="suppliers-select-wrap">
-          <select
-            className="suppliers-select"
             value={statusFilter}
             onChange={(e) => setStatusFilter(e.target.value)}
           >
@@ -148,22 +106,7 @@ export default function Suppliers() {
           <ChevronDown size={16} className="suppliers-select-icon" />
         </div>
 
-        <div className="suppliers-select-wrap">
-          <select
-            className="suppliers-select"
-            value={locationFilter}
-            onChange={(e) => setLocationFilter(e.target.value)}
-          >
-            <option value="All Locations">All Locations</option>
-          </select>
-          <ChevronDown size={16} className="suppliers-select-icon" />
-        </div>
-
-        <button 
-          type="button" 
-          className="btn-add-supplier" 
-          onClick={handleOpenAddModal}
-        >
+        <button type="button" className="btn-add-supplier" onClick={handleOpenAddModal}>
           <Plus size={18} /> Add Supplier
         </button>
       </div>
@@ -185,43 +128,55 @@ export default function Suppliers() {
             </tr>
           </thead>
           <tbody>
-            {suppliers.map((item) => (
-              <tr key={item.id}>
-                <td>{item.id}</td>
-                <td>{item.name}</td>
-                <td>{item.contactPerson}</td>
-                <td>{item.phone}</td>
-                <td>{item.address}</td>
-                <td>
-                  <span className={`status-pill ${item.status.toLowerCase()}`}>
-                    {item.status}
-                  </span>
-                </td>
-                <td>
-                  <div className="suppliers-actions-cell">
-                    <button
-                      type="button"
-                      className="action-icon-btn view"
-                      title="View Details"
-                      onClick={() => handleOpenViewModal(item)}
-                    >
-                      <FileText size={18} />
-                    </button>
-                    <button
-                      type="button"
-                      className="action-icon-btn edit"
-                      title="Edit Supplier"
-                      onClick={() => handleOpenEditModal(item)}
-                    >
-                      <Edit size={18} />
-                    </button>
-                    <button type="button" className="action-icon-btn delete" title="Delete Supplier">
-                      <Trash2 size={18} />
-                    </button>
-                  </div>
-                </td>
-              </tr>
-            ))}
+            {isLoading && (
+              <tr><td colSpan={7} style={{ textAlign: "center", padding: 24 }}>Loading…</td></tr>
+            )}
+            {!isLoading && suppliers.length === 0 && (
+              <tr><td colSpan={7} style={{ textAlign: "center", padding: 24 }}>No suppliers found.</td></tr>
+            )}
+            {!isLoading &&
+              suppliers.map((item) => (
+                <tr key={item.id}>
+                  <td>{item.id}</td>
+                  <td>{item.name}</td>
+                  <td>{item.contactPerson || "—"}</td>
+                  <td>{item.phone || "—"}</td>
+                  <td>{item.address || "—"}</td>
+                  <td>
+                    <span className={`status-pill ${item.status.toLowerCase()}`}>
+                      {item.status}
+                    </span>
+                  </td>
+                  <td>
+                    <div className="suppliers-actions-cell">
+                      <button
+                        type="button"
+                        className="action-icon-btn view"
+                        title="View Details"
+                        onClick={() => handleOpenViewModal(item)}
+                      >
+                        <FileText size={18} />
+                      </button>
+                      <button
+                        type="button"
+                        className="action-icon-btn edit"
+                        title="Edit Supplier"
+                        onClick={() => handleOpenEditModal(item)}
+                      >
+                        <Edit size={18} />
+                      </button>
+                      <button
+                        type="button"
+                        className="action-icon-btn delete"
+                        title="Deactivate Supplier"
+                        onClick={() => handleDelete(item)}
+                      >
+                        <Trash2 size={18} />
+                      </button>
+                    </div>
+                  </td>
+                </tr>
+              ))}
           </tbody>
         </table>
       </div>
@@ -231,7 +186,7 @@ export default function Suppliers() {
         isOpen={isModalOpen}
         onClose={() => setIsModalOpen(false)}
         selectedSupplier={selectedSupplier}
-        onSave={handleSaveSupplier}
+        onSaved={loadSuppliers}
       />
 
       {/* View Supplier Details Pop-up Window */}

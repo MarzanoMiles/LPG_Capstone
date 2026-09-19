@@ -1,30 +1,32 @@
-import React, { useState, useEffect } from "react";
+import React, { useEffect, useState } from "react";
 import "./AddSupplierModal.css";
+import { apiRequest } from "./api";
 
-export default function AddSupplierModal({ isOpen, onClose, selectedSupplier, onSave }) {
-  const [formData, setFormData] = useState({
-    supplierId: "S-001",
-    fullName: "",
-    supplierType: "Manufacturer",
-    defaultLeadTime: "",
-    status: "Active",
-    contactPerson: "",
-    email: "",
-    phone: "",
-    address: "",
-  });
+const emptyForm = {
+  fullName: "",
+  supplierType: "Manufacturer",
+  defaultLeadTime: "",
+  status: "Active",
+  contactPerson: "",
+  email: "",
+  phone: "",
+  address: "",
+};
 
-  // Dynamic button label based on mode
+export default function AddSupplierModal({ isOpen, onClose, selectedSupplier, onSaved }) {
+  const [formData, setFormData] = useState(emptyForm);
+  const [isSubmitting, setIsSubmitting] = useState(false);
+  const [error, setError] = useState("");
+
   const isEditing = Boolean(selectedSupplier);
   const submitButtonLabel = isEditing ? "Save" : "Add";
 
   useEffect(() => {
     if (selectedSupplier) {
       setFormData({
-        supplierId: selectedSupplier.id || "S-001",
         fullName: selectedSupplier.name || "",
-        supplierType: selectedSupplier.type || "Manufacturer",
-        defaultLeadTime: selectedSupplier.leadTime || "",
+        supplierType: selectedSupplier.supplierType || "Manufacturer",
+        defaultLeadTime: selectedSupplier.leadTime ?? "",
         status: selectedSupplier.status || "Active",
         contactPerson: selectedSupplier.contactPerson || "",
         email: selectedSupplier.email || "",
@@ -32,32 +34,59 @@ export default function AddSupplierModal({ isOpen, onClose, selectedSupplier, on
         address: selectedSupplier.address || "",
       });
     } else {
-      setFormData({
-        supplierId: "S-001",
-        fullName: "",
-        supplierType: "Manufacturer",
-        defaultLeadTime: "",
-        status: "Active",
-        contactPerson: "",
-        email: "",
-        phone: "",
-        address: "",
-      });
+      setFormData(emptyForm);
     }
+    setError("");
   }, [selectedSupplier, isOpen]);
 
   if (!isOpen) return null;
 
-  const handleSubmit = (e) => {
+  const handleSubmit = async (e) => {
     e.preventDefault();
-    if (onSave) onSave({ ...formData, isEditing });
-    onClose();
+    if (!formData.fullName.trim()) {
+      setError("Full name is required.");
+      return;
+    }
+
+    const payload = {
+      fullName: formData.fullName.trim(),
+      defaultLeadTime: Number(formData.defaultLeadTime) || 0,
+      status: formData.status,
+      contactPerson: formData.contactPerson || null,
+      email: formData.email || null,
+      phone: formData.phone || null,
+      address: formData.address || null,
+    };
+
+    setIsSubmitting(true);
+    setError("");
+    try {
+      if (isEditing) {
+        await apiRequest(`/suppliers/${selectedSupplier.id}`, {
+          method: "PUT",
+          body: JSON.stringify(payload),
+        });
+      } else {
+        await apiRequest("/suppliers", {
+          method: "POST",
+          body: JSON.stringify(payload),
+        });
+      }
+      onSaved?.();
+      onClose();
+    } catch (err) {
+      setError(err.message || "Failed to save supplier.");
+    } finally {
+      setIsSubmitting(false);
+    }
   };
 
   return (
     <div className="supplier-modal-overlay">
       <div className="supplier-modal-card">
         <h2 className="supplier-modal-title">Supplier Information</h2>
+
+        {error && <p style={{ color: "#dc2626", fontWeight: 600, marginTop: -8 }}>{error}</p>}
 
         <form className="supplier-form" onSubmit={handleSubmit}>
           {/* BASIC INFORMATION */}
@@ -68,9 +97,8 @@ export default function AddSupplierModal({ isOpen, onClose, selectedSupplier, on
               <label>Supplier ID</label>
               <input
                 type="text"
-                value={formData.supplierId}
-                onChange={(e) => setFormData({ ...formData, supplierId: e.target.value })}
-                placeholder="S-001"
+                value={isEditing ? selectedSupplier.id : "(auto-generated)"}
+                disabled
               />
             </div>
             <div className="form-field">
@@ -97,9 +125,10 @@ export default function AddSupplierModal({ isOpen, onClose, selectedSupplier, on
               </select>
             </div>
             <div className="form-field">
-              <label>Default Lead Times</label>
+              <label>Default Lead Time (days)</label>
               <input
-                type="text"
+                type="number"
+                min="0"
                 value={formData.defaultLeadTime}
                 onChange={(e) => setFormData({ ...formData, defaultLeadTime: e.target.value })}
                 placeholder="Enter Number"
@@ -167,8 +196,8 @@ export default function AddSupplierModal({ isOpen, onClose, selectedSupplier, on
             <button type="button" className="btn-modal-cancel" onClick={onClose}>
               Cancel
             </button>
-            <button type="submit" className="btn-modal-submit">
-              {submitButtonLabel}
+            <button type="submit" className="btn-modal-submit" disabled={isSubmitting}>
+              {isSubmitting ? "Saving…" : submitButtonLabel}
             </button>
           </div>
         </form>

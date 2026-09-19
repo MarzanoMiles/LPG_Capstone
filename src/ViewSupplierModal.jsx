@@ -1,38 +1,49 @@
-import React, { useState } from "react";
+import React, { useEffect, useState } from "react";
 import "./ViewSupplierModal.css";
+import { apiRequest } from "./api";
 
-const sampleProducts = [
-  { id: "P-001", name: "Gas LPG 2.7 kg", costPrice: "₱ 243.00", leadTime: "2 days", minOrderQty: 10, status: "Active" },
-  { id: "P-002", name: "Gas LPG 7kg", costPrice: "₱ 603.00", leadTime: "2 days", minOrderQty: 10, status: "Active" },
-  { id: "P-003", name: "Gas LPG 11kg", costPrice: "₱ 921.00", leadTime: "2 days", minOrderQty: 10, status: "Active" },
-  { id: "P-009", name: "Gas LPG 22kg", costPrice: "₱ 1,726.00", leadTime: "2 days", minOrderQty: 10, status: "Active" },
-  { id: "P-010", name: "Gasul LPG 50kg", costPrice: "₱ 3,964.00", leadTime: "3 days", minOrderQty: 10, status: "Active" },
-];
-
-const samplePurchaseOrders = [
-  { id: "PO-001", date: "01/05/2026", totalQty: 20, totalAmount: "₱ 4,860.00", expectedDate: "01/07/2026", status: "Sent" },
-  { id: "PO-002", date: "01/05/2026", totalQty: 20, totalAmount: "₱ 12,060.00", expectedDate: "01/07/2026", status: "Sent" },
-  { id: "PO-003", date: "01/05/2026", totalQty: 30, totalAmount: "₱ 27,630.00", expectedDate: "01/07/2026", status: "Sent" },
-  { id: "PO-009", date: "01/06/2026", totalQty: 20, totalAmount: "₱ 34,520.00", expectedDate: "01/08/2026", status: "Sent" },
-  { id: "PO-010", date: "01/09/2026", totalQty: 10, totalAmount: "₱ 39,640.00", expectedDate: "01/12/2026", status: "Sent" },
-];
-
-const sampleDeliveryHistory = [
-  { id: "SD-001", poId: "PO-001", dateDelivered: "01/07/2026", totalQty: 20, status: "Received", receivedBy: "U-001" },
-  { id: "SD-002", poId: "PO-002", dateDelivered: "01/07/2026", totalQty: 20, status: "Received", receivedBy: "U-002" },
-  { id: "SD-003", poId: "PO-003", dateDelivered: "01/07/2026", totalQty: 30, status: "Received", receivedBy: "U-002" },
-  { id: "SD-004", poId: "PO-009", dateDelivered: "01/08/2026", totalQty: 20, status: "Received", receivedBy: "U-002" },
-  { id: "SD-005", poId: "PO-010", dateDelivered: "01/12/2026", totalQty: 10, status: "Received", receivedBy: "U-001" },
-];
+function formatPeso(amount) {
+  return `₱ ${Number(amount).toLocaleString("en-US", { minimumFractionDigits: 2 })}`;
+}
 
 export default function ViewSupplierModal({ isOpen, onClose, supplier }) {
   const [activeTab, setActiveTab] = useState("Supplier Products");
+  const [products, setProducts] = useState([]);
+  const [purchaseOrders, setPurchaseOrders] = useState([]);
+  const [deliveries, setDeliveries] = useState([]);
+  const [isLoading, setIsLoading] = useState(false);
+  const [error, setError] = useState("");
 
-  if (!isOpen) return null;
+  useEffect(() => {
+    if (!isOpen || !supplier) return;
+    setIsLoading(true);
+    setError("");
+    Promise.all([
+      apiRequest(`/suppliers/${supplier.id}/products`),
+      apiRequest(`/suppliers/${supplier.id}/purchase-orders`),
+      apiRequest(`/suppliers/${supplier.id}/deliveries`),
+    ])
+      .then(([productData, poData, deliveryData]) => {
+        setProducts(productData);
+        setPurchaseOrders(poData);
+        setDeliveries(deliveryData);
+      })
+      .catch((err) => setError(err.message || "Failed to load supplier history."))
+      .finally(() => setIsLoading(false));
+  }, [isOpen, supplier]);
+
+  if (!isOpen || !supplier) return null;
 
   return (
     <div className="view-supplier-modal-overlay">
       <div className="view-supplier-modal-card">
+        <h2 style={{ margin: 0, fontSize: "1.25rem", fontWeight: 800 }}>{supplier.name}</h2>
+        <p style={{ margin: "4px 0 0 0", color: "#6b7280", fontSize: "0.9rem" }}>
+          {supplier.contactPerson} · {supplier.phone} · {supplier.email}
+        </p>
+
+        {error && <p style={{ color: "#dc2626", fontWeight: 600 }}>{error}</p>}
+
         {/* Navigation Tabs */}
         <div className="supplier-modal-tabs">
           <button
@@ -60,7 +71,9 @@ export default function ViewSupplierModal({ isOpen, onClose, supplier }) {
 
         {/* Tab Content Display */}
         <div className="tab-content">
-          {activeTab === "Supplier Products" && (
+          {isLoading && <p className="placeholder-text">Loading…</p>}
+
+          {!isLoading && activeTab === "Supplier Products" && (
             <div className="view-supplier-table-wrap">
               <table className="view-supplier-table">
                 <thead>
@@ -68,19 +81,22 @@ export default function ViewSupplierModal({ isOpen, onClose, supplier }) {
                     <th>Product ID</th>
                     <th>Product Name</th>
                     <th>Cost Price</th>
-                    <th>Lead Time</th>
-                    <th>Minimum Order Qty</th>
-                    <th>Product Status</th>
+                    <th>Unit</th>
+                    <th>Reorder Level</th>
+                    <th>Status</th>
                   </tr>
                 </thead>
                 <tbody>
-                  {sampleProducts.map((prod) => (
+                  {products.length === 0 && (
+                    <tr><td colSpan={6} className="placeholder-text">No products from this supplier yet.</td></tr>
+                  )}
+                  {products.map((prod) => (
                     <tr key={prod.id}>
                       <td>{prod.id}</td>
                       <td>{prod.name}</td>
-                      <td>{prod.costPrice}</td>
-                      <td>{prod.leadTime}</td>
-                      <td>{prod.minOrderQty}</td>
+                      <td>{formatPeso(prod.costPrice)}</td>
+                      <td>{prod.unit}</td>
+                      <td>{prod.reorderLevel}</td>
                       <td>{prod.status}</td>
                     </tr>
                   ))}
@@ -89,27 +105,28 @@ export default function ViewSupplierModal({ isOpen, onClose, supplier }) {
             </div>
           )}
 
-          {activeTab === "Purchase Order" && (
+          {!isLoading && activeTab === "Purchase Order" && (
             <div className="view-supplier-table-wrap">
               <table className="view-supplier-table">
                 <thead>
                   <tr>
                     <th>Purchase Order ID</th>
                     <th>Date</th>
-                    <th>Total Quantity</th>
                     <th>Total Amount</th>
                     <th>Expected Date</th>
                     <th>Status</th>
                   </tr>
                 </thead>
                 <tbody>
-                  {samplePurchaseOrders.map((po) => (
+                  {purchaseOrders.length === 0 && (
+                    <tr><td colSpan={5} className="placeholder-text">No purchase orders for this supplier yet.</td></tr>
+                  )}
+                  {purchaseOrders.map((po) => (
                     <tr key={po.id}>
-                      <td>{po.id}</td>
-                      <td>{po.date}</td>
-                      <td>{po.totalQty}</td>
-                      <td>{po.totalAmount}</td>
-                      <td>{po.expectedDate}</td>
+                      <td>{po.poNo}</td>
+                      <td>{new Date(po.orderDate).toLocaleDateString()}</td>
+                      <td>{formatPeso(po.totalAmount)}</td>
+                      <td>{po.expectedDeliveryDate ? new Date(po.expectedDeliveryDate).toLocaleDateString() : "—"}</td>
                       <td>{po.status}</td>
                     </tr>
                   ))}
@@ -118,28 +135,27 @@ export default function ViewSupplierModal({ isOpen, onClose, supplier }) {
             </div>
           )}
 
-          {activeTab === "Delivery History" && (
+          {!isLoading && activeTab === "Delivery History" && (
             <div className="view-supplier-table-wrap">
               <table className="view-supplier-table">
                 <thead>
                   <tr>
-                    <th>Delivery ID</th>
                     <th>Purchase Order ID</th>
-                    <th>Date Delivered</th>
+                    <th>Date Received</th>
                     <th>Total Quantity</th>
                     <th>Status</th>
-                    <th>Received By</th>
                   </tr>
                 </thead>
                 <tbody>
-                  {sampleDeliveryHistory.map((dh) => (
-                    <tr key={dh.id}>
-                      <td>{dh.id}</td>
-                      <td>{dh.poId}</td>
-                      <td>{dh.dateDelivered}</td>
-                      <td>{dh.totalQty}</td>
-                      <td>{dh.status}</td>
-                      <td>{dh.receivedBy}</td>
+                  {deliveries.length === 0 && (
+                    <tr><td colSpan={4} className="placeholder-text">No completed deliveries from this supplier yet.</td></tr>
+                  )}
+                  {deliveries.map((d) => (
+                    <tr key={d.poId}>
+                      <td>{d.poNo}</td>
+                      <td>{new Date(d.orderDate).toLocaleDateString()}</td>
+                      <td>{d.totalQty}</td>
+                      <td>{d.status}</td>
                     </tr>
                   ))}
                 </tbody>
