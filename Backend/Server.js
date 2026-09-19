@@ -1,60 +1,54 @@
-import express from "express";
-import cors from "cors";
-import dotenv from "dotenv";
+require("dotenv").config();
+const express = require("express");
+const cors = require("cors");
 
-import authRouter from "./Routes/auth.js";
-import companiesRouter from "./Routes/companies.js";
-import usersRouter from "./Routes/users.js";
-import productsRouter from "./Routes/products.js";
-import inventoryRouter from "./Routes/inventory.js";
-import suppliersRouter from "./Routes/suppliers.js";
-import salesRouter from "./Routes/Sales.js";
-import ordersRouter from "./Routes/orders.js";
-import deliveriesRouter from "./Routes/deliveries.js";
-import posRouter from "./Routes/pos.js";
-import restockRouter from "./Routes/restock.js";
-import arRouter from "./Routes/ar.js";
-import settingsRouter from "./Routes/settings.js";
-import mobileHomeRouter from "./Routes/mobileHome.js";
-import reportsRouter from "./Routes/reports.js";
-import dataRouter from "./Routes/data.js";
+const { notFound, errorHandler } = require("./middleware/errorHandler");
 
-
-dotenv.config();
+const authRoutes = require("./routes/authRoutes");
+const productRoutes = require("./routes/productRoutes");
+const categoryRoutes = require("./routes/categoryRoutes");
+const brandRoutes = require("./routes/brandRoutes");
+const supplierRoutes = require("./routes/supplierRoutes");
+const inventoryRoutes = require("./routes/inventoryRoutes");
+const warehouseRoutes = require("./routes/warehouseRoutes");
+const userRoutes = require("./routes/userRoutes");
+const customerRoutes = require("./routes/customerRoutes");
+const orderRoutes = require("./routes/orderRoutes");
+const salesRoutes = require("./routes/salesRoutes");
+const paymentRoutes = require("./routes/paymentRoutes");
+const deliveryRoutes = require("./routes/deliveryRoutes");
+const restockRoutes = require("./routes/restockRoutes");
+const purchaseOrderRoutes = require("./routes/purchaseOrderRoutes");
+const dataRoutes = require("./routes/dataRoutes");
+const dashboardRoutes = require("./routes/dashboardRoutes");
 
 const app = express();
+
+app.use(cors({ origin: process.env.CORS_ORIGIN || "*" }));
+app.use(express.json({ limit: "5mb" }));
+
+app.get("/health", (req, res) => res.json({ status: "ok" }));
+
+app.use("/auth", authRoutes);
+app.use("/products", productRoutes);
+app.use("/categories", categoryRoutes);
+app.use("/brands", brandRoutes);
+app.use("/suppliers", supplierRoutes);
+app.use("/inventory", inventoryRoutes);
+app.use("/warehouses", warehouseRoutes);
+app.use("/users", userRoutes);
+app.use("/customers", customerRoutes);
+app.use("/orders", orderRoutes);
+app.use("/sales", salesRoutes);
+app.use("/payments", paymentRoutes);
+app.use("/deliveries", deliveryRoutes);
+app.use("/restocking", restockRoutes);
+app.use("/purchase-orders", purchaseOrderRoutes);
+app.use("/data", dataRoutes);
+app.use("/dashboard", dashboardRoutes);
+
+app.use(notFound);
+app.use(errorHandler);
+
 const PORT = process.env.PORT || 4000;
-
-app.use(cors());
-app.use(express.json());
-
-// Serve static 3D model binaries from /public/models
-app.use("/public", express.static("public"));
-
-
-const API_PREFIX = "/api/v1";
-
-app.use(`${API_PREFIX}/auth`, authRouter);
-app.use(`${API_PREFIX}/companies`, companiesRouter);
-app.use(`${API_PREFIX}/users`, usersRouter);
-app.use(`${API_PREFIX}/products`, productsRouter);
-app.use(`${API_PREFIX}/inventory`, inventoryRouter);
-app.use(`${API_PREFIX}/suppliers`, suppliersRouter);
-app.use(`${API_PREFIX}/sales`, salesRouter);
-app.use(`${API_PREFIX}/orders`, ordersRouter);
-app.use(`${API_PREFIX}/deliveries`, deliveriesRouter);
-app.use(`${API_PREFIX}/pos`, posRouter);
-app.use(`${API_PREFIX}/ar`, arRouter);
-app.use(`${API_PREFIX}/mobile`, mobileHomeRouter);
-app.use(`${API_PREFIX}/reports`, reportsRouter);
-app.use(`${API_PREFIX}/data`, dataRouter);
-app.use(`${API_PREFIX}/restock`, restockRouter);
-app.use(`${API_PREFIX}/settings`, settingsRouter);
-
-app.get("/", (req, res) => {
-    res.send("GasTrack API is running.");
-});
-
-app.listen(PORT, () => {
-    console.log(`GasTrack API listening on http://localhost:${PORT}`);
-});
+app.listen(PORT, () => console.log(`GasTrack API listening on port ${PORT}`));

@@ -1,36 +1,14 @@
-import React, { useMemo, useState } from "react";
+import React, { useEffect, useMemo, useState } from "react";
 import { Search, ChevronDown, ShoppingCart, ImageOff, Wallet, Minus, Plus, X } from "lucide-react";
 import PaymentModal from "./PaymentModal";
+import { apiRequest } from "./api";
 import "./PosTerminal.css";
-import gasul27 from "./assets/Products/Gasul 2.7KG.png";
-import gasul7 from "./assets/Products/Gasul 7KG.png";
-import gasul11 from "./assets/Products/Gasul 11KG.png";
 
 // ---------------------------------------------------------------------------
-// Mock product catalog — replace with real data / API call
-//
-// `image` can be either:
-//   1. A LOCAL import — put files in e.g. `src/assets/products/`, then:
-//        import gasul27 from "./assets/products/gasul-2.7kg.png";
-//      and set `image: gasul27` below.
-//   2. A URL string — once images are served from a backend/CDN, just set
-//        image: "https://yourcdn.com/products/gasul-2.7kg.png"
-//      No import needed for this option.
-//
-// If `image` is left undefined/null, the card falls back to the gray
-// placeholder icon automatically (see ProductCard below).
+// Products are fetched from GET /products (backend/routes/productRoutes.js).
+// Each row includes an aggregated `stock` field (sum across all warehouses)
+// and a real numeric ProductID — never hardcode mock string IDs here.
 // ---------------------------------------------------------------------------
-
-const products = [
-  { id: "p1", category: "Gasul", name: "Gasul LPG 2.7KG", stock: 5, price: 249.0, image: gasul27 },
-  { id: "p2", category: "Gasul", name: "Gasul LPG 7KG", stock: 20, price: 603.0, image: gasul7 },
-  { id: "p3", category: "Gasul", name: "Gasul LPG 11KG", stock: 10, price: 907.0, image: gasul11 },
-  { id: "p4", category: "Cylinder", name: "Cylinder 2.7KG", stock: 10, price: 1000.0, image: null },
-  { id: "p5", category: "Cylinder", name: "Cylinder 7KG", stock: 25, price: 1800.0, image: null },
-  { id: "p6", category: "Cylinder", name: "Cylinder 22KG", stock: 25, price: 3800.0, image: null },
-];
-
-const categories = ["All Categories", ...new Set(products.map((p) => p.category))];
 
 const discountOptions = [
   { label: "No Discount", value: 0 },
@@ -52,8 +30,15 @@ function formatPeso(amount) {
 // ---------------------------------------------------------------------------
 
 function ProductCard({ product, onAdd }) {
+  const outOfStock = product.stock <= 0;
   return (
-    <button type="button" className="product-card" onClick={() => onAdd(product)}>
+    <button
+      type="button"
+      className="product-card"
+      onClick={() => onAdd(product)}
+      disabled={outOfStock}
+      style={outOfStock ? { opacity: 0.5, cursor: "not-allowed" } : undefined}
+    >
       <span className="product-category">{product.category}</span>
       <div className="product-image">
         {product.image ? (
@@ -63,11 +48,12 @@ function ProductCard({ product, onAdd }) {
         )}
       </div>
       <p className="product-name">{product.name}</p>
-      <p className="product-stock">Stock: {product.stock}</p>
+      <p className="product-stock">{outOfStock ? "Out of stock" : `Stock: ${product.stock}`}</p>
       <p className="product-price">{formatPeso(product.price)}</p>
     </button>
   );
 }
+
 // ---------------------------------------------------------------------------
 // Cart line item
 // ---------------------------------------------------------------------------
@@ -97,10 +83,65 @@ function CartItem({ item, onIncrement, onDecrement, onRemove }) {
 }
 
 // ---------------------------------------------------------------------------
+// Print receipt helper
+// ---------------------------------------------------------------------------
+
+function printSaleReceipt(sale, cartItems, customerType) {
+  const printWindow = window.open("", "_blank", "width=380,height=600");
+  if (!printWindow) {
+    alert("Please allow popups for printing.");
+    return;
+  }
+  const rows = cartItems
+    .map(
+      (it) =>
+        `<tr><td>${it.name}</td><td>${it.qty}</td><td>₱${it.price.toFixed(2)}</td><td>₱${(it.qty * it.price).toFixed(2)}</td></tr>`
+    )
+    .join("");
+  printWindow.document.write(`
+    <html>
+      <head><title>Receipt ${sale.saleNo}</title>
+      <style>
+        body { font-family: Arial, sans-serif; padding: 16px; max-width: 320px; margin: 0 auto; font-size: 13px; }
+        h2 { text-align: center; margin-bottom: 4px; }
+        table { width: 100%; border-collapse: collapse; margin-top: 12px; }
+        th, td { padding: 4px; text-align: left; border-bottom: 1px solid #ddd; }
+        .totals { margin-top: 12px; text-align: right; }
+        .totals p { margin: 2px 0; }
+        .grand { font-weight: bold; font-size: 1.1em; }
+      </style>
+      </head>
+      <body>
+        <h2>GasTrack Receipt</h2>
+        <p style="text-align:center;">${sale.saleNo}</p>
+        <p>Customer Type: ${customerType}</p>
+        <table>
+          <thead><tr><th>Item</th><th>Qty</th><th>Price</th><th>Subtotal</th></tr></thead>
+          <tbody>${rows}</tbody>
+        </table>
+        <div class="totals">
+          <p>Subtotal: ₱${sale.subtotal.toFixed(2)}</p>
+          <p>Discount: ₱${sale.discount.toFixed(2)}</p>
+          <p>VAT (12%): ₱${sale.vat.toFixed(2)}</p>
+          <p class="grand">Total: ₱${sale.totalAmount.toFixed(2)}</p>
+        </div>
+        <p style="text-align:center; margin-top:20px;">Thank you!</p>
+        <script>window.onload = function() { window.print(); window.close(); }<\/script>
+      </body>
+    </html>
+  `);
+  printWindow.document.close();
+}
+
+// ---------------------------------------------------------------------------
 // Main POS Terminal component
 // ---------------------------------------------------------------------------
 
 export default function PosTerminal() {
+  const [products, setProducts] = useState([]);
+  const [isLoadingProducts, setIsLoadingProducts] = useState(true);
+  const [loadError, setLoadError] = useState("");
+
   const [searchTerm, setSearchTerm] = useState("");
   const [category, setCategory] = useState("All Categories");
   const [cart, setCart] = useState([]);
@@ -108,6 +149,42 @@ export default function PosTerminal() {
   const [customerType, setCustomerType] = useState("Walk-in");
   const [paymentMethod, setPaymentMethod] = useState("");
   const [showPaymentModal, setShowPaymentModal] = useState(false);
+  const [isProcessing, setIsProcessing] = useState(false);
+  const [posError, setPosError] = useState("");
+
+  // Fetch real products (with live stock) from the backend
+  useEffect(() => {
+    let cancelled = false;
+    setIsLoadingProducts(true);
+    apiRequest("/products?status=Active")
+      .then((data) => {
+        if (cancelled) return;
+        const mapped = data.map((p) => ({
+          id: p.productId, // real numeric ProductID from the DB
+          category: p.category,
+          name: p.name,
+          stock: Number(p.stock),
+          price: Number(p.unitPrice),
+          image: p.imageUrl ? `${import.meta.env.BASE_URL}${p.imageUrl}` : null,
+        }));
+        setProducts(mapped);
+        setLoadError("");
+      })
+      .catch((err) => {
+        if (!cancelled) setLoadError(err.message || "Failed to load products.");
+      })
+      .finally(() => {
+        if (!cancelled) setIsLoadingProducts(false);
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, []);
+
+  const categories = useMemo(
+    () => ["All Categories", ...new Set(products.map((p) => p.category))],
+    [products]
+  );
 
   const filteredProducts = useMemo(() => {
     return products.filter((p) => {
@@ -115,12 +192,14 @@ export default function PosTerminal() {
       const matchesSearch = p.name.toLowerCase().includes(searchTerm.toLowerCase());
       return matchesCategory && matchesSearch;
     });
-  }, [searchTerm, category]);
+  }, [products, searchTerm, category]);
 
   const addToCart = (product) => {
+    if (product.stock <= 0) return;
     setCart((prev) => {
       const existing = prev.find((item) => item.id === product.id);
       if (existing) {
+        if (existing.qty >= product.stock) return prev; // don't exceed available stock
         return prev.map((item) =>
           item.id === product.id ? { ...item, qty: item.qty + 1 } : item
         );
@@ -130,7 +209,13 @@ export default function PosTerminal() {
   };
 
   const incrementItem = (id) => {
-    setCart((prev) => prev.map((item) => (item.id === id ? { ...item, qty: item.qty + 1 } : item)));
+    setCart((prev) =>
+      prev.map((item) => {
+        if (item.id !== id) return item;
+        if (item.qty >= item.stock) return item; // cap at available stock
+        return { ...item, qty: item.qty + 1 };
+      })
+    );
   };
 
   const decrementItem = (id) => {
@@ -148,7 +233,6 @@ export default function PosTerminal() {
   const clearCart = () => setCart([]);
 
   const holdCart = () => {
-    // Hook this up to your "held orders" storage / API as needed
     console.log("Order held:", cart);
   };
 
@@ -159,29 +243,68 @@ export default function PosTerminal() {
 
   const handlePay = () => {
     if (cart.length === 0) return;
+    setPosError("");
     setShowPaymentModal(true);
   };
 
-  const handleConfirmPayment = ({ amountCollected, changeDue, printReceipt }) => {
-    // Hook this up to your checkout / payment API
-    console.log("Processing payment", {
-      cart,
-      customerType,
-      discountValue,
-      paymentMethod,
-      total,
-      amountCollected,
-      changeDue,
-      printReceipt,
-    });
-    setShowPaymentModal(false);
-    clearCart();
+  const handleConfirmPayment = async ({ amountCollected, changeDue, printReceipt }) => {
+    if (cart.length === 0) return;
+    setIsProcessing(true);
+    setPosError("");
+
+    try {
+      const response = await apiRequest("/sales", {
+        method: "POST",
+        body: JSON.stringify({
+          customerType,
+          items: cart.map((item) => ({
+            productId: item.id,
+            qty: item.qty,
+            unitPrice: item.price,
+          })),
+          discount,
+          paymentMethod: paymentMethod || "Cash",
+          amountCollected,
+        }),
+      });
+
+      if (printReceipt) {
+        printSaleReceipt(response, cart, customerType);
+      }
+
+      setShowPaymentModal(false);
+      clearCart();
+      alert(`Sale ${response.saleNo} completed. Change due: ₱${response.changeDue?.toFixed(2) ?? "0.00"}`);
+
+      // Refresh stock counts after a successful sale
+      apiRequest("/products?status=Active")
+        .then((data) => {
+          const mapped = data.map((p) => ({
+            id: p.productId,
+            category: p.category,
+            name: p.name,
+            stock: Number(p.stock),
+            price: Number(p.unitPrice),
+            image: p.imageUrl ? `${import.meta.env.BASE_URL}${p.imageUrl}` : null,
+          }));
+          setProducts(mapped);
+        })
+        .catch(() => {});
+    } catch (err) {
+      setPosError(err.message || "Failed to process payment. Please try again.");
+    } finally {
+      setIsProcessing(false);
+    }
   };
 
   return (
     <div className="pos">
       <div className="pos-inner">
         <h1 className="pos-title">POS Terminal</h1>
+
+        {posError && (
+          <p style={{ color: "#dc2626", fontWeight: 600, margin: "0 0 8px 0" }}>{posError}</p>
+        )}
 
         {/* Tabs */}
         <div className="pos-tabs">
@@ -219,10 +342,16 @@ export default function PosTerminal() {
             </div>
 
             <div className="product-grid">
-              {filteredProducts.map((product) => (
-                <ProductCard key={product.id} product={product} onAdd={addToCart} />
-              ))}
-              {filteredProducts.length === 0 && (
+              {isLoadingProducts && <p className="no-results">Loading products…</p>}
+              {!isLoadingProducts && loadError && (
+                <p className="no-results" style={{ color: "#dc2626" }}>{loadError}</p>
+              )}
+              {!isLoadingProducts &&
+                !loadError &&
+                filteredProducts.map((product) => (
+                  <ProductCard key={product.id} product={product} onAdd={addToCart} />
+                ))}
+              {!isLoadingProducts && !loadError && filteredProducts.length === 0 && (
                 <p className="no-results">No products match your search.</p>
               )}
             </div>
@@ -342,9 +471,9 @@ export default function PosTerminal() {
                   type="button"
                   className="pay-btn"
                   onClick={handlePay}
-                  disabled={cart.length === 0}
+                  disabled={cart.length === 0 || isProcessing}
                 >
-                  Pay
+                  {isProcessing ? "Processing…" : "Pay"}
                 </button>
               </div>
             </div>

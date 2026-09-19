@@ -1,101 +1,84 @@
-import React, { useState, useEffect } from "react";
+import React, { useEffect, useState } from "react";
 import "./CustomizeSingleItemModal.css";
+import { apiRequest } from "./api";
 
-export default function CustomizeSingleItemModal({ isOpen, onClose, selectedItem, onSave }) {
-  const [formData, setFormData] = useState({
-    restockId: "",
-    restockInputId: "",
-    productId: "",
-    budgetLimit: "",
-    preferredQty: "",
-  });
+export default function CustomizeSingleItemModal({ isOpen, onClose, selectedItem, onSaved }) {
+  const [preferredQty, setPreferredQty] = useState("");
+  const [isSubmitting, setIsSubmitting] = useState(false);
+  const [error, setError] = useState("");
 
   useEffect(() => {
     if (selectedItem) {
-      setFormData({
-        restockId: selectedItem.restockId || "",
-        restockInputId: "",
-        productId: selectedItem.productId || "",
-        budgetLimit: "",
-        preferredQty: "",
-      });
+      setPreferredQty(selectedItem.suggestedQty);
+      setError("");
     }
   }, [selectedItem]);
 
-  if (!isOpen) return null;
+  if (!isOpen || !selectedItem) return null;
 
-  const handleSubmit = (e) => {
+  const handleSubmit = async (e) => {
     e.preventDefault();
-    if (onSave) onSave(formData);
-    onClose();
+    const qty = Number(preferredQty);
+    if (!qty || qty <= 0) {
+      setError("Preferred quantity must be a positive number.");
+      return;
+    }
+
+    setIsSubmitting(true);
+    setError("");
+    try {
+      await apiRequest(`/restocking/${selectedItem.restockId}`, {
+        method: "PUT",
+        body: JSON.stringify({ recommendedQuantity: qty }),
+      });
+      onSaved?.();
+      onClose();
+    } catch (err) {
+      setError(err.message || "Failed to update recommendation.");
+    } finally {
+      setIsSubmitting(false);
+    }
   };
 
   return (
     <div className="single-item-modal-overlay">
       <div className="single-item-modal-card">
-        <h2 className="single-item-modal-title">Restocking Customize</h2>
+        <h2 className="single-item-modal-title">Customize Restock Quantity</h2>
+
+        {error && <p style={{ color: "#dc2626", fontWeight: 600, marginTop: -8 }}>{error}</p>}
 
         <form onSubmit={handleSubmit} className="single-item-form-grid">
-          {/* Row 1: Restock ID & RestockInputID */}
           <div className="single-item-row">
             <div className="single-item-field">
               <label>Restock ID</label>
-              <input
-                type="text"
-                value={formData.restockId}
-                onChange={(e) => setFormData({ ...formData, restockId: e.target.value })}
-                placeholder="R-001"
-              />
+              <input type="text" value={`R-${String(selectedItem.restockId).padStart(3, "0")}`} disabled />
             </div>
             <div className="single-item-field">
-              <label>RestockInputID</label>
-              <input
-                type="text"
-                value={formData.restockInputId}
-                onChange={(e) => setFormData({ ...formData, restockInputId: e.target.value })}
-                placeholder="ID"
-              />
+              <label>Product</label>
+              <input type="text" value={selectedItem.productName} disabled />
             </div>
           </div>
 
-          {/* Row 2: Product ID */}
-          <div className="single-item-field">
-            <label>Product ID</label>
-            <select
-              value={formData.productId}
-              onChange={(e) => setFormData({ ...formData, productId: e.target.value })}
-            >
-              <option value="" disabled hidden>
-                Product ID
-              </option>
-              <option value="P-001">P-001</option>
-              <option value="P-002">P-002</option>
-              <option value="P-003">P-003</option>
-              <option value="P-004">P-004</option>
-              <option value="P-005">P-005</option>
-            </select>
-          </div>
-
-          {/* Row 3: Budget Limit & Preferred Order Quantity */}
           <div className="single-item-row">
             <div className="single-item-field">
-              <label>Budget Limit</label>
-              <input
-                type="text"
-                value={formData.budgetLimit}
-                onChange={(e) => setFormData({ ...formData, budgetLimit: e.target.value })}
-                placeholder="₱ 0.00"
-              />
+              <label>Current Stock</label>
+              <input type="text" value={selectedItem.currentStock} disabled />
             </div>
             <div className="single-item-field">
-              <label>Preferred Order Quantity</label>
-              <input
-                type="number"
-                value={formData.preferredQty}
-                onChange={(e) => setFormData({ ...formData, preferredQty: e.target.value })}
-                placeholder="Enter Number"
-              />
+              <label>Reorder Level</label>
+              <input type="text" value={selectedItem.reorderLevel} disabled />
             </div>
+          </div>
+
+          <div className="single-item-field">
+            <label>Preferred Order Quantity</label>
+            <input
+              type="number"
+              min="1"
+              value={preferredQty}
+              onChange={(e) => setPreferredQty(e.target.value)}
+              placeholder="Enter Number"
+            />
           </div>
 
           {/* Footer Actions */}
@@ -103,8 +86,8 @@ export default function CustomizeSingleItemModal({ isOpen, onClose, selectedItem
             <button type="button" className="btn-single-cancel" onClick={onClose}>
               Cancel
             </button>
-            <button type="submit" className="btn-single-save">
-              Save
+            <button type="submit" className="btn-single-save" disabled={isSubmitting}>
+              {isSubmitting ? "Saving…" : "Save"}
             </button>
           </div>
         </form>

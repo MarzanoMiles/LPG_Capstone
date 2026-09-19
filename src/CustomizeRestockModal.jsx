@@ -1,124 +1,68 @@
-import React, { useState, useEffect } from "react";
+import React, { useEffect, useState } from "react";
 import "./CustomizeRestockModal.css";
+import { apiRequest } from "./api";
 
-const defaultInitialItems = [
-  {
-    num: 1,
-    restockId: "R-003",
-    productId: "P-003",
-    suggested: 50,
-    preferred: 45,
-    budget: "₱ 41,445.00",
-  },
-  {
-    num: 2,
-    restockId: "R-005",
-    productId: "P-005",
-    suggested: 30,
-    preferred: 20,
-    budget: "₱ 36,000.00",
-  },
-];
-
-export default function CustomizeRestockModal({ isOpen, onClose }) {
-  const [restockInputId, setRestockInputId] = useState("RI-001");
-  const [supplier, setSupplier] = useState("ABC Company");
-  const [items, setItems] = useState(defaultInitialItems);
-
-  // Submodal state
-  const [isAddItemOpen, setIsAddItemOpen] = useState(false);
-  const [newItemData, setNewItemData] = useState({
-    restockId: "",
-    productId: "",
-    suggested: "",
-    preferred: "",
-    budget: "",
-  });
+export default function CustomizeRestockModal({ isOpen, onClose, items, onApplied }) {
+  const [rows, setRows] = useState([]); // [{restockId, productId, productName, suggestedQty, preferredQty, costPrice}]
+  const [isSubmitting, setIsSubmitting] = useState(false);
+  const [error, setError] = useState("");
 
   useEffect(() => {
     if (isOpen) {
-      setItems(defaultInitialItems);
-      setIsAddItemOpen(false);
+      setRows(
+        items.map((it) => ({
+          restockId: it.restockId,
+          productId: it.productId,
+          productName: it.productName,
+          suggestedQty: it.suggestedQty,
+          preferredQty: it.suggestedQty,
+          costPrice: it.costPrice,
+        }))
+      );
+      setError("");
     }
-  }, [isOpen]);
+  }, [isOpen, items]);
 
   if (!isOpen) return null;
 
-  const handleOpenAddItemModal = () => {
-    const nextNum = items.length + 1;
-    setNewItemData({
-      restockId: `R-00${nextNum + 5}`,
-      productId: `P-00${nextNum + 5}`,
-      suggested: "20",
-      preferred: "15",
-      budget: "15000",
-    });
-    setIsAddItemOpen(true);
+  const updateQty = (restockId, value) => {
+    setRows((prev) => prev.map((r) => (r.restockId === restockId ? { ...r, preferredQty: value } : r)));
   };
 
-  const handleConfirmAddItem = () => {
-    const nextNum = items.length + 1;
-    const addedItem = {
-      num: nextNum,
-      restockId: newItemData.restockId || `R-00${nextNum}`,
-      productId: newItemData.productId || `P-00${nextNum}`,
-      suggested: Number(newItemData.suggested) || 0,
-      preferred: Number(newItemData.preferred) || 0,
-      budget: `₱ ${Number(newItemData.budget).toLocaleString("en-US", { minimumFractionDigits: 2 })}`,
-    };
-
-    setItems((prevItems) => [...prevItems, addedItem]);
-    setIsAddItemOpen(false);
+  const handleApply = async () => {
+    setIsSubmitting(true);
+    setError("");
+    try {
+      await Promise.all(
+        rows
+          .filter((r) => Number(r.preferredQty) !== r.suggestedQty)
+          .map((r) =>
+            apiRequest(`/restocking/${r.restockId}`, {
+              method: "PUT",
+              body: JSON.stringify({ recommendedQuantity: Number(r.preferredQty) }),
+            })
+          )
+      );
+      onApplied?.();
+      onClose();
+    } catch (err) {
+      setError(err.message || "Failed to apply changes.");
+    } finally {
+      setIsSubmitting(false);
+    }
   };
+
+  const totalBudget = rows.reduce((sum, r) => sum + Number(r.preferredQty || 0) * Number(r.costPrice || 0), 0);
 
   return (
     <div className="customize-modal-overlay">
       <div className="customize-modal-card">
         <h2 className="customize-modal-title">Restocking Customize</h2>
 
-        {/* Header Form */}
-        <div className="customize-form-fields">
-          <div className="customize-field-row">
-            <label>Restock Input ID</label>
-            <span className="customize-colon">:</span>
-            <div className="customize-input-wrap">
-              <input
-                type="text"
-                value={restockInputId}
-                onChange={(e) => setRestockInputId(e.target.value)}
-                placeholder="RI-001"
-              />
-            </div>
-          </div>
+        {error && <p style={{ color: "#dc2626", fontWeight: 600 }}>{error}</p>}
 
-          <div className="customize-field-row">
-            <label>Supplier</label>
-            <span className="customize-colon">:</span>
-            <div className="customize-input-wrap">
-              <select
-                value={supplier}
-                onChange={(e) => setSupplier(e.target.value)}
-              >
-                <option value="ABC Company">ABC Company</option>
-                <option value="XYZ Inc">XYZ Inc</option>
-                <option value="DEF Company">DEF Company</option>
-              </select>
-            </div>
-          </div>
-        </div>
-
-        <hr className="customize-divider" />
-
-        {/* Section Header & Add Item */}
         <div className="customize-section-header">
-          <h3 className="customize-section-title">Restock Items Customize</h3>
-          <button
-            type="button"
-            className="btn-add-item"
-            onClick={handleOpenAddItemModal}
-          >
-            Add Item
-          </button>
+          <h3 className="customize-section-title">Selected Items ({rows.length})</h3>
         </div>
 
         {/* Items Table */}
@@ -127,22 +71,31 @@ export default function CustomizeRestockModal({ isOpen, onClose }) {
             <thead>
               <tr>
                 <th>#</th>
-                <th>Restock ID</th>
-                <th>Product ID</th>
+                <th>Product</th>
                 <th>Suggested</th>
                 <th>Preferred</th>
-                <th>Budget</th>
+                <th>Est. Cost</th>
               </tr>
             </thead>
             <tbody>
-              {items.map((item) => (
-                <tr key={item.num}>
-                  <td>{item.num}</td>
-                  <td>{item.restockId}</td>
-                  <td>{item.productId}</td>
-                  <td>{item.suggested}</td>
-                  <td>{item.preferred}</td>
-                  <td>{item.budget}</td>
+              {rows.length === 0 && (
+                <tr><td colSpan={5}>No items selected. Check items in the Restocking table first.</td></tr>
+              )}
+              {rows.map((row, idx) => (
+                <tr key={row.restockId}>
+                  <td>{idx + 1}</td>
+                  <td>{row.productName}</td>
+                  <td>{row.suggestedQty}</td>
+                  <td>
+                    <input
+                      type="number"
+                      min="1"
+                      value={row.preferredQty}
+                      onChange={(e) => updateQty(row.restockId, e.target.value)}
+                      style={{ width: 70, padding: "4px 6px", textAlign: "center" }}
+                    />
+                  </td>
+                  <td>₱ {(Number(row.preferredQty || 0) * Number(row.costPrice || 0)).toLocaleString("en-US", { minimumFractionDigits: 2 })}</td>
                 </tr>
               ))}
             </tbody>
@@ -151,102 +104,22 @@ export default function CustomizeRestockModal({ isOpen, onClose }) {
 
         <hr className="customize-divider" />
 
+        <div className="modal-summary" style={{ padding: 0 }}>
+          <div className="summary-row" style={{ fontWeight: 700 }}>
+            Estimated Total: ₱ {totalBudget.toLocaleString("en-US", { minimumFractionDigits: 2 })}
+          </div>
+        </div>
+
         {/* Action Buttons */}
         <div className="customize-modal-actions">
           <button type="button" className="btn-modal-cancel" onClick={onClose}>
             Cancel
           </button>
-          <button type="button" className="btn-modal-draft" onClick={onClose}>
-            Save Draft
-          </button>
-          <button type="button" className="btn-modal-apply" onClick={onClose}>
-            Apply
+          <button type="button" className="btn-modal-apply" onClick={handleApply} disabled={isSubmitting || rows.length === 0}>
+            {isSubmitting ? "Applying…" : "Apply"}
           </button>
         </div>
       </div>
-
-      {/* Add Item Sub-modal */}
-      {isAddItemOpen && (
-        <div className="add-item-submodal-overlay">
-          <div className="add-item-submodal-card">
-            <h3 className="add-item-submodal-title">Add Restock Item</h3>
-
-            <div className="add-item-form">
-              <div className="add-item-field">
-                <label>Restock ID</label>
-                <input
-                  type="text"
-                  value={newItemData.restockId}
-                  onChange={(e) =>
-                    setNewItemData({ ...newItemData, restockId: e.target.value })
-                  }
-                />
-              </div>
-
-              <div className="add-item-field">
-                <label>Product ID</label>
-                <input
-                  type="text"
-                  value={newItemData.productId}
-                  onChange={(e) =>
-                    setNewItemData({ ...newItemData, productId: e.target.value })
-                  }
-                />
-              </div>
-
-              <div className="add-item-field">
-                <label>Suggested Qty</label>
-                <input
-                  type="number"
-                  value={newItemData.suggested}
-                  onChange={(e) =>
-                    setNewItemData({ ...newItemData, suggested: e.target.value })
-                  }
-                />
-              </div>
-
-              <div className="add-item-field">
-                <label>Preferred Qty</label>
-                <input
-                  type="number"
-                  value={newItemData.preferred}
-                  onChange={(e) =>
-                    setNewItemData({ ...newItemData, preferred: e.target.value })
-                  }
-                />
-              </div>
-
-              <div className="add-item-field">
-                <label>Budget (₱)</label>
-                <input
-                  type="text"
-                  value={newItemData.budget}
-                  onChange={(e) =>
-                    setNewItemData({ ...newItemData, budget: e.target.value })
-                  }
-                />
-              </div>
-            </div>
-
-            <div className="add-item-submodal-actions">
-              <button
-                type="button"
-                className="btn-modal-cancel"
-                onClick={() => setIsAddItemOpen(false)}
-              >
-                Cancel
-              </button>
-              <button
-                type="button"
-                className="btn-modal-apply"
-                onClick={handleConfirmAddItem}
-              >
-                Add
-              </button>
-            </div>
-          </div>
-        </div>
-      )}
     </div>
   );
 }

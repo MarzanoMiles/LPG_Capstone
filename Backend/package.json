@@ -1,19 +1,23 @@
 {
   "name": "gastrack-backend",
   "version": "1.0.0",
-  "description": "Express + PostgreSQL API for GasTrack",
+  "type": "commonjs",
   "main": "server.js",
-  "type": "module",
   "scripts": {
-    "dev": "node --watch server.js",
-    "start": "node server.js"
+    "start": "node server.js",
+    "dev": "nodemon server.js",
+    "seed": "node db/seed.js",
+    "seed:products": "node db/seedProducts.js"
   },
   "dependencies": {
-    "bcrypt": "^5.1.1",
-    "cors": "^2.8.6",
-    "dotenv": "^16.6.1",
-    "express": "^4.22.2",
+    "bcryptjs": "^2.4.3",
+    "cors": "^2.8.5",
+    "dotenv": "^16.4.5",
+    "express": "^4.19.2",
     "jsonwebtoken": "^9.0.2",
-    "pg": "^8.23.0"
+    "mysql2": "^3.10.0"
+  },
+  "devDependencies": {
+    "nodemon": "^3.1.4"
   }
 }
