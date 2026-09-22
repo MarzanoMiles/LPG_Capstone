@@ -1,16 +1,35 @@
-# React + Vite
 
-This template provides a minimal setup to get React working in Vite with HMR and some Oxlint rules.
+# from project root
+npm install
+# next is create ".env" file at root of the project put this inside:
+VITE_API_BASE_URL=http://localhost:4000
 
-Currently, two official plugins are available:
+# in a separate terminal
+cd backend
 
-- [@vitejs/plugin-react](https://github.com/vitejs/vite-plugin-react/blob/main/packages/plugin-react) uses [Oxc](https://oxc.rs)
-- [@vitejs/plugin-react-swc](https://github.com/vitejs/vite-plugin-react/blob/main/packages/plugin-react-swc) uses [SWC](https://swc.rs/)
+npm install
 
-## React Compiler
+cp .env.example .env      # fill in DB credentials
 
-The React Compiler is not enabled on this template because of its impact on dev & build performances. To add it, see [this documentation](https://react.dev/learn/react-compiler/installation).
+mysql -u root -p -e "CREATE DATABASE gastrack"
 
-## Expanding the Oxlint configuration
+mysql -u root -p gastrack < db/schema.sql
 
-If you are developing a production application, we recommend using TypeScript with type-aware lint rules enabled. Check out the [TS template](https://github.com/vitejs/vite/tree/main/packages/create-vite/template-react-ts) for information on how to integrate TypeScript and Oxlint's TypeScript related rules in your project.
+mysql -u root -p gastrack < backend/db/patch_customer_fields.sql
+
+mysql -u root -p gastrack < backend/db/patch_compliance_reports.sql
+
+mysql -u root -p gastrack < backend/db/patch_user_fields.sql
+
+mysql -u root -p gastrack < backend/db/patch_company_settings.sql
+
+npm run seed    
+
+npm run seed:products
+
+npm run seed:reports
+
+#Credentials
+admin@gastrack.com / Admin@123
+
+
