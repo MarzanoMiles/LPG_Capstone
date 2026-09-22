@@ -1,4 +1,4 @@
-import React, { useMemo, useState } from "react";
+import React, { useEffect, useMemo, useState } from "react";
 import {
   Search,
   ChevronDown,
@@ -8,43 +8,11 @@ import {
   Trash2,
   ChevronLeft,
   ChevronRight,
+  X,
 } from "lucide-react";
 import AddUserModal from "./AddUserModal";
+import { apiRequest } from "./api";
 import "./Users.css";
-
-// ---------------------------------------------------------------------------
-// Mock data — replace with real API data
-// ---------------------------------------------------------------------------
-
-const mockUsers = [
-  { id: "U-001", name: "Juan Dela Cruz", email: "juan.delacruz@abc.com", role: "Admin", branch: "Pasig Warehouse", status: "Active" },
-  { id: "U-002", name: "Patrick Garcia", email: "patrick.garcia@abc.com", role: "Manager", branch: "San Juan Warehouse", status: "Active" },
-  { id: "U-003", name: "Juana Tolentino", email: "juana.tolentino@abc.com", role: "Inventory Staff", branch: "San Juan Warehouse", status: "Inactive" },
-  { id: "U-004", name: "Yvonne Cruz", email: "yvonne.cruz@abc.com", role: "Inventory Staff", branch: "Pasig Warehouse", status: "Active" },
-  { id: "U-005", name: "Angela Gabriel", email: "angela.gabriel@abc.com", role: "Inventory Staff", branch: "Pasig Warehouse", status: "Active" },
-  { id: "U-006", name: "Juan Dela Cruz", email: "juan.delacruz@abc.com", role: "Driver", branch: "Pasig Warehouse", status: "Active" },
-  { id: "U-007", name: "Patrick Garcia", email: "patrick.garcia@abc.com", role: "Driver", branch: "San Juan Warehouse", status: "Active" },
-  { id: "U-008", name: "Juana Tolentino", email: "juana.tolentino@abc.com", role: "Helper", branch: "San Juan Warehouse", status: "Inactive" },
-  { id: "U-009", name: "Yvonne Cruz", email: "yvonne.cruz@abc.com", role: "Helper", branch: "Pasig Warehouse", status: "Active" },
-  { id: "U-010", name: "Angela Gabriel", email: "angela.gabriel@abc.com", role: "Manager", branch: "Pasig Warehouse", status: "Active" },
-];
-
-const roles = ["All Roles", ...new Set(mockUsers.map((u) => u.role))];
-const statuses = ["All Status", "Active", "Inactive"];
-const branches = ["All Branch/Warehouse", ...new Set(mockUsers.map((u) => u.branch))];
-
-const mockActivityLog = [
-  { id: "U-001", name: "Juan Dela Cruz", role: "Admin", module: "Export", action: "Exported Sales", datetime: "01/01/2026 10:30:00 AM", status: "Active" },
-  { id: "U-002", name: "Patrick Garcia", role: "Manager", module: "User", action: "Update Username", datetime: "01/01/2026 10:30:00 AM", status: "Active" },
-  { id: "U-003", name: "Juana Tolentino", role: "Inventory Staff", module: "Inventory", action: "Add Stocks", datetime: "01/01/2026 10:30:00 AM", status: "Inactive" },
-  { id: "U-004", name: "Yvonne Cruz", role: "Inventory Staff", module: "Inventory", action: "Deduct Stocks", datetime: "01/01/2026 10:30:00 AM", status: "Active" },
-  { id: "U-005", name: "Angela Gabriel", role: "Inventory Staff", module: "Inventory", action: "Adjust Stocks", datetime: "01/01/2026 10:30:00 AM", status: "Active" },
-  { id: "U-006", name: "Juan Dela Cruz", role: "Driver", module: "POS - Order", action: "Delivered", datetime: "01/01/2026 10:30:00 AM", status: "Active" },
-  { id: "U-007", name: "Patrick Garcia", role: "Driver", module: "POS - Order", action: "Delivered", datetime: "01/01/2026 10:30:00 AM", status: "Active" },
-  { id: "U-008", name: "Juana Tolentino", role: "Helper", module: "Inventory", action: "Deduct Stocks", datetime: "01/01/2026 10:30:00 AM", status: "Inactive" },
-  { id: "U-009", name: "Yvonne Cruz", role: "Helper", module: "Inventory", action: "Adjust Stocks", datetime: "01/01/2026 10:30:00 AM", status: "Active" },
-  { id: "U-010", name: "Angela Gabriel", role: "Manager", module: "Products", action: "Add Products", datetime: "01/01/2026 10:30:00 AM", status: "Active" },
-];
 
 const PAGE_SIZE = 10;
 
@@ -62,12 +30,52 @@ function FilterSelect({ value, onChange, options }) {
     <div className="filter-select-wrap">
       <select className="filter-select" value={value} onChange={(e) => onChange(e.target.value)}>
         {options.map((opt) => (
-          <option key={opt} value={opt}>
-            {opt}
-          </option>
+          <option key={opt} value={opt}>{opt}</option>
         ))}
       </select>
       <ChevronDown size={16} className="filter-select-icon" />
+    </div>
+  );
+}
+
+function ViewUserModal({ user, onClose }) {
+  if (!user) return null;
+  const modules = user.moduleAccess || {};
+  return (
+    <div
+      style={{ position: "fixed", inset: 0, background: "rgba(17,24,39,0.45)", display: "flex", alignItems: "center", justifyContent: "center", zIndex: 1000, padding: 16 }}
+      onClick={onClose}
+    >
+      <div
+        style={{ background: "#fff", borderRadius: 12, padding: "24px 28px", width: "100%", maxWidth: 420, boxShadow: "0 20px 50px rgba(0,0,0,0.2)" }}
+        onClick={(e) => e.stopPropagation()}
+      >
+        <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
+          <h2 style={{ fontSize: "1.25rem", fontWeight: 800, margin: 0 }}>User Details</h2>
+          <button onClick={onClose} style={{ background: "none", border: "none", cursor: "pointer" }}>
+            <X size={20} />
+          </button>
+        </div>
+        <div style={{ display: "flex", flexDirection: "column", gap: 8, marginTop: 16, fontSize: "0.9rem" }}>
+          <div><strong>User ID:</strong> {user.id}</div>
+          <div><strong>Full Name:</strong> {user.name}</div>
+          <div><strong>Email:</strong> {user.email}</div>
+          <div><strong>Role:</strong> {user.role}</div>
+          <div><strong>Branch:</strong> {user.branch || "—"}</div>
+          <div><strong>Status:</strong> {user.status}</div>
+          <div><strong>Created:</strong> {new Date(user.createdAt).toLocaleString()}</div>
+          <div>
+            <strong>Module Access:</strong>{" "}
+            {Object.entries(modules).filter(([, v]) => v).map(([k]) => k).join(", ") || "None"}
+          </div>
+        </div>
+        <button
+          onClick={onClose}
+          style={{ marginTop: 20, width: "100%", padding: "10px 0", borderRadius: 8, border: "none", background: "#e5e7eb", color: "#111827", fontWeight: 700, cursor: "pointer" }}
+        >
+          Close
+        </button>
+      </div>
     </div>
   );
 }
@@ -77,27 +85,59 @@ function FilterSelect({ value, onChange, options }) {
 // ---------------------------------------------------------------------------
 
 export default function Users() {
-  const [users, setUsers] = useState(mockUsers);
+  const [users, setUsers] = useState([]);
+  const [activityLog, setActivityLog] = useState([]);
   const [activeTab, setActiveTab] = useState("users");
+  const [isLoading, setIsLoading] = useState(true);
+  const [loadError, setLoadError] = useState("");
+  const [actionError, setActionError] = useState("");
+
   const [searchTerm, setSearchTerm] = useState("");
   const [roleFilter, setRoleFilter] = useState("All Roles");
   const [statusFilter, setStatusFilter] = useState("All Status");
   const [branchFilter, setBranchFilter] = useState("All Branch/Warehouse");
   const [page, setPage] = useState(1);
-  const [showAddUserModal, setShowAddUserModal] = useState(false);
 
-  // Activity Log tab state (kept separate from the Users tab filters)
+  const [showAddUserModal, setShowAddUserModal] = useState(false);
+  const [editingUser, setEditingUser] = useState(null);
+  const [viewingUser, setViewingUser] = useState(null);
+
   const [activitySearchTerm, setActivitySearchTerm] = useState("");
-  const [activityRoleFilter, setActivityRoleFilter] = useState("All Roles");
-  const [activityStatusFilter, setActivityStatusFilter] = useState("All Status");
-  const [activityBranchFilter, setActivityBranchFilter] = useState("All Branch/Warehouse");
   const [activityPage, setActivityPage] = useState(1);
+
+  const loadUsers = () => {
+    setIsLoading(true);
+    apiRequest("/users")
+      .then((data) => {
+        setUsers(data);
+        setLoadError("");
+      })
+      .catch((err) => setLoadError(err.message || "Failed to load users."))
+      .finally(() => setIsLoading(false));
+  };
+
+  const loadActivityLog = () => {
+    apiRequest("/users/activity-log")
+      .then(setActivityLog)
+      .catch((err) => setLoadError(err.message || "Failed to load activity log."));
+  };
+
+  useEffect(() => {
+    loadUsers();
+    loadActivityLog();
+  }, []);
+
+  const roles = useMemo(() => ["All Roles", ...new Set(users.map((u) => u.role))], [users]);
+  const statuses = ["All Status", "Active", "Inactive"];
+  const branches = useMemo(
+    () => ["All Branch/Warehouse", ...new Set(users.map((u) => u.branch).filter(Boolean))],
+    [users]
+  );
 
   const filteredUsers = useMemo(() => {
     return users.filter((u) => {
       const term = searchTerm.toLowerCase();
-      const matchesSearch =
-        u.name.toLowerCase().includes(term) || u.email.toLowerCase().includes(term);
+      const matchesSearch = u.name.toLowerCase().includes(term) || u.email.toLowerCase().includes(term);
       const matchesRole = roleFilter === "All Roles" || u.role === roleFilter;
       const matchesStatus = statusFilter === "All Status" || u.status === statusFilter;
       const matchesBranch = branchFilter === "All Branch/Warehouse" || u.branch === branchFilter;
@@ -107,10 +147,7 @@ export default function Users() {
 
   const totalPages = Math.max(1, Math.ceil(filteredUsers.length / PAGE_SIZE));
   const currentPage = Math.min(page, totalPages);
-  const paginatedUsers = filteredUsers.slice(
-    (currentPage - 1) * PAGE_SIZE,
-    currentPage * PAGE_SIZE
-  );
+  const paginatedUsers = filteredUsers.slice((currentPage - 1) * PAGE_SIZE, currentPage * PAGE_SIZE);
 
   const goToPage = (p) => {
     if (p < 1 || p > totalPages) return;
@@ -118,17 +155,11 @@ export default function Users() {
   };
 
   const filteredActivity = useMemo(() => {
-    return mockActivityLog.filter((entry) => {
+    return activityLog.filter((entry) => {
       const term = activitySearchTerm.toLowerCase();
-      const matchesSearch = entry.name.toLowerCase().includes(term) || entry.id.toLowerCase().includes(term);
-      const matchesRole = activityRoleFilter === "All Roles" || entry.role === activityRoleFilter;
-      const matchesStatus = activityStatusFilter === "All Status" || entry.status === activityStatusFilter;
-      // Branch isn't tracked on activity entries in this mock data, so this filter
-      // is a no-op for now unless you add a `branch` field to each log entry.
-      const matchesBranch = activityBranchFilter === "All Branch/Warehouse" || true;
-      return matchesSearch && matchesRole && matchesStatus && matchesBranch;
+      return !term || entry.name.toLowerCase().includes(term) || String(entry.userId).includes(term);
     });
-  }, [activitySearchTerm, activityRoleFilter, activityStatusFilter, activityBranchFilter]);
+  }, [activityLog, activitySearchTerm]);
 
   const activityTotalPages = Math.max(1, Math.ceil(filteredActivity.length / PAGE_SIZE));
   const activityCurrentPage = Math.min(activityPage, activityTotalPages);
@@ -136,38 +167,43 @@ export default function Users() {
     (activityCurrentPage - 1) * PAGE_SIZE,
     activityCurrentPage * PAGE_SIZE
   );
-
   const goToActivityPage = (p) => {
     if (p < 1 || p > activityTotalPages) return;
     setActivityPage(p);
   };
 
   const handleAddUser = () => {
+    setEditingUser(null);
     setShowAddUserModal(true);
   };
 
-  const handleSaveUser = (formData) => {
-    const nextIdNumber = users.length + 1;
-    const newUser = {
-      id: `U-${String(nextIdNumber).padStart(3, "0")}`,
-      name: formData.fullName,
-      email: formData.usernameEmail,
-      role: formData.role,
-      branch: formData.branch,
-      status: formData.status,
-    };
-    setUsers((prev) => [...prev, newUser]);
-    setShowAddUserModal(false);
+  const handleEdit = (user) => {
+    setEditingUser(user);
+    setShowAddUserModal(true);
   };
 
-  const handleView = (user) => console.log("View", user);
-  const handleEdit = (user) => console.log("Edit", user);
-  const handleDelete = (user) => console.log("Delete", user);
+  const handleView = (user) => setViewingUser(user);
+
+  const handleDelete = async (user) => {
+    const confirmed = window.confirm(`Deactivate ${user.name}? They will no longer be able to log in.`);
+    if (!confirmed) return;
+    setActionError("");
+    try {
+      await apiRequest(`/users/${user.id}`, { method: "DELETE" });
+      loadUsers();
+      loadActivityLog();
+    } catch (err) {
+      setActionError(err.message || "Failed to deactivate user.");
+    }
+  };
 
   return (
     <div className="users-page">
       <div className="users-inner">
         <h1 className="users-title">Users</h1>
+
+        {loadError && <p style={{ color: "#dc2626", fontWeight: 600 }}>{loadError}</p>}
+        {actionError && <p style={{ color: "#dc2626", fontWeight: 600 }}>{actionError}</p>}
 
         {/* Tabs */}
         <div className="users-tabs">
@@ -192,12 +228,9 @@ export default function Users() {
               <div className="users-search">
                 <input
                   type="text"
-                  placeholder="Search by Full Name, Username or Email"
+                  placeholder="Search by Full Name or Email"
                   value={searchTerm}
-                  onChange={(e) => {
-                    setSearchTerm(e.target.value);
-                    setPage(1);
-                  }}
+                  onChange={(e) => { setSearchTerm(e.target.value); setPage(1); }}
                   className="users-search-input"
                 />
                 <Search size={16} className="users-search-icon" />
@@ -228,13 +261,16 @@ export default function Users() {
                   </tr>
                 </thead>
                 <tbody>
-                  {paginatedUsers.map((user) => (
+                  {isLoading && (
+                    <tr><td colSpan={7} className="no-results-cell">Loading…</td></tr>
+                  )}
+                  {!isLoading && paginatedUsers.map((user) => (
                     <tr key={user.id}>
                       <td>{user.id}</td>
                       <td>{user.name}</td>
                       <td>{user.email}</td>
                       <td>{user.role}</td>
-                      <td>{user.branch}</td>
+                      <td>{user.branch || "—"}</td>
                       <td>
                         <StatusPill status={user.status} />
                       </td>
@@ -259,7 +295,7 @@ export default function Users() {
                           <button
                             type="button"
                             className="action-icon delete"
-                            aria-label={`Delete ${user.name}`}
+                            aria-label={`Deactivate ${user.name}`}
                             onClick={() => handleDelete(user)}
                           >
                             <Trash2 size={16} />
@@ -268,7 +304,7 @@ export default function Users() {
                       </td>
                     </tr>
                   ))}
-                  {paginatedUsers.length === 0 && (
+                  {!isLoading && paginatedUsers.length === 0 && (
                     <tr>
                       <td colSpan={7} className="no-results-cell">
                         No users match your filters.
@@ -318,32 +354,13 @@ export default function Users() {
               <div className="users-search">
                 <input
                   type="text"
-                  placeholder="Search by Full Name, Username or Email"
+                  placeholder="Search by Full Name or User ID"
                   value={activitySearchTerm}
-                  onChange={(e) => {
-                    setActivitySearchTerm(e.target.value);
-                    setActivityPage(1);
-                  }}
+                  onChange={(e) => { setActivitySearchTerm(e.target.value); setActivityPage(1); }}
                   className="users-search-input"
                 />
                 <Search size={16} className="users-search-icon" />
               </div>
-
-              <FilterSelect
-                value={activityRoleFilter}
-                onChange={(v) => { setActivityRoleFilter(v); setActivityPage(1); }}
-                options={roles}
-              />
-              <FilterSelect
-                value={activityStatusFilter}
-                onChange={(v) => { setActivityStatusFilter(v); setActivityPage(1); }}
-                options={statuses}
-              />
-              <FilterSelect
-                value={activityBranchFilter}
-                onChange={(v) => { setActivityBranchFilter(v); setActivityPage(1); }}
-                options={branches}
-              />
             </div>
 
             {/* Table */}
@@ -355,25 +372,25 @@ export default function Users() {
                     <th>Full Name</th>
                     <th>Role</th>
                     <th>Module</th>
-                    <th>Actions</th>
+                    <th>Action</th>
                     <th>Date and Time</th>
                   </tr>
                 </thead>
                 <tbody>
-                  {paginatedActivity.map((entry, index) => (
-                    <tr key={`${entry.id}-${index}`}>
-                      <td>{entry.id}</td>
+                  {paginatedActivity.map((entry) => (
+                    <tr key={entry.id}>
+                      <td>{entry.userId}</td>
                       <td>{entry.name}</td>
                       <td>{entry.role}</td>
                       <td>{entry.module}</td>
-                      <td>{entry.action}</td>
-                      <td>{entry.datetime}</td>
+                      <td>{entry.action}{entry.description ? ` — ${entry.description}` : ""}</td>
+                      <td>{new Date(entry.datetime).toLocaleString()}</td>
                     </tr>
                   ))}
                   {paginatedActivity.length === 0 && (
                     <tr>
                       <td colSpan={6} className="no-results-cell">
-                        No activity matches your filters.
+                        No activity matches your search.
                       </td>
                     </tr>
                   )}
@@ -418,9 +435,18 @@ export default function Users() {
 
       <AddUserModal
         isOpen={showAddUserModal}
-        onCancel={() => setShowAddUserModal(false)}
-        onSave={handleSaveUser}
+        selectedUser={editingUser}
+        onCancel={() => {
+          setShowAddUserModal(false);
+          setEditingUser(null);
+        }}
+        onSaved={() => {
+          loadUsers();
+          loadActivityLog();
+        }}
       />
+
+      <ViewUserModal user={viewingUser} onClose={() => setViewingUser(null)} />
     </div>
   );
 }
