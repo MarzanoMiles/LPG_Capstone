@@ -88,6 +88,8 @@ export default function Data() {
     }
   };
 
+  const isReimportable = exportDataType === "Sales Line Items";
+
   return (
     <div className="data-page">
       <div className="data-inner">
@@ -132,7 +134,8 @@ export default function Data() {
                       value={exportDataType}
                       onChange={(e) => setExportDataType(e.target.value)}
                     >
-                      <option value="Sales Data">Sales Data</option>
+                      <option value="Sales Data">Sales Data (summary report)</option>
+                      <option value="Sales Line Items">Sales Line Items (re-importable)</option>
                       <option value="Inventory Data">Inventory Data</option>
                       <option value="Products Data">Products Data</option>
                       <option value="Restocking Logs">Restocking Logs</option>
@@ -184,8 +187,21 @@ export default function Data() {
 
                 <p style={{ fontSize: "0.75rem", color: "#9ca3af", margin: 0 }}>
                   Note: Inventory Data, Products Data, and Supplier Records are always exported as a
-                  full current snapshot — the date range above only filters Sales Data and Restocking Logs.
+                  full current snapshot — the date range above only filters Sales Data, Sales Line
+                  Items, and Restocking Logs.
                 </p>
+                {isReimportable ? (
+                  <p style={{ fontSize: "0.75rem", color: "#16a34a", margin: "8px 0 0 0", fontWeight: 600 }}>
+                    ✓ This CSV can be re-imported directly via the "Import Sales Data" button on the Sales page.
+                  </p>
+                ) : (
+                  exportDataType === "Sales Data" && (
+                    <p style={{ fontSize: "0.75rem", color: "#9ca3af", margin: "8px 0 0 0" }}>
+                      This is a summary report (one row per sale) for record-keeping — it can't be
+                      re-imported. Use "Sales Line Items" above if you need a re-importable CSV.
+                    </p>
+                  )
+                )}
               </div>
 
               <div className="data-action-card">
@@ -283,8 +299,9 @@ export default function Data() {
           <div className="data-card-container">
             <p style={{ color: "#6b7280", fontSize: "0.85rem", marginBottom: 12 }}>
               For importing Sales data specifically, use the "Import Sales Data" button on the{" "}
-              <strong>Sales</strong> page — it parses a CSV and creates real orders/sales records.
-              General bulk import for other data types isn't wired up yet.
+              <strong>Sales</strong> page — it expects the "Sales Line Items" CSV format (export one from
+              this page's Export tab, or use the page's own "CSV Template" button). General bulk import
+              for other data types isn't wired up yet.
             </p>
             <div className="data-options-grid">
               <div className="data-form-side">

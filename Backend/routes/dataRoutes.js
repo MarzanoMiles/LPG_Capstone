@@ -48,6 +48,27 @@ async function queryDataset(dataType, start, end) {
     };
   }
 
+  // Re-importable format: one row per line item, matching exactly what
+  // POST /sales/import (see salesRoutes.js) and the Sales page's CSV importer expect.
+  // CSV-only in practice, but we still support Excel/PDF for consistency with other datasets.
+  if (dataType === "Sales Line Items") {
+    const [rows] = await pool.query(
+      `SELECT s.SaleNo, od.ProductID, od.Quantity, od.UnitPrice, s.SalesDiscount,
+              COALESCE(pay.PaymentMethod, 'Cash') AS PaymentMethod, s.SaleDate
+       FROM Sales s
+       JOIN OrderDetails od ON od.OrderID = s.OrderID
+       LEFT JOIN Payment pay ON pay.SaleID = s.SaleID
+       WHERE DATE(s.SaleDate) BETWEEN :start AND :end
+       ORDER BY s.SaleDate, s.SaleID`,
+      { start, end }
+    );
+    return {
+      title: "Sales Line Items (re-importable)",
+      headers: ["SaleRef", "ProductID", "Quantity", "UnitPrice", "Discount", "PaymentMethod", "SaleDate"],
+      rows: rows.map((r) => [r.SaleNo, r.ProductID, r.Quantity, r.UnitPrice, r.SalesDiscount, r.PaymentMethod, r.SaleDate]),
+    };
+  }
+
   if (dataType === "Inventory Data") {
     const [rows] = await pool.query(`
       SELECT p.ProductID, p.ProductName, w.WarehouseName, i.StockOnHand, p.ReorderLevel, i.LastUpdated
