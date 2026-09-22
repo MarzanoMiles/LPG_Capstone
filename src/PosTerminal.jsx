@@ -2,13 +2,8 @@ import React, { useEffect, useMemo, useState } from "react";
 import { Search, ChevronDown, ShoppingCart, ImageOff, Wallet, Minus, Plus, X } from "lucide-react";
 import PaymentModal from "./PaymentModal";
 import { apiRequest } from "./api";
+import { printReceipt } from "./utils/receipt";
 import "./PosTerminal.css";
-
-// ---------------------------------------------------------------------------
-// Products are fetched from GET /products (backend/routes/productRoutes.js).
-// Each row includes an aggregated `stock` field (sum across all warehouses)
-// and a real numeric ProductID — never hardcode mock string IDs here.
-// ---------------------------------------------------------------------------
 
 const discountOptions = [
   { label: "No Discount", value: 0 },
@@ -19,15 +14,9 @@ const discountOptions = [
 const paymentMethods = ["Cash", "GCash", "Card", "Bank Transfer"];
 const customerTypes = ["Walk-in", "Regular Customer", "Business Account"];
 
-const VAT_RATE = 0.12;
-
 function formatPeso(amount) {
   return `₱${amount.toFixed(2)}`;
 }
-
-// ---------------------------------------------------------------------------
-// Product card
-// ---------------------------------------------------------------------------
 
 function ProductCard({ product, onAdd }) {
   const outOfStock = product.stock <= 0;
@@ -54,10 +43,6 @@ function ProductCard({ product, onAdd }) {
   );
 }
 
-// ---------------------------------------------------------------------------
-// Cart line item
-// ---------------------------------------------------------------------------
-
 function CartItem({ item, onIncrement, onDecrement, onRemove }) {
   return (
     <div className="cart-item">
@@ -82,61 +67,6 @@ function CartItem({ item, onIncrement, onDecrement, onRemove }) {
   );
 }
 
-// ---------------------------------------------------------------------------
-// Print receipt helper
-// ---------------------------------------------------------------------------
-
-function printSaleReceipt(sale, cartItems, customerType) {
-  const printWindow = window.open("", "_blank", "width=380,height=600");
-  if (!printWindow) {
-    alert("Please allow popups for printing.");
-    return;
-  }
-  const rows = cartItems
-    .map(
-      (it) =>
-        `<tr><td>${it.name}</td><td>${it.qty}</td><td>₱${it.price.toFixed(2)}</td><td>₱${(it.qty * it.price).toFixed(2)}</td></tr>`
-    )
-    .join("");
-  printWindow.document.write(`
-    <html>
-      <head><title>Receipt ${sale.saleNo}</title>
-      <style>
-        body { font-family: Arial, sans-serif; padding: 16px; max-width: 320px; margin: 0 auto; font-size: 13px; }
-        h2 { text-align: center; margin-bottom: 4px; }
-        table { width: 100%; border-collapse: collapse; margin-top: 12px; }
-        th, td { padding: 4px; text-align: left; border-bottom: 1px solid #ddd; }
-        .totals { margin-top: 12px; text-align: right; }
-        .totals p { margin: 2px 0; }
-        .grand { font-weight: bold; font-size: 1.1em; }
-      </style>
-      </head>
-      <body>
-        <h2>GasTrack Receipt</h2>
-        <p style="text-align:center;">${sale.saleNo}</p>
-        <p>Customer Type: ${customerType}</p>
-        <table>
-          <thead><tr><th>Item</th><th>Qty</th><th>Price</th><th>Subtotal</th></tr></thead>
-          <tbody>${rows}</tbody>
-        </table>
-        <div class="totals">
-          <p>Subtotal: ₱${sale.subtotal.toFixed(2)}</p>
-          <p>Discount: ₱${sale.discount.toFixed(2)}</p>
-          <p>VAT (12%): ₱${sale.vat.toFixed(2)}</p>
-          <p class="grand">Total: ₱${sale.totalAmount.toFixed(2)}</p>
-        </div>
-        <p style="text-align:center; margin-top:20px;">Thank you!</p>
-        <script>window.onload = function() { window.print(); window.close(); }<\/script>
-      </body>
-    </html>
-  `);
-  printWindow.document.close();
-}
-
-// ---------------------------------------------------------------------------
-// Main POS Terminal component
-// ---------------------------------------------------------------------------
-
 export default function PosTerminal() {
   const [products, setProducts] = useState([]);
   const [isLoadingProducts, setIsLoadingProducts] = useState(true);
@@ -152,7 +82,6 @@ export default function PosTerminal() {
   const [isProcessing, setIsProcessing] = useState(false);
   const [posError, setPosError] = useState("");
 
-  // Fetch real products (with live stock) from the backend
   useEffect(() => {
     let cancelled = false;
     setIsLoadingProducts(true);
@@ -160,7 +89,7 @@ export default function PosTerminal() {
       .then((data) => {
         if (cancelled) return;
         const mapped = data.map((p) => ({
-          id: p.productId, // real numeric ProductID from the DB
+          id: p.productId,
           category: p.category,
           name: p.name,
           stock: Number(p.stock),
@@ -199,7 +128,7 @@ export default function PosTerminal() {
     setCart((prev) => {
       const existing = prev.find((item) => item.id === product.id);
       if (existing) {
-        if (existing.qty >= product.stock) return prev; // don't exceed available stock
+        if (existing.qty >= product.stock) return prev;
         return prev.map((item) =>
           item.id === product.id ? { ...item, qty: item.qty + 1 } : item
         );
@@ -212,7 +141,7 @@ export default function PosTerminal() {
     setCart((prev) =>
       prev.map((item) => {
         if (item.id !== id) return item;
-        if (item.qty >= item.stock) return item; // cap at available stock
+        if (item.qty >= item.stock) return item;
         return { ...item, qty: item.qty + 1 };
       })
     );
@@ -238,8 +167,6 @@ export default function PosTerminal() {
 
   const subtotal = useMemo(() => cart.reduce((sum, item) => sum + item.price * item.qty, 0), [cart]);
   const discount = subtotal * discountValue;
-  const vat = (subtotal - discount) * VAT_RATE;
-  const total = subtotal - discount + vat;
 
   const handlePay = () => {
     if (cart.length === 0) return;
@@ -247,7 +174,7 @@ export default function PosTerminal() {
     setShowPaymentModal(true);
   };
 
-  const handleConfirmPayment = async ({ amountCollected, changeDue, printReceipt }) => {
+  const handleConfirmPayment = async ({ amountCollected, changeDue, printReceipt: shouldPrint }) => {
     if (cart.length === 0) return;
     setIsProcessing(true);
     setPosError("");
@@ -268,15 +195,27 @@ export default function PosTerminal() {
         }),
       });
 
-      if (printReceipt) {
-        printSaleReceipt(response, cart, customerType);
+      if (shouldPrint) {
+        printReceipt({
+          saleNo: response.saleNo,
+          datetime: new Date(),
+          orderType: "Walk-in",
+          customerName: customerType,
+          items: cart.map((it) => ({ name: it.name, qty: it.qty, unitPrice: it.price, subtotal: it.qty * it.price })),
+          subtotal: response.subtotal,
+          discount: response.discount,
+          vat: response.vat,
+          taxRate: response.taxRate,
+          totalAmount: response.totalAmount,
+          amountCollected,
+          changeDue: response.changeDue,
+        });
       }
 
       setShowPaymentModal(false);
       clearCart();
       alert(`Sale ${response.saleNo} completed. Change due: ₱${response.changeDue?.toFixed(2) ?? "0.00"}`);
 
-      // Refresh stock counts after a successful sale
       apiRequest("/products?status=Active")
         .then((data) => {
           const mapped = data.map((p) => ({
@@ -306,13 +245,11 @@ export default function PosTerminal() {
           <p style={{ color: "#dc2626", fontWeight: 600, margin: "0 0 8px 0" }}>{posError}</p>
         )}
 
-        {/* Tabs */}
         <div className="pos-tabs">
           <span className="pos-tab active">Cart</span>
         </div>
 
         <div className="pos-layout">
-          {/* Left: product browser */}
           <div className="pos-main">
             <div className="pos-toolbar">
               <div className="pos-search">
@@ -332,9 +269,7 @@ export default function PosTerminal() {
                   onChange={(e) => setCategory(e.target.value)}
                 >
                   {categories.map((c) => (
-                    <option key={c} value={c}>
-                      {c}
-                    </option>
+                    <option key={c} value={c}>{c}</option>
                   ))}
                 </select>
                 <ChevronDown size={16} className="pos-select-icon" />
@@ -357,9 +292,7 @@ export default function PosTerminal() {
             </div>
           </div>
 
-          {/* Right: cart + checkout */}
           <div className="pos-sidebar">
-            {/* Cart Summary */}
             <div className="pos-panel">
               <div className="pos-panel-header">
                 <ShoppingCart size={16} />
@@ -393,7 +326,6 @@ export default function PosTerminal() {
               </div>
             </div>
 
-            {/* Checkout */}
             <div className="pos-panel">
               <div className="pos-panel-header">
                 <Wallet size={16} />
@@ -407,9 +339,7 @@ export default function PosTerminal() {
                     onChange={(e) => setCustomerType(e.target.value)}
                   >
                     {customerTypes.map((c) => (
-                      <option key={c} value={c}>
-                        {c}
-                      </option>
+                      <option key={c} value={c}>{c}</option>
                     ))}
                   </select>
                   <ChevronDown size={16} className="pos-select-icon" />
@@ -423,9 +353,7 @@ export default function PosTerminal() {
                       onChange={(e) => setDiscountValue(Number(e.target.value))}
                     >
                       {discountOptions.map((d) => (
-                        <option key={d.label} value={d.value}>
-                          {d.label}
-                        </option>
+                        <option key={d.label} value={d.value}>{d.label}</option>
                       ))}
                     </select>
                     <ChevronDown size={16} className="pos-select-icon" />
@@ -439,9 +367,7 @@ export default function PosTerminal() {
                     >
                       <option value="">Select Payment Method</option>
                       {paymentMethods.map((m) => (
-                        <option key={m} value={m}>
-                          {m}
-                        </option>
+                        <option key={m} value={m}>{m}</option>
                       ))}
                     </select>
                     <ChevronDown size={16} className="pos-select-icon" />
@@ -457,13 +383,9 @@ export default function PosTerminal() {
                     <span>Discount:</span>
                     <span>{formatPeso(discount)}</span>
                   </div>
-                  <div className="checkout-line">
-                    <span>VAT (12%):</span>
-                    <span>{formatPeso(vat)}</span>
-                  </div>
                   <div className="checkout-line checkout-total">
-                    <span>Total</span>
-                    <span>{formatPeso(total)}</span>
+                    <span>Total (incl. tax at checkout)</span>
+                    <span>—</span>
                   </div>
                 </div>
 
@@ -483,7 +405,7 @@ export default function PosTerminal() {
 
       <PaymentModal
         isOpen={showPaymentModal}
-        totalAmount={total}
+        totalAmount={subtotal - discount}
         onCancel={() => setShowPaymentModal(false)}
         onConfirm={handleConfirmPayment}
       />

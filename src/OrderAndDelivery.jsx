@@ -1,12 +1,11 @@
 import { useEffect, useMemo, useState } from "react";
 import { apiRequest } from "./api";
+import { printReceipt } from "./utils/receipt";
 import "./OrderAndDelivery.css";
 
-// ---------- Helpers ----------
 const peso = (n) =>
   "₱ " + Number(n || 0).toLocaleString("en-PH", { minimumFractionDigits: 2, maximumFractionDigits: 2 });
 
-// ---------- Badge Mappings ----------
 const orderStatusClass = {
   Preparing: "badge-yellow",
   Ready: "badge-blue",
@@ -26,7 +25,6 @@ const deliveryStatusClass = {
   Failed: "badge-red",
 };
 
-// ---------- SVG Icons ----------
 const IconView = () => (
   <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
     <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"></path>
@@ -78,55 +76,28 @@ function Row({ label, value, bold }) {
 }
 
 function printOrderReceipt(order) {
-  const printWindow = window.open("", "_blank", "width=600,height=600");
-  if (!printWindow) {
-    alert("Please allow popups for printing.");
-    return;
-  }
-  const items = order.items || [];
-  const subtotal = items.reduce((s, it) => s + Number(it.subtotal), 0);
-  const receiptHtml = `
-    <html>
-      <head><title>Order Receipt</title>
-      <style>
-        body { font-family: Arial, sans-serif; padding: 20px; max-width: 400px; margin: 0 auto; }
-        h2 { text-align: center; }
-        .order-info { margin-bottom: 20px; }
-        table { width: 100%; border-collapse: collapse; }
-        th, td { padding: 8px; text-align: left; border-bottom: 1px solid #ddd; }
-        .total { font-weight: bold; font-size: 1.2em; }
-        .footer { margin-top: 30px; text-align: center; font-size: 0.9em; color: #777; }
-      </style>
-      </head>
-      <body>
-        <h2>GasTrack Receipt</h2>
-        <div class="order-info">
-          <p><strong>Order ID:</strong> ${order.id}</p>
-          <p><strong>Date:</strong> ${new Date(order.date).toLocaleString()}</p>
-          <p><strong>Customer:</strong> ${order.customerName || "N/A"}</p>
-          <p><strong>Type:</strong> ${order.type}</p>
-        </div>
-        <table>
-          <thead><tr><th>Item</th><th>Qty</th><th>Price</th><th>Subtotal</th></tr></thead>
-          <tbody>
-            ${items.map((it) => `<tr><td>${it.name}</td><td>${it.qty}</td><td>${peso(it.unitPrice)}</td><td>${peso(it.subtotal)}</td></tr>`).join("")}
-          </tbody>
-        </table>
-        <div style="margin-top: 20px; text-align: right;">
-          <p>Subtotal: ${peso(subtotal)}</p>
-          <p>Delivery Fee: ${peso(order.deliveryFee || 0)}</p>
-          <p class="total">Total: ${peso(order.totalAmount)}</p>
-        </div>
-        <div class="footer">Thank you for your purchase!</div>
-        <script>window.onload = function() { window.print(); window.close(); }<\/script>
-      </body>
-    </html>
-  `;
-  printWindow.document.write(receiptHtml);
-  printWindow.document.close();
+  const items = (order.items || []).map((it) => ({
+    name: it.name,
+    qty: it.qty,
+    unitPrice: Number(it.unitPrice),
+    subtotal: Number(it.subtotal),
+  }));
+  const subtotal = items.reduce((s, it) => s + it.subtotal, 0);
+
+  printReceipt({
+    saleNo: order.id,
+    datetime: order.date,
+    customerName: order.customerName,
+    orderType: order.type,
+    items,
+    subtotal,
+    discount: 0,
+    vat: 0,
+    deliveryFee: Number(order.deliveryFee || 0),
+    totalAmount: Number(order.totalAmount || subtotal + Number(order.deliveryFee || 0)),
+  });
 }
 
-// ---------- New Order Modal ----------
 function NewOrderModal({ isOpen, onClose, onCreated, customers }) {
   const [products, setProducts] = useState([]);
   const [customerId, setCustomerId] = useState("");
@@ -289,7 +260,6 @@ function NewOrderModal({ isOpen, onClose, onCreated, customers }) {
   );
 }
 
-// ---------- Main Component ----------
 export default function OrderAndDelivery() {
   const [customers, setCustomers] = useState([]);
   const [orders, setOrders] = useState([]);
@@ -339,7 +309,6 @@ export default function OrderAndDelivery() {
     loadAll();
   }, []);
 
-  // ---------- Orders ----------
   const filteredOrders = orders.filter((o) => {
     const q = ordersSearch.trim().toLowerCase();
     const matchesSearch = !q || o.id.toLowerCase().includes(q) || (o.customerName || "").toLowerCase().includes(q);
@@ -406,7 +375,6 @@ export default function OrderAndDelivery() {
     }
   };
 
-  // ---------- Delivery (derived from orders where type === Delivery) ----------
   const deliveryRows = orders.filter((o) => o.type === "Delivery" && o.deliveryId);
 
   const filteredDelivery = deliveryRows.filter((d) => {
@@ -416,7 +384,6 @@ export default function OrderAndDelivery() {
     return matchesSearch && matchesStatus;
   });
 
-  // ---------- Customers ----------
   const filteredCustomers = customers.filter((c) => {
     const q = customersSearch.trim().toLowerCase();
     return !q || String(c.id).includes(q) || c.name.toLowerCase().includes(q);
@@ -505,7 +472,6 @@ export default function OrderAndDelivery() {
           ))}
         </div>
 
-        {/* ORDERS TAB */}
         {tab === "orders" && (
           <section className="tab-panel active">
             <div className="filters">
@@ -587,7 +553,6 @@ export default function OrderAndDelivery() {
           </section>
         )}
 
-        {/* DELIVERY TAB */}
         {tab === "delivery" && (
           <section className="tab-panel active">
             <div className="filters">
@@ -640,7 +605,6 @@ export default function OrderAndDelivery() {
           </section>
         )}
 
-        {/* CUSTOMERS TAB */}
         {tab === "customers" && (
           <section className="tab-panel active">
             <div className="filters">
@@ -688,7 +652,6 @@ export default function OrderAndDelivery() {
         )}
       </div>
 
-      {/* ----- NEW ORDER MODAL ----- */}
       <NewOrderModal
         isOpen={isNewOrderOpen}
         onClose={() => setIsNewOrderOpen(false)}
@@ -699,7 +662,6 @@ export default function OrderAndDelivery() {
         customers={customers}
       />
 
-      {/* ----- ORDER VIEW/EDIT MODAL ----- */}
       {orderModal && (
         <div className="modal-overlay open" onClick={(e) => e.target === e.currentTarget && setOrderModal(null)}>
           <div className="modal">
@@ -794,7 +756,6 @@ export default function OrderAndDelivery() {
         </div>
       )}
 
-      {/* ----- CUSTOMER MODAL ----- */}
       {customerModal && (
         <div className="modal-overlay open" onClick={(e) => e.target === e.currentTarget && setCustomerModal(null)}>
           <div className="modal modal-sm">
@@ -827,7 +788,6 @@ export default function OrderAndDelivery() {
         </div>
       )}
 
-      {/* ----- DELETE / CANCEL CONFIRMATION ----- */}
       {confirmDelete && (
         <div className="modal-overlay open" onClick={(e) => e.target === e.currentTarget && setConfirmDelete(null)}>
           <div className="modal modal-xs">
@@ -852,7 +812,6 @@ export default function OrderAndDelivery() {
         </div>
       )}
 
-      {/* ----- TOAST ----- */}
       {toastMsg && <div className="toast show">{toastMsg}</div>}
     </div>
   );

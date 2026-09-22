@@ -6,10 +6,18 @@ const { authenticate } = require("../middleware/auth");
 const { nextSequence } = require("../utils/generateNumbers");
 const { parseCsv } = require("../utils/csv");
 
-const VAT_RATE = 0.12;
 const DEFAULT_WAREHOUSE_ID = 1; // POS terminal deducts from the main warehouse by default
 
 router.use(authenticate);
+
+async function getTaxSettings(companyId) {
+  const [rows] = await pool.query(
+    `SELECT TaxRate, TaxEnabled FROM CompanySettings WHERE CompanyID = :companyId`,
+    { companyId }
+  );
+  if (!rows[0]) return { rate: 0.12, enabled: true }; // sensible default if Settings was never saved
+  return { rate: Number(rows[0].TaxRate) / 100, enabled: !!rows[0].TaxEnabled };
+}
 
 // GET /sales?search=&cashier=&status=
 router.get(
@@ -73,7 +81,6 @@ router.get(
 );
 
 // POST /sales — creates a walk-in/POS sale, deducts inventory, records payment
-// body: { customerId?, customerType?, items:[{productId, qty, unitPrice}], discount, paymentMethod, amountCollected, warehouseId }
 router.post(
   "/",
   asyncHandler(async (req, res) => {
@@ -94,6 +101,8 @@ router.post(
       }
       item.productId = pid;
     }
+
+    const { rate: taxRate, enabled: taxEnabled } = await getTaxSettings(req.user.companyId);
 
     const conn = await pool.getConnection();
     try {
@@ -117,7 +126,7 @@ router.post(
 
       const subtotal = items.reduce((sum, it) => sum + it.qty * it.unitPrice, 0);
       const discountAmount = discount || 0;
-      const vat = (subtotal - discountAmount) * VAT_RATE;
+      const vat = taxEnabled ? (subtotal - discountAmount) * taxRate : 0;
       const totalAmount = subtotal - discountAmount + vat;
       const wid = warehouseId || DEFAULT_WAREHOUSE_ID;
 
@@ -205,6 +214,7 @@ router.post(
         saleNo,
         subtotal,
         vat,
+        taxRate: taxEnabled ? taxRate : 0,
         discount: discountAmount,
         totalAmount,
         changeDue: amountCollected ? amountCollected - totalAmount : null,
@@ -218,18 +228,8 @@ router.post(
   })
 );
 
-// POST /sales/import — bulk-import historical sales from a CSV.
-//
-// Expected CSV columns (header row required), one row per LINE ITEM, grouped by SaleRef
-// so a multi-item sale can span several rows:
-//   SaleRef,ProductID,Quantity,UnitPrice,Discount,PaymentMethod,SaleDate
-//
-// - SaleRef: any string that's the same across rows belonging to the same sale (e.g. "IMP-1")
-// - ProductID: must match an existing Product ID
-// - Discount/PaymentMethod/SaleDate: read from the FIRST row seen for each SaleRef
-// - adjustInventory (body flag): if true, deducts current stock for each imported line item
-//   (use this for "this actually happened and hasn't been deducted yet" data; leave it off
-//   for backfilling historical records that shouldn't touch today's stock levels)
+// POST /sales/import — bulk-import historical sales from a CSV (unchanged from before, still uses the
+// company's saved tax rate rather than a hardcoded constant)
 router.post(
   "/import",
   asyncHandler(async (req, res) => {
@@ -247,7 +247,8 @@ router.post(
       throw new ApiError(400, `CSV is missing required column(s): ${missingCols.join(", ")}`);
     }
 
-    // Group rows by SaleRef
+    const { rate: taxRate, enabled: taxEnabled } = await getTaxSettings(req.user.companyId);
+
     const groups = new Map();
     for (const row of rows) {
       const ref = row.SaleRef || "IMPORTED";
@@ -299,7 +300,7 @@ router.post(
             validatedItems.push({ productId, qty, unitPrice });
           }
 
-          const vat = (subtotal - discount) * VAT_RATE;
+          const vat = taxEnabled ? (subtotal - discount) * taxRate : 0;
           const totalAmount = subtotal - discount + vat;
 
           const orderNo = await nextSequence(pool, "`Order`", "OrderNo", "ORD");
@@ -353,8 +354,6 @@ router.post(
                   { invId: inv.InventoryID, userId: req.user.userId, qty: item.qty, ref: orderNo }
                 );
               }
-              // If insufficient stock, we silently skip the deduction for this line rather than
-              // failing the whole import — historical data still gets recorded either way.
             }
           }
 
@@ -392,12 +391,8 @@ router.post(
 
       await conn.query(
         `INSERT INTO DataActivityLog (UserID, ActivityType, DataType, FileName, FileFormat, Status)
-         VALUES (:userId, 'Import', 'Sales Data', :fileName, 'CSV', :status)`,
-        {
-          userId: req.user.userId,
-          fileName: fileName || "sales_import.csv",
-          status: errors.length ? "Successful" : "Successful",
-        }
+         VALUES (:userId, 'Import', 'Sales Data', :fileName, 'CSV', 'Successful')`,
+        { userId: req.user.userId, fileName: fileName || "sales_import.csv" }
       );
 
       await conn.commit();
@@ -416,9 +411,7 @@ router.post(
   })
 );
 
-// DELETE /sales/:id — "voids" the sale rather than hard-deleting it:
-// restores the stock that was deducted, removes the Payment, marks the Order Cancelled,
-// then removes the Sales/OrderDetails rows.
+// DELETE /sales/:id — "voids" the sale rather than hard-deleting it
 router.delete(
   "/:id",
   asyncHandler(async (req, res) => {

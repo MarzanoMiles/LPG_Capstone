@@ -23,6 +23,7 @@ const dataRoutes = require("./routes/dataRoutes");
 const dashboardRoutes = require("./routes/dashboardRoutes");
 const reportRoutes = require("./routes/reportRoutes");
 const roleRoutes = require("./routes/roleRoutes");
+const settingsRoutes = require("./routes/settingsRoutes");
 
 const app = express();
 
@@ -50,6 +51,7 @@ app.use("/data", dataRoutes);
 app.use("/dashboard", dashboardRoutes);
 app.use("/reports", reportRoutes);
 app.use("/roles", roleRoutes);
+app.use("/settings", settingsRoutes);
 
 app.use(notFound);
 app.use(errorHandler);
