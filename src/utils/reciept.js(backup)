@@ -27,7 +27,17 @@ function formatMoney(amount, currency = "PHP") {
   return `${symbol}${Number(amount || 0).toLocaleString("en-US", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
 }
 
-function buildReceiptHtml(sale, settings) {
+/**
+ * Opens a print-ready window styled like a real receipt/invoice, using the
+ * company's saved logo, header, footer and print-size settings.
+ *
+ * @param {object} sale - { saleNo, datetime, cashierName, customerName, orderType,
+ *                          items: [{ name, qty, unitPrice, subtotal }],
+ *                          subtotal, discount, vat, taxRate, deliveryFee, totalAmount }
+ */
+export async function printReceipt(sale) {
+  const settings = await getSettings();
+
   const businessName = settings?.fullName || "GasTrack";
   const address = settings?.address || "";
   const phone = settings?.phone || "";
@@ -59,15 +69,20 @@ function buildReceiptHtml(sale, settings) {
     )
     .join("");
 
-  return `
+  const printWindow = window.open("", "_blank", "width=420,height=700");
+  if (!printWindow) {
+    alert("Please allow popups for printing.");
+    return;
+  }
+
+  printWindow.document.write(`
     <html>
       <head>
-        <meta charset="utf-8" />
         <title>Receipt ${esc(sale.saleNo || "")}</title>
         <style>
           @page { size: ${pageWidthMm}mm auto; margin: 0; }
-          * { box-sizing: border-box; -webkit-print-color-adjust: exact; print-color-adjust: exact; }
-          html, body {
+          * { box-sizing: border-box; }
+          body {
             font-family: 'Courier New', Consolas, monospace;
             width: ${pageWidthMm}mm;
             margin: 0 auto;
@@ -141,88 +156,15 @@ function buildReceiptHtml(sale, settings) {
 
         <div class="footer">${esc(footerMessage)}</div>
         <div class="official-tag">This serves as your official receipt · Powered by GasTrack</div>
+
+        <script>
+          window.onload = function () {
+            window.print();
+            window.close();
+          };
+        <\/script>
       </body>
     </html>
-  `;
-}
-
-// Prints via a hidden same-page iframe instead of window.open(). This is the
-// key fix for printing not working on other devices/browsers: window.open()
-// called after an `await` loses the "triggered by a real user click" status
-// in most browsers (especially mobile Safari/Chrome), so it gets silently
-// blocked as a popup. An iframe never opens a new window/tab at all, so
-// there's nothing for a popup blocker to block — it works the same whether
-// print() runs synchronously or after an async fetch.
-function printViaIframe(html) {
-  return new Promise((resolve) => {
-    const iframe = document.createElement("iframe");
-    iframe.style.position = "fixed";
-    iframe.style.right = "0";
-    iframe.style.bottom = "0";
-    iframe.style.width = "0";
-    iframe.style.height = "0";
-    iframe.style.border = "0";
-    iframe.setAttribute("aria-hidden", "true");
-    document.body.appendChild(iframe);
-
-    const cleanup = () => {
-      // Give the print dialog time to actually open before we rip the iframe out —
-      // removing it too early can silently cancel printing on some mobile browsers.
-      setTimeout(() => {
-        if (iframe.parentNode) iframe.parentNode.removeChild(iframe);
-        resolve();
-      }, 1000);
-    };
-
-    iframe.onload = () => {
-      try {
-        const win = iframe.contentWindow;
-        win.focus();
-        // Some mobile browsers need a tick after focus before print() reliably opens the dialog.
-        setTimeout(() => {
-          try {
-            win.print();
-          } catch (err) {
-            console.error("Print failed:", err);
-          }
-          cleanup();
-        }, 150);
-      } catch (err) {
-        console.error("Print failed:", err);
-        cleanup();
-      }
-    };
-
-    const doc = iframe.contentWindow.document;
-    doc.open();
-    doc.write(html);
-    doc.close();
-  });
-}
-
-/**
- * Prints a branded receipt using the company's saved logo, header, footer and
- * print-size settings. Falls back gracefully (opens a new tab with the receipt
- * so the user can still print/share manually) if in-page printing isn't
- * supported at all in the current browser.
- *
- * @param {object} sale - { saleNo, datetime, cashierName, customerName, orderType,
- *                          items: [{ name, qty, unitPrice, subtotal }],
- *                          subtotal, discount, vat, taxRate, deliveryFee, totalAmount }
- */
-export async function printReceipt(sale) {
-  const settings = await getSettings();
-  const html = buildReceiptHtml(sale, settings);
-
-  try {
-    await printViaIframe(html);
-  } catch (err) {
-    console.error("In-page print failed, falling back to a new tab:", err);
-    // Last-resort fallback: open a real tab with the receipt so the person can
-    // still use their browser/OS's own print or share/PDF option manually.
-    const blob = new Blob([html], { type: "text/html" });
-    const url = URL.createObjectURL(blob);
-    window.open(url, "_blank");
-    setTimeout(() => URL.revokeObjectURL(url), 60000);
-  }
+  `);
+  printWindow.document.close();
 }
