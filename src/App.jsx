@@ -61,6 +61,15 @@ export default function App() {
     setIsAuthenticated(true);
   };
 
+  // Called by Login.jsx after a successful POST /auth/register, which returns
+  // the same { token, user } shape as /auth/login — so registration logs the
+  // new admin straight into the dashboard rather than bouncing back to login.
+  const handleRegisterSuccess = (data) => {
+    localStorage.setItem("token", data.token);
+    localStorage.setItem("user", JSON.stringify(data.user));
+    setIsAuthenticated(true);
+  };
+
   const handleLogout = () => {
     setIsLogoutModalOpen(false);
     localStorage.removeItem("token");
@@ -70,7 +79,7 @@ export default function App() {
   };
 
   if (!isAuthenticated) {
-    return <Login onLogin={handleLogin} />;
+    return <Login onLogin={handleLogin} onRegisterSuccess={handleRegisterSuccess} />;
   }
 
   const ActivePage = pages[activeItem] || Dashboard;

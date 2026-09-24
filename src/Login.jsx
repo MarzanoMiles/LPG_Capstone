@@ -2,35 +2,92 @@ import React, { useState } from "react";
 import { Eye, EyeOff, User, Lock, Phone, Mail, Clock, ChevronDown } from "lucide-react";
 import navLogo from "./assets/logo-login.png";
 import cardLogo from "./assets/logo.png";
+import { apiRequest } from "./api";
 import "./Login.css";
+
+// ---------------------------------------------------------------------------
+// Registration field guards
+//
+// Two layers, deliberately kept separate:
+//  1. "filters" run on every keystroke and strip characters that could never
+//     be valid for that field (e.g. digits out of a name field), so the user
+//     physically cannot type something wrong — this is the "should only
+//     accept that type of input" behavior.
+//  2. "patterns" run on submit (and live, once the user has tried to submit
+//     once) to catch inputs that are made of valid characters but still
+//     don't match the required shape (e.g. "AB1" is all valid characters for
+//     a DTI number but too short) — these show an inline error message.
+// ---------------------------------------------------------------------------
+
+const filters = {
+  companyName: (v) => v.replace(/[^A-Za-z0-9 .,&'-]/g, "").slice(0, 150),
+  dtiSecNo: (v) => v.toUpperCase().replace(/[^A-Z0-9]/g, "").slice(0, 16),
+  doeLicenseNo: (v) => v.toUpperCase().replace(/[^A-Z0-9-]/g, "").slice(0, 20),
+  branchName: (v) => v.replace(/[^A-Za-z0-9 .,&'-]/g, "").slice(0, 100),
+  cityMunicipality: (v) => v.replace(/[^A-Za-z .,'-]/g, "").slice(0, 100),
+  completeAddress: (v) => v.slice(0, 255),
+  firstName: (v) => v.replace(/[^A-Za-z\u00F1\u00D1' .-]/g, "").slice(0, 50),
+  lastName: (v) => v.replace(/[^A-Za-z\u00F1\u00D1' .-]/g, "").slice(0, 50),
+  email: (v) => v.replace(/\s/g, "").slice(0, 150),
+  regPassword: (v) => v.slice(0, 64),
+  confirmPassword: (v) => v.slice(0, 64),
+};
+
+const patterns = {
+  companyName: { test: /^.{2,150}$/, message: "Company name must be at least 2 characters." },
+  dtiSecNo: { test: /^[A-Z]{2,4}\d{6,12}$/, message: "Format: 2–4 letters followed by 6–12 digits, e.g. CS202412345." },
+  doeLicenseNo: { test: /^DOE-LPG-\d{4}-\d{3,4}$/, message: "Format: DOE-LPG-YYYY-NNN, e.g. DOE-LPG-2026-001.", optional: true },
+  branchName: { test: /^.{2,100}$/, message: "Branch name must be at least 2 characters." },
+  cityMunicipality: { test: /^.{2,100}$/, message: "Please enter a valid city/municipality." },
+  completeAddress: { test: /^.{5,255}$/, message: "Please enter a complete address (at least 5 characters)." },
+  firstName: { test: /^[A-Za-z\u00F1\u00D1' .-]{2,50}$/, message: "First name must be at least 2 letters." },
+  lastName: { test: /^[A-Za-z\u00F1\u00D1' .-]{2,50}$/, message: "Last name must be at least 2 letters." },
+  email: { test: /^[^\s@]+@[^\s@]+\.[^\s@]+$/, message: "Please enter a valid email address." },
+  regPassword: { test: /^.{8,}$/, message: "Password must be at least 8 characters." },
+};
+
+const fieldHints = {
+  dtiSecNo: "Format: 2–4 letters + 6–12 digits (e.g. CS202412345)",
+  doeLicenseNo: "Format: DOE-LPG-YYYY-NNN (e.g. DOE-LPG-2026-001)",
+};
+
+function FieldError({ message }) {
+  if (!message) return null;
+  return <p style={{ color: "#dc2626", fontSize: "0.72rem", margin: "4px 0 0 0" }}>{message}</p>;
+}
+
+function FieldHint({ text }) {
+  if (!text) return null;
+  return <p style={{ color: "#9ca3af", fontSize: "0.72rem", margin: "4px 0 0 0" }}>{text}</p>;
+}
 
 function TopNav({ currentView, setCurrentView }) {
   return (
     <header className="login-nav">
-      <div 
-        className="login-nav-brand" 
-        onClick={() => setCurrentView("login")} 
+      <div
+        className="login-nav-brand"
+        onClick={() => setCurrentView("login")}
         style={{ cursor: "pointer" }}
       >
         <img src={navLogo} alt="GasTrack Logo" className="login-nav-logo" />
       </div>
       <nav className="login-nav-links">
-        <button 
-          type="button" 
+        <button
+          type="button"
           className={`login-nav-link ${currentView === "login" ? "active" : ""}`}
           onClick={() => setCurrentView("login")}
         >
           Home
         </button>
-        <button 
-          type="button" 
+        <button
+          type="button"
           className={`login-nav-link ${currentView === "about" ? "active" : ""}`}
           onClick={() => setCurrentView("about")}
         >
           About
         </button>
-        <button 
-          type="button" 
+        <button
+          type="button"
           className={`login-nav-link ${currentView === "contact" ? "active" : ""}`}
           onClick={() => setCurrentView("contact")}
         >
@@ -38,17 +95,17 @@ function TopNav({ currentView, setCurrentView }) {
         </button>
       </nav>
       {currentView === "register" ? (
-        <button 
-          type="button" 
-          className="login-nav-cta secondary" 
+        <button
+          type="button"
+          className="login-nav-cta secondary"
           onClick={() => setCurrentView("login")}
         >
           Back to Login
         </button>
       ) : (
-        <button 
-          type="button" 
-          className="login-nav-cta" 
+        <button
+          type="button"
+          className="login-nav-cta"
           onClick={() => setCurrentView("register")}
         >
           Register LPG Company
@@ -58,7 +115,7 @@ function TopNav({ currentView, setCurrentView }) {
   );
 }
 
-export default function Login({ onLogin }) {
+export default function Login({ onLogin, onRegisterSuccess }) {
   // Navigation State: 'login' | 'register' | 'about' | 'contact'
   const [currentView, setCurrentView] = useState("login");
 
@@ -84,6 +141,9 @@ export default function Login({ onLogin }) {
     confirmPassword: "",
     termsAgreed: false,
   });
+  const [regSubmitted, setRegSubmitted] = useState(false);
+  const [regServerError, setRegServerError] = useState("");
+  const [isRegSubmitting, setIsRegSubmitting] = useState(false);
 
   // Contact Form State
   const [contactForm, setContactForm] = useState({
@@ -115,19 +175,70 @@ export default function Login({ onLogin }) {
 
   const handleRegChange = (e) => {
     const { name, value, type, checked } = e.target;
-    setRegForm((prev) => ({
-      ...prev,
-      [name]: type === "checkbox" ? checked : value,
-    }));
-  };
-
-  const handleRegSubmit = (e) => {
-    e.preventDefault();
-    if (!regForm.termsAgreed) {
-      alert("Please confirm the terms and conditions before submitting.");
+    if (type === "checkbox") {
+      setRegForm((prev) => ({ ...prev, [name]: checked }));
       return;
     }
-    alert("Registration submitted successfully!");
+    const filter = filters[name];
+    const nextValue = filter ? filter(value) : value;
+    setRegForm((prev) => ({ ...prev, [name]: nextValue }));
+  };
+
+  // Returns { fieldName: errorMessage } for every field currently invalid.
+  const validateRegForm = (form) => {
+    const errors = {};
+    Object.entries(patterns).forEach(([field, { test, message, optional }]) => {
+      const value = form[field] || "";
+      if (optional && !value) return; // e.g. DOE license number is not required
+      if (!test.test(value)) errors[field] = message;
+    });
+    if (form.regPassword && form.confirmPassword && form.regPassword !== form.confirmPassword) {
+      errors.confirmPassword = "Passwords do not match.";
+    }
+    if (!form.confirmPassword) {
+      errors.confirmPassword = "Please confirm your password.";
+    }
+    if (!form.termsAgreed) {
+      errors.termsAgreed = "You must agree to the Terms of Service and Privacy Policy.";
+    }
+    return errors;
+  };
+
+  const regErrors = regSubmitted ? validateRegForm(regForm) : {};
+
+  const handleRegSubmit = async (e) => {
+    e.preventDefault();
+    setRegServerError("");
+
+    const errors = validateRegForm(regForm);
+    setRegSubmitted(true);
+    if (Object.keys(errors).length > 0) {
+      return; // inline field errors will now render
+    }
+
+    setIsRegSubmitting(true);
+    try {
+      const data = await apiRequest("/auth/register", {
+        method: "POST",
+        body: JSON.stringify({
+          companyName: regForm.companyName,
+          dtiSecNo: regForm.dtiSecNo,
+          doeLicenseNo: regForm.doeLicenseNo || undefined,
+          branchName: regForm.branchName,
+          cityMunicipality: regForm.cityMunicipality,
+          completeAddress: regForm.completeAddress,
+          firstName: regForm.firstName,
+          lastName: regForm.lastName,
+          email: regForm.email,
+          password: regForm.regPassword,
+        }),
+      });
+      onRegisterSuccess?.(data);
+    } catch (err) {
+      setRegServerError(err?.message || "Registration failed. Please try again.");
+    } finally {
+      setIsRegSubmitting(false);
+    }
   };
 
   const handleContactChange = (e) => {
@@ -255,7 +366,11 @@ export default function Login({ onLogin }) {
               <h1 className="register-heading">Company registration</h1>
               <p className="register-subheading">All fields are required unless marked optional.</p>
 
-              <form onSubmit={handleRegSubmit} className="register-form">
+              {regServerError && (
+                <p style={{ color: "#dc2626", fontWeight: 600, marginBottom: 16 }}>{regServerError}</p>
+              )}
+
+              <form onSubmit={handleRegSubmit} className="register-form" noValidate>
                 <div className="register-section">
                   <h3 className="register-section-title">COMPANY INFORMATION</h3>
                   <div className="reg-field full-width">
@@ -269,6 +384,7 @@ export default function Login({ onLogin }) {
                       className="reg-input"
                       required
                     />
+                    <FieldError message={regErrors.companyName} />
                   </div>
                   <div className="reg-grid two-col">
                     <div className="reg-field">
@@ -282,9 +398,11 @@ export default function Login({ onLogin }) {
                         className="reg-input"
                         required
                       />
+                      <FieldHint text={fieldHints.dtiSecNo} />
+                      <FieldError message={regErrors.dtiSecNo} />
                     </div>
                     <div className="reg-field">
-                      <label className="reg-label">DOE distributor license no.</label>
+                      <label className="reg-label">DOE distributor license no. (optional)</label>
                       <input
                         type="text"
                         name="doeLicenseNo"
@@ -292,8 +410,9 @@ export default function Login({ onLogin }) {
                         value={regForm.doeLicenseNo}
                         onChange={handleRegChange}
                         className="reg-input"
-                        required
                       />
+                      <FieldHint text={fieldHints.doeLicenseNo} />
+                      <FieldError message={regErrors.doeLicenseNo} />
                     </div>
                   </div>
                 </div>
@@ -312,6 +431,7 @@ export default function Login({ onLogin }) {
                         className="reg-input"
                         required
                       />
+                      <FieldError message={regErrors.branchName} />
                     </div>
                     <div className="reg-field">
                       <label className="reg-label">City/Municipality</label>
@@ -324,6 +444,7 @@ export default function Login({ onLogin }) {
                         className="reg-input"
                         required
                       />
+                      <FieldError message={regErrors.cityMunicipality} />
                     </div>
                   </div>
                   <div className="reg-field full-width">
@@ -337,6 +458,7 @@ export default function Login({ onLogin }) {
                       className="reg-input"
                       required
                     />
+                    <FieldError message={regErrors.completeAddress} />
                   </div>
                 </div>
 
@@ -354,6 +476,7 @@ export default function Login({ onLogin }) {
                         className="reg-input"
                         required
                       />
+                      <FieldError message={regErrors.firstName} />
                     </div>
                     <div className="reg-field">
                       <label className="reg-label">Last name</label>
@@ -366,6 +489,7 @@ export default function Login({ onLogin }) {
                         className="reg-input"
                         required
                       />
+                      <FieldError message={regErrors.lastName} />
                     </div>
                     <div className="reg-field">
                       <label className="reg-label">Email address</label>
@@ -378,6 +502,7 @@ export default function Login({ onLogin }) {
                         className="reg-input"
                         required
                       />
+                      <FieldError message={regErrors.email} />
                     </div>
                   </div>
                   <div className="reg-grid two-col">
@@ -392,6 +517,7 @@ export default function Login({ onLogin }) {
                         className="reg-input"
                         required
                       />
+                      <FieldError message={regErrors.regPassword} />
                     </div>
                     <div className="reg-field">
                       <label className="reg-label">Confirm password</label>
@@ -404,6 +530,7 @@ export default function Login({ onLogin }) {
                         className="reg-input"
                         required
                       />
+                      <FieldError message={regErrors.confirmPassword} />
                     </div>
                   </div>
                 </div>
@@ -416,7 +543,6 @@ export default function Login({ onLogin }) {
                     checked={regForm.termsAgreed}
                     onChange={handleRegChange}
                     className="reg-checkbox"
-                    required
                   />
                   <label htmlFor="termsAgreed" className="reg-checkbox-label">
                     I confirm that the information provided is accurate and that I am authorized to register this company. I agree to the{" "}
@@ -424,9 +550,10 @@ export default function Login({ onLogin }) {
                     <a href="#privacy" className="reg-link">Privacy Policy</a> in accordance with RA 10173.
                   </label>
                 </div>
+                <FieldError message={regErrors.termsAgreed} />
 
-                <button type="submit" className="reg-submit-btn">
-                  Submit registration
+                <button type="submit" className="reg-submit-btn" disabled={isRegSubmitting}>
+                  {isRegSubmitting ? "Submitting…" : "Submit registration"}
                 </button>
               </form>
             </div>
@@ -504,7 +631,7 @@ export default function Login({ onLogin }) {
 
             <div className="contact-main-card">
               <h1 className="contact-heading">Send us a message</h1>
-              <p className="contact-subheading">We’ll get back to you within one business day.</p>
+              <p className="contact-subheading">We'll get back to you within one business day.</p>
 
               <form onSubmit={handleContactSubmit} className="contact-form">
                 <div className="reg-grid two-col">
