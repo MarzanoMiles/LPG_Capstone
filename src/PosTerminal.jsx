@@ -1,5 +1,5 @@
 import React, { useEffect, useMemo, useState } from "react";
-import { Search, ChevronDown, ShoppingCart, ImageOff, Wallet, Minus, Plus, X } from "lucide-react";
+import { Search, ChevronDown, ShoppingCart, ImageOff, Wallet, Minus, Plus, X, PauseCircle } from "lucide-react";
 import PaymentModal from "./PaymentModal";
 import { apiRequest } from "./api";
 import { printReceipt } from "./utils/receipt";
@@ -13,9 +13,27 @@ const discountOptions = [
 
 const paymentMethods = ["Cash", "GCash", "Card", "Bank Transfer"];
 const customerTypes = ["Walk-in", "Regular Customer", "Business Account"];
+const HELD_CARTS_KEY = "gastrack_held_carts";
 
 function formatPeso(amount) {
   return `₱${amount.toFixed(2)}`;
+}
+
+function loadHeldCarts() {
+  try {
+    const raw = localStorage.getItem(HELD_CARTS_KEY);
+    return raw ? JSON.parse(raw) : [];
+  } catch {
+    return [];
+  }
+}
+
+function saveHeldCarts(carts) {
+  try {
+    localStorage.setItem(HELD_CARTS_KEY, JSON.stringify(carts));
+  } catch {
+    /* storage unavailable — held carts just won't persist across reloads */
+  }
 }
 
 function ProductCard({ product, onAdd }) {
@@ -67,6 +85,75 @@ function CartItem({ item, onIncrement, onDecrement, onRemove }) {
   );
 }
 
+// ---------------------------------------------------------------------------
+// Held Carts modal — view / restore / discard carts put on hold
+// ---------------------------------------------------------------------------
+
+function HeldCartsModal({ isOpen, onClose, heldCarts, onRestore, onDiscard }) {
+  if (!isOpen) return null;
+  return (
+    <div
+      style={{ position: "fixed", inset: 0, background: "rgba(17,24,39,0.45)", display: "flex", alignItems: "center", justifyContent: "center", zIndex: 1000, padding: 16 }}
+      onClick={onClose}
+    >
+      <div
+        style={{ background: "#fff", borderRadius: 12, padding: "24px 28px", width: "100%", maxWidth: 460, maxHeight: "80vh", overflowY: "auto", boxShadow: "0 20px 50px rgba(0,0,0,0.2)" }}
+        onClick={(e) => e.stopPropagation()}
+      >
+        <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 12 }}>
+          <h2 style={{ fontSize: "1.15rem", fontWeight: 800, margin: 0 }}>Held Transactions</h2>
+          <button onClick={onClose} style={{ background: "none", border: "none", cursor: "pointer" }}>
+            <X size={20} />
+          </button>
+        </div>
+
+        {heldCarts.length === 0 && (
+          <p style={{ color: "#9ca3af", fontSize: "0.85rem", padding: "20px 0", textAlign: "center" }}>
+            No held transactions. Tap "Hold" on a cart to save it for later.
+          </p>
+        )}
+
+        {heldCarts.map((held) => {
+          const total = held.items.reduce((sum, it) => sum + it.price * it.qty, 0);
+          return (
+            <div key={held.id} style={{ border: "1px solid #e5e7eb", borderRadius: 10, padding: "12px 14px", marginBottom: 10 }}>
+              <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 6 }}>
+                <span style={{ fontWeight: 700, fontSize: "0.85rem" }}>{new Date(held.heldAt).toLocaleString()}</span>
+                <span style={{ fontWeight: 700, color: "#2563eb" }}>{formatPeso(total)}</span>
+              </div>
+              <p style={{ margin: "0 0 8px 0", fontSize: "0.8rem", color: "#6b7280" }}>
+                {held.items.length} item(s) · {held.customerType}
+              </p>
+              <ul style={{ margin: "0 0 10px 0", paddingLeft: 18, fontSize: "0.78rem", color: "#374151" }}>
+                {held.items.slice(0, 4).map((it) => (
+                  <li key={it.id}>{it.name} × {it.qty}</li>
+                ))}
+                {held.items.length > 4 && <li>+ {held.items.length - 4} more…</li>}
+              </ul>
+              <div style={{ display: "flex", gap: 8 }}>
+                <button
+                  type="button"
+                  onClick={() => onRestore(held)}
+                  style={{ flex: 1, padding: "8px 0", borderRadius: 6, border: "none", background: "#1d6bf3", color: "#fff", fontWeight: 700, cursor: "pointer", fontSize: "0.8rem" }}
+                >
+                  Restore
+                </button>
+                <button
+                  type="button"
+                  onClick={() => onDiscard(held.id)}
+                  style={{ flex: 1, padding: "8px 0", borderRadius: 6, border: "1px solid #fca5a5", background: "#fff", color: "#dc2626", fontWeight: 700, cursor: "pointer", fontSize: "0.8rem" }}
+                >
+                  Discard
+                </button>
+              </div>
+            </div>
+          );
+        })}
+      </div>
+    </div>
+  );
+}
+
 export default function PosTerminal() {
   const [products, setProducts] = useState([]);
   const [isLoadingProducts, setIsLoadingProducts] = useState(true);
@@ -81,6 +168,13 @@ export default function PosTerminal() {
   const [showPaymentModal, setShowPaymentModal] = useState(false);
   const [isProcessing, setIsProcessing] = useState(false);
   const [posError, setPosError] = useState("");
+
+  const [heldCarts, setHeldCarts] = useState(() => loadHeldCarts());
+  const [showHeldModal, setShowHeldModal] = useState(false);
+
+  useEffect(() => {
+    saveHeldCarts(heldCarts);
+  }, [heldCarts]);
 
   useEffect(() => {
     let cancelled = false;
@@ -162,7 +256,42 @@ export default function PosTerminal() {
   const clearCart = () => setCart([]);
 
   const holdCart = () => {
-    console.log("Order held:", cart);
+    if (cart.length === 0) {
+      setPosError("Cart is empty — nothing to hold.");
+      return;
+    }
+    setPosError("");
+    const held = {
+      id: `held-${Date.now()}`,
+      heldAt: new Date().toISOString(),
+      items: cart,
+      customerType,
+      discountValue,
+      paymentMethod,
+    };
+    setHeldCarts((prev) => [held, ...prev]);
+    clearCart();
+  };
+
+  const restoreHeldCart = (held) => {
+    if (cart.length > 0) {
+      const confirmed = window.confirm(
+        "You have items in the current cart. Restoring will replace them. Continue?"
+      );
+      if (!confirmed) return;
+    }
+    setCart(held.items);
+    setCustomerType(held.customerType || "Walk-in");
+    setDiscountValue(held.discountValue || 0);
+    setPaymentMethod(held.paymentMethod || "");
+    setHeldCarts((prev) => prev.filter((h) => h.id !== held.id));
+    setShowHeldModal(false);
+  };
+
+  const discardHeldCart = (heldId) => {
+    const confirmed = window.confirm("Discard this held transaction? This cannot be undone.");
+    if (!confirmed) return;
+    setHeldCarts((prev) => prev.filter((h) => h.id !== heldId));
   };
 
   const subtotal = useMemo(() => cart.reduce((sum, item) => sum + item.price * item.qty, 0), [cart]);
@@ -303,6 +432,26 @@ export default function PosTerminal() {
                   <button type="button" className="cart-action-btn" onClick={holdCart}>
                     Hold
                   </button>
+                  <button
+                    type="button"
+                    className="cart-action-btn"
+                    onClick={() => setShowHeldModal(true)}
+                    style={{ position: "relative" }}
+                  >
+                    <PauseCircle size={14} style={{ marginRight: 4, verticalAlign: "-2px" }} />
+                    Restore
+                    {heldCarts.length > 0 && (
+                      <span
+                        style={{
+                          position: "absolute", top: -6, right: -6, background: "#ef4444", color: "#fff",
+                          fontSize: "0.65rem", fontWeight: 700, borderRadius: 999, minWidth: 16, height: 16,
+                          display: "flex", alignItems: "center", justifyContent: "center", padding: "0 3px",
+                        }}
+                      >
+                        {heldCarts.length}
+                      </span>
+                    )}
+                  </button>
                   <button type="button" className="cart-action-btn" onClick={clearCart}>
                     Clear
                   </button>
@@ -408,6 +557,14 @@ export default function PosTerminal() {
         totalAmount={subtotal - discount}
         onCancel={() => setShowPaymentModal(false)}
         onConfirm={handleConfirmPayment}
+      />
+
+      <HeldCartsModal
+        isOpen={showHeldModal}
+        onClose={() => setShowHeldModal(false)}
+        heldCarts={heldCarts}
+        onRestore={restoreHeldCart}
+        onDiscard={discardHeldCart}
       />
     </div>
   );
