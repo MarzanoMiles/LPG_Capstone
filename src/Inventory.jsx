@@ -11,7 +11,6 @@ import {
 } from "lucide-react";
 import AddStockInModal from "./AddStockInModal";
 import AddStockOutModal from "./AddStockOutModal";
-import StockAdjustmentModal from "./StockAdjustmentModal";
 import { apiRequest } from "./api";
 import "./Inventory.css";
 
@@ -27,10 +26,6 @@ function getStatusClass(status) {
       return "";
   }
 }
-
-// ---------------------------------------------------------------------------
-// Lightweight inline modals for View / Edit — no new CSS files needed
-// ---------------------------------------------------------------------------
 
 const overlayStyle = {
   position: "fixed",
@@ -163,10 +158,6 @@ function EditInventoryModal({ item, onClose, onSave, isSaving }) {
   );
 }
 
-// ---------------------------------------------------------------------------
-// Main component
-// ---------------------------------------------------------------------------
-
 export default function Inventory() {
   const [activeTab, setActiveTab] = useState("inventory");
   const [searchQuery, setSearchQuery] = useState("");
@@ -183,10 +174,8 @@ export default function Inventory() {
   const [isSaving, setIsSaving] = useState(false);
   const [actionError, setActionError] = useState("");
 
-  // Modal States (bulk stock in/out/adjust — separate flows)
   const [isStockInOpen, setIsStockInOpen] = useState(false);
   const [isStockOutOpen, setIsStockOutOpen] = useState(false);
-  const [isAdjustmentOpen, setIsAdjustmentOpen] = useState(false);
 
   const loadInventory = () => {
     setIsLoading(true);
@@ -326,9 +315,6 @@ export default function Inventory() {
             </button>
             <button className="action-btn" onClick={() => setIsStockOutOpen(true)}>
               <Plus size={16} /> Add Stock Out
-            </button>
-            <button className="action-btn" onClick={() => setIsAdjustmentOpen(true)}>
-              <Plus size={16} /> Stock Adjustment
             </button>
           </div>
         </div>
@@ -485,7 +471,7 @@ export default function Inventory() {
         isSaving={isSaving}
       />
 
-      {/* Bulk Stock In / Out / Adjustment Modals */}
+      {/* Stock In / Out Modals */}
       <AddStockInModal
         isOpen={isStockInOpen}
         onClose={() => setIsStockInOpen(false)}
@@ -497,14 +483,6 @@ export default function Inventory() {
       <AddStockOutModal
         isOpen={isStockOutOpen}
         onClose={() => setIsStockOutOpen(false)}
-        onSuccess={() => {
-          loadInventory();
-          loadTransactions();
-        }}
-      />
-      <StockAdjustmentModal
-        isOpen={isAdjustmentOpen}
-        onClose={() => setIsAdjustmentOpen(false)}
         onSuccess={() => {
           loadInventory();
           loadTransactions();

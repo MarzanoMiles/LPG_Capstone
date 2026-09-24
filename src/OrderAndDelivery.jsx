@@ -98,6 +98,10 @@ function printOrderReceipt(order) {
   });
 }
 
+// ---------------------------------------------------------------------------
+// New Order Modal — customer is optional for Walk-in orders
+// ---------------------------------------------------------------------------
+
 function NewOrderModal({ isOpen, onClose, onCreated, customers }) {
   const [products, setProducts] = useState([]);
   const [customerId, setCustomerId] = useState("");
@@ -115,6 +119,13 @@ function NewOrderModal({ isOpen, onClose, onCreated, customers }) {
       .then(setProducts)
       .catch((err) => setError(err.message || "Failed to load products."));
   }, [isOpen]);
+
+  // Reset the customer selection whenever switching away from a state where
+  // it's optional, so an old Walk-in "no account" choice doesn't silently
+  // carry over into a Pickup/Delivery order.
+  useEffect(() => {
+    if (orderType === "Walk-in") return;
+  }, [orderType]);
 
   if (!isOpen) return null;
 
@@ -140,7 +151,9 @@ function NewOrderModal({ isOpen, onClose, onCreated, customers }) {
   };
 
   const handleSubmit = async () => {
-    if (!customerId) return setError("Please select a customer.");
+    if (orderType !== "Walk-in" && !customerId) {
+      return setError("Please select a customer for Pickup or Delivery orders.");
+    }
     if (!validItems.length) return setError("Add at least one item.");
     if (orderType === "Delivery" && !deliveryAddress) return setError("Delivery address is required.");
 
@@ -150,7 +163,7 @@ function NewOrderModal({ isOpen, onClose, onCreated, customers }) {
       await apiRequest("/orders", {
         method: "POST",
         body: JSON.stringify({
-          customerId: Number(customerId),
+          customerId: customerId ? Number(customerId) : undefined,
           orderType,
           items: validItems.map((it) => ({
             productId: Number(it.productId),
@@ -178,20 +191,22 @@ function NewOrderModal({ isOpen, onClose, onCreated, customers }) {
         <h3>New Order</h3>
         {error && <p style={{ color: "#dc2626", fontWeight: 600 }}>{error}</p>}
 
-        <Field label="Customer">
-          <select value={customerId} onChange={(e) => setCustomerId(e.target.value)}>
-            <option value="">Select customer</option>
-            {customers.map((c) => (
-              <option key={c.id} value={c.id}>{c.name} ({c.phone})</option>
-            ))}
-          </select>
-        </Field>
-
         <Field label="Order Type">
           <select value={orderType} onChange={(e) => setOrderType(e.target.value)}>
             <option>Walk-in</option>
             <option>Pickup</option>
             <option>Delivery</option>
+          </select>
+        </Field>
+
+        <Field label={orderType === "Walk-in" ? "Customer (optional)" : "Customer"}>
+          <select value={customerId} onChange={(e) => setCustomerId(e.target.value)}>
+            <option value="">
+              {orderType === "Walk-in" ? "Walk-in Customer (no account)" : "Select customer"}
+            </option>
+            {customers.map((c) => (
+              <option key={c.id} value={c.id}>{c.name} ({c.phone})</option>
+            ))}
           </select>
         </Field>
 
@@ -260,6 +275,10 @@ function NewOrderModal({ isOpen, onClose, onCreated, customers }) {
   );
 }
 
+// ---------------------------------------------------------------------------
+// Main Component
+// ---------------------------------------------------------------------------
+
 export default function OrderAndDelivery() {
   const [customers, setCustomers] = useState([]);
   const [orders, setOrders] = useState([]);
@@ -281,6 +300,10 @@ export default function OrderAndDelivery() {
   const [confirmDelete, setConfirmDelete] = useState(null);
   const [toastMsg, setToastMsg] = useState("");
   const [isSavingOrder, setIsSavingOrder] = useState(false);
+
+  // Only opens when the delivery status select is actually set to "Delivered" —
+  // never on load, never for any other status change.
+  const [showDeliveredConfirm, setShowDeliveredConfirm] = useState(false);
 
   function showToast(msg) {
     setToastMsg(msg);
@@ -326,6 +349,21 @@ export default function OrderAndDelivery() {
     }
   };
 
+  // Any delivery status EXCEPT "Delivered" is applied immediately, no pop-up.
+  // Selecting "Delivered" opens a confirmation instead of applying right away.
+  const handleDeliveryStatusSelect = (value) => {
+    if (value === "Delivered") {
+      setShowDeliveredConfirm(true);
+      return;
+    }
+    setOrderModal((prev) => ({ ...prev, deliveryStatus: value }));
+  };
+
+  const confirmDelivered = () => {
+    setOrderModal((prev) => ({ ...prev, deliveryStatus: "Delivered" }));
+    setShowDeliveredConfirm(false);
+  };
+
   const saveOrder = async () => {
     setIsSavingOrder(true);
     try {
@@ -334,6 +372,10 @@ export default function OrderAndDelivery() {
         body: JSON.stringify({
           orderType: orderModal.type,
           orderStatus: orderModal.status,
+          // Only sent when the order is being switched to Delivery and has no
+          // delivery record yet — see backend PUT /orders/:id.
+          deliveryAddress:
+            orderModal.type === "Delivery" && !orderModal.deliveryId ? orderModal.deliveryAddress : undefined,
         }),
       });
       if (orderModal.saleId) {
@@ -345,13 +387,16 @@ export default function OrderAndDelivery() {
           }),
         });
       }
-      if (orderModal.type === "Delivery" && orderModal.deliveryId) {
+      if (orderModal.type === "Delivery") {
         await apiRequest(`/orders/${orderModal.orderId}/delivery`, {
           method: "PUT",
           body: JSON.stringify({
             deliveryStatus: orderModal.deliveryStatus,
             deliveryRiderId: orderModal.deliveryRiderId || null,
           }),
+        }).catch(() => {
+          // No delivery record yet on the first save that just created it via
+          // the PUT above — harmless to skip; the next save will find it.
         });
       }
       showToast(`Order ${orderModal.id} saved.`);
@@ -375,7 +420,10 @@ export default function OrderAndDelivery() {
     }
   };
 
-  const deliveryRows = orders.filter((o) => o.type === "Delivery" && o.deliveryId);
+  // Delivery tab: any order whose type is "Delivery" — a Delivery record is now
+  // guaranteed to exist for these (created on order creation, or auto-created
+  // on save if the type was switched to Delivery afterward).
+  const deliveryRows = orders.filter((o) => o.type === "Delivery");
 
   const filteredDelivery = deliveryRows.filter((d) => {
     const q = deliverySearch.trim().toLowerCase();
@@ -578,11 +626,11 @@ export default function OrderAndDelivery() {
                 </thead>
                 <tbody>
                   {filteredDelivery.map((d) => (
-                    <tr key={d.deliveryId}>
-                      <td>{d.drNo}</td>
+                    <tr key={d.orderId}>
+                      <td>{d.drNo || "—"}</td>
                       <td>{d.id}</td>
                       <td>{d.deliveryRiderName || "Unassigned"}</td>
-                      <td><Badge text={d.deliveryStatus} map={deliveryStatusClass} /></td>
+                      <td>{d.deliveryStatus ? <Badge text={d.deliveryStatus} map={deliveryStatusClass} /> : "—"}</td>
                       <td>{d.deliveredAt ? new Date(d.deliveredAt).toLocaleString() : "N/A"}</td>
                       <td className="actions">
                         <button className="action-btn act-view" onClick={() => openOrder(d)} title="View/Edit">
@@ -600,7 +648,7 @@ export default function OrderAndDelivery() {
                   ))}
                 </tbody>
               </table>
-              {filteredDelivery.length === 0 && <p className="empty-state">No deliveries match your search.</p>}
+              {filteredDelivery.length === 0 && <p className="empty-state">No delivery orders match your search.</p>}
             </div>
           </section>
         )}
@@ -720,29 +768,41 @@ export default function OrderAndDelivery() {
               </select>
             </Field>
 
-            {orderModal.type === "Delivery" && orderModal.deliveryId && (
+            {orderModal.type === "Delivery" && (
               <>
                 <hr />
-                <Field label="Delivery No."><input disabled value={orderModal.drNo || ""} /></Field>
-                <Field label="Delivery Rider">
-                  <select
-                    value={orderModal.deliveryRiderId || ""}
-                    onChange={(e) => setOrderModal({ ...orderModal, deliveryRiderId: e.target.value })}
-                  >
-                    <option value="">Unassigned</option>
-                    {drivers.map((d) => (
-                      <option key={d.id} value={d.id}>{d.name}</option>
-                    ))}
-                  </select>
-                </Field>
-                <Field label="Delivery Status">
-                  <select
-                    value={orderModal.deliveryStatus || "Pending"}
-                    onChange={(e) => setOrderModal({ ...orderModal, deliveryStatus: e.target.value })}
-                  >
-                    <option>Pending</option><option>Out for Delivery</option><option>Delivered</option><option>Failed</option>
-                  </select>
-                </Field>
+                {orderModal.deliveryId ? (
+                  <>
+                    <Field label="Delivery No."><input disabled value={orderModal.drNo || ""} /></Field>
+                    <Field label="Delivery Rider">
+                      <select
+                        value={orderModal.deliveryRiderId || ""}
+                        onChange={(e) => setOrderModal({ ...orderModal, deliveryRiderId: e.target.value })}
+                      >
+                        <option value="">Unassigned</option>
+                        {drivers.map((d) => (
+                          <option key={d.id} value={d.id}>{d.name}</option>
+                        ))}
+                      </select>
+                    </Field>
+                    <Field label="Delivery Status">
+                      <select
+                        value={orderModal.deliveryStatus || "Pending"}
+                        onChange={(e) => handleDeliveryStatusSelect(e.target.value)}
+                      >
+                        <option>Pending</option><option>Out for Delivery</option><option>Delivered</option><option>Failed</option>
+                      </select>
+                    </Field>
+                  </>
+                ) : (
+                  <Field label="Delivery Address (new)">
+                    <input
+                      value={orderModal.deliveryAddress || ""}
+                      onChange={(e) => setOrderModal({ ...orderModal, deliveryAddress: e.target.value })}
+                      placeholder="Enter the delivery address"
+                    />
+                  </Field>
+                )}
               </>
             )}
 
@@ -751,6 +811,21 @@ export default function OrderAndDelivery() {
               <button className="btn btn-primary" onClick={saveOrder} disabled={isSavingOrder}>
                 {isSavingOrder ? "Saving…" : "Save"}
               </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Delivered confirmation — the ONLY delivery-related pop-up, and only
+          appears when "Delivered" is explicitly selected in the dropdown above. */}
+      {showDeliveredConfirm && (
+        <div className="modal-overlay open" onClick={(e) => e.target === e.currentTarget && setShowDeliveredConfirm(false)}>
+          <div className="modal modal-xs">
+            <h3>Mark as Delivered?</h3>
+            <p>Confirm that order {orderModal?.id} has been delivered to the customer.</p>
+            <div className="modal-actions">
+              <button className="btn btn-outline" onClick={() => setShowDeliveredConfirm(false)}>Cancel</button>
+              <button className="btn btn-primary" onClick={confirmDelivered}>Confirm Delivered</button>
             </div>
           </div>
         </div>

@@ -70,22 +70,39 @@ router.get(
   })
 );
 
+// Finds or creates the shared walk-in customer record, same convention as POST /sales.
+async function resolveWalkInCustomer(conn) {
+  const [existing] = await conn.query(`SELECT CustomerID FROM Customer WHERE ContactNo = 'WALKIN' LIMIT 1`);
+  if (existing[0]) return existing[0].CustomerID;
+  const [created] = await conn.query(
+    `INSERT INTO Customer (CustomerType, ContactNo, Address, Status)
+     VALUES ('Residential', 'WALKIN', 'Walk-in', 'Active')`
+  );
+  return created.insertId;
+}
+
 // POST /orders
-// body: { customerId, orderType, items:[{productId, qty, unitPrice}], deliveryAddress?, deliveryFee?,
+// body: { customerId?, orderType, items:[{productId, qty, unitPrice}], deliveryAddress?, deliveryFee?,
 //         paymentMethod?, markPaid?, warehouseId?, remarks? }
+// customerId is only required for Pickup and Delivery orders — Walk-in orders may omit it,
+// in which case a shared walk-in customer record is used automatically.
 router.post(
   "/",
   asyncHandler(async (req, res) => {
     const {
-      customerId, orderType, items, deliveryAddress, deliveryFee,
+      orderType, items, deliveryAddress, deliveryFee,
       paymentMethod, markPaid, warehouseId, remarks,
     } = req.body;
+    let { customerId } = req.body;
 
-    if (!customerId || !orderType || !Array.isArray(items) || !items.length) {
-      throw new ApiError(400, "customerId, orderType and at least one item are required.");
+    if (!orderType || !Array.isArray(items) || !items.length) {
+      throw new ApiError(400, "orderType and at least one item are required.");
     }
     if (orderType === "Delivery" && !deliveryAddress) {
       throw new ApiError(400, "deliveryAddress is required for Delivery orders.");
+    }
+    if (orderType !== "Walk-in" && !customerId) {
+      throw new ApiError(400, "Please select a customer for Pickup and Delivery orders.");
     }
 
     for (const item of items) {
@@ -105,10 +122,15 @@ router.post(
     try {
       await conn.beginTransaction();
 
-      const [customerRows] = await conn.query(`SELECT CustomerID FROM Customer WHERE CustomerID = :id`, {
-        id: customerId,
-      });
-      if (!customerRows[0]) throw new ApiError(400, "Customer not found.");
+      if (customerId) {
+        const [customerRows] = await conn.query(`SELECT CustomerID FROM Customer WHERE CustomerID = :id`, {
+          id: customerId,
+        });
+        if (!customerRows[0]) throw new ApiError(400, "Customer not found.");
+      } else {
+        // orderType is guaranteed to be "Walk-in" here per the check above
+        customerId = await resolveWalkInCustomer(conn);
+      }
 
       const orderNo = await nextSequence(pool, "`Order`", "OrderNo", "ORD");
       const [orderResult] = await conn.query(
@@ -175,6 +197,8 @@ router.post(
         );
       }
 
+      // Delivery-type orders always get a Delivery record created up front, since the
+      // address is known at creation time.
       if (orderType === "Delivery") {
         const drNo = await nextSequence(pool, "Delivery", "DRNo", "DR");
         await conn.query(
@@ -195,25 +219,77 @@ router.post(
   })
 );
 
-// PUT /orders/:id — updates order-level fields only
+// PUT /orders/:id — updates order-level fields, and auto-creates the Delivery record
+// (so the order starts showing up in the Delivery tab) if the order is switched to
+// type "Delivery" after creation and doesn't have one yet.
 router.put(
   "/:id",
   asyncHandler(async (req, res) => {
-    const { orderType, orderStatus, remarks } = req.body;
-    const [result] = await pool.query(
-      `UPDATE \`Order\` SET
-         OrderType = COALESCE(:type, OrderType),
-         OrderStatus = COALESCE(:status, OrderStatus),
-         Remarks = COALESCE(:remarks, Remarks)
-       WHERE OrderID = :id`,
-      { id: req.params.id, type: orderType || null, status: orderStatus || null, remarks: remarks ?? null }
-    );
-    if (!result.affectedRows) throw new ApiError(404, "Order not found.");
-    res.json({ message: "Order updated." });
+    const { orderType, orderStatus, remarks, deliveryAddress, deliveryFee } = req.body;
+
+    const conn = await pool.getConnection();
+    try {
+      await conn.beginTransaction();
+
+      const [existingRows] = await conn.query(`SELECT OrderID FROM \`Order\` WHERE OrderID = :id FOR UPDATE`, {
+        id: req.params.id,
+      });
+      if (!existingRows[0]) throw new ApiError(404, "Order not found.");
+
+      await conn.query(
+        `UPDATE \`Order\` SET
+           OrderType = COALESCE(:type, OrderType),
+           OrderStatus = COALESCE(:status, OrderStatus),
+           Remarks = COALESCE(:remarks, Remarks)
+         WHERE OrderID = :id`,
+        { id: req.params.id, type: orderType || null, status: orderStatus || null, remarks: remarks ?? null }
+      );
+
+      if (orderType === "Delivery") {
+        const [saleRows] = await conn.query(`SELECT SaleID FROM Sales WHERE OrderID = :id`, {
+          id: req.params.id,
+        });
+        if (saleRows[0]) {
+          const [deliveryRows] = await conn.query(`SELECT DeliveryID FROM Delivery WHERE SaleID = :saleId`, {
+            saleId: saleRows[0].SaleID,
+          });
+          if (!deliveryRows[0]) {
+            let address = deliveryAddress;
+            if (!address) {
+              const [customerRows] = await conn.query(
+                `SELECT c.Address FROM \`Order\` o JOIN Customer c ON c.CustomerID = o.CustomerID WHERE o.OrderID = :id`,
+                { id: req.params.id }
+              );
+              address = customerRows[0]?.Address;
+            }
+            if (!address || address === "N/A" || address === "Walk-in") {
+              throw new ApiError(
+                400,
+                "A delivery address is required to mark this order as Delivery. Please provide one."
+              );
+            }
+            const drNo = await nextSequence(pool, "Delivery", "DRNo", "DR");
+            await conn.query(
+              `INSERT INTO Delivery (SaleID, DRNo, DeliveryCharge, DeliveryAddress, DeliveryStatus)
+               VALUES (:saleId, :drNo, :fee, :address, 'Pending')`,
+              { saleId: saleRows[0].SaleID, drNo, fee: Number(deliveryFee) || 0, address }
+            );
+          }
+        }
+      }
+
+      await conn.commit();
+      res.json({ message: "Order updated." });
+    } catch (err) {
+      await conn.rollback();
+      throw err;
+    } finally {
+      conn.release();
+    }
   })
 );
 
-// PUT /orders/:id/payment — mark paid / update payment method (creates the Payment row if it doesn't exist yet)
+// PUT /orders/:id/payment
 router.put(
   "/:id/payment",
   asyncHandler(async (req, res) => {
@@ -282,7 +358,7 @@ router.put(
   })
 );
 
-// DELETE /orders/:id — cancels the order: restores stock, removes Payment/Delivery/Sales/OrderDetails, deletes the Order
+// DELETE /orders/:id — cancels the order: restores stock, removes Payment/Delivery/Sales/OrderDetails
 router.delete(
   "/:id",
   asyncHandler(async (req, res) => {
