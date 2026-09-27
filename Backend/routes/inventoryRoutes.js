@@ -3,6 +3,7 @@ const pool = require("../config/db");
 const asyncHandler = require("../utils/asyncHandler");
 const ApiError = require("../utils/apiError");
 const { authenticate } = require("../middleware/auth");
+const { parseCsv } = require("../utils/csv");
 
 router.use(authenticate);
 
@@ -154,7 +155,7 @@ router.post(
   })
 );
 
-// POST /inventory/adjust { warehouseId, items:[{productId, newQuantity}] }  -- bulk adjustment
+// POST /inventory/adjust { warehouseId, items:[{productId, newQuantity}] }
 router.post(
   "/adjust",
   asyncHandler(async (req, res) => {
@@ -196,11 +197,128 @@ router.post(
   })
 );
 
+// POST /inventory/import — bulk import inventory levels from a CSV.
+//
+// Expected CSV columns (header row required):
+//   ProductID,WarehouseID,Quantity,Mode
+//
+// - ProductID / WarehouseID: must match existing records
+// - Quantity: a non-negative integer
+// - Mode: "Set" (replace StockOnHand with Quantity) or "Add" (increment StockOnHand by Quantity).
+//   Defaults to "Set" if the column is omitted or blank.
+router.post(
+  "/import",
+  asyncHandler(async (req, res) => {
+    const { csvText, fileName } = req.body;
+    if (!csvText || typeof csvText !== "string") {
+      throw new ApiError(400, "csvText is required.");
+    }
+
+    const rows = parseCsv(csvText);
+    if (!rows.length) throw new ApiError(400, "The CSV file has no data rows.");
+
+    const required = ["ProductID", "WarehouseID", "Quantity"];
+    const missingCols = required.filter((col) => !(col in rows[0]));
+    if (missingCols.length) {
+      throw new ApiError(400, `CSV is missing required column(s): ${missingCols.join(", ")}`);
+    }
+
+    const conn = await pool.getConnection();
+    let importedCount = 0;
+    const errors = [];
+
+    try {
+      await conn.beginTransaction();
+
+      for (const [index, row] of rows.entries()) {
+        const rowNum = index + 2; // +2 accounts for the header row and 1-based line numbers
+        try {
+          const productId = Number(row.ProductID);
+          const warehouseId = Number(row.WarehouseID);
+          const quantity = Number(row.Quantity);
+          const mode = (row.Mode || "Set").trim().toLowerCase();
+
+          if (!Number.isInteger(productId) || productId <= 0) {
+            throw new Error(`Row ${rowNum}: invalid ProductID "${row.ProductID}"`);
+          }
+          if (!Number.isInteger(warehouseId) || warehouseId <= 0) {
+            throw new Error(`Row ${rowNum}: invalid WarehouseID "${row.WarehouseID}"`);
+          }
+          if (isNaN(quantity) || quantity < 0) {
+            throw new Error(`Row ${rowNum}: invalid Quantity "${row.Quantity}"`);
+          }
+          if (mode !== "set" && mode !== "add") {
+            throw new Error(`Row ${rowNum}: Mode must be "Set" or "Add", got "${row.Mode}"`);
+          }
+
+          const [productRows] = await conn.query(`SELECT ProductID FROM Product WHERE ProductID = :pid`, {
+            pid: productId,
+          });
+          if (!productRows[0]) throw new Error(`Row ${rowNum}: Product ID ${productId} does not exist`);
+
+          const [warehouseRows] = await conn.query(`SELECT WarehouseID FROM Warehouse WHERE WarehouseID = :wid`, {
+            wid: warehouseId,
+          });
+          if (!warehouseRows[0]) throw new Error(`Row ${rowNum}: Warehouse ID ${warehouseId} does not exist`);
+
+          const inv = await getOrCreateInventory(conn, warehouseId, productId);
+          const newQuantity = mode === "add" ? inv.StockOnHand + quantity : quantity;
+          const diff = newQuantity - inv.StockOnHand;
+
+          if (diff !== 0) {
+            await conn.query(`UPDATE Inventory SET StockOnHand = :qty WHERE InventoryID = :id`, {
+              qty: newQuantity,
+              id: inv.InventoryID,
+            });
+            await conn.query(
+              `INSERT INTO InventoryTransaction (InventoryID, UserID, TransactionType, Quantity, Reason, ReferenceNo, Remarks)
+               VALUES (:invId, :userId, :type, :qty, 'Adjustment', :ref, 'Imported from CSV')`,
+              {
+                invId: inv.InventoryID,
+                userId: req.user.userId,
+                type: diff > 0 ? "Stock In" : "Stock Out",
+                qty: Math.abs(diff),
+                ref: fileName || "inventory_import.csv",
+              }
+            );
+          }
+
+          importedCount++;
+        } catch (rowErr) {
+          errors.push(rowErr.message);
+        }
+      }
+
+      if (importedCount === 0) {
+        throw new ApiError(400, `No rows could be imported. Errors: ${errors.join("; ")}`);
+      }
+
+      await conn.query(
+        `INSERT INTO DataActivityLog (UserID, ActivityType, DataType, FileName, FileFormat, Status)
+         VALUES (:userId, 'Import', 'Inventory Data', :fileName, 'CSV', 'Successful')`,
+        { userId: req.user.userId, fileName: fileName || "inventory_import.csv" }
+      );
+
+      await conn.commit();
+      res.status(201).json({
+        message: `Imported ${importedCount} row(s).`,
+        imported: importedCount,
+        skipped: errors.length,
+        errors,
+      });
+    } catch (err) {
+      await conn.rollback();
+      throw err;
+    } finally {
+      conn.release();
+    }
+  })
+);
+
 // -------------------------------------------------------------------------
 // Single-record endpoints — power the View / Edit / Delete row icons
 // -------------------------------------------------------------------------
 
-// GET /inventory/:id
 router.get(
   "/:id",
   asyncHandler(async (req, res) => {
@@ -220,7 +338,6 @@ router.get(
   })
 );
 
-// PUT /inventory/:id  { newQuantity, remarks }  -- single-record edit (used by the row "Edit" icon)
 router.put(
   "/:id",
   asyncHandler(async (req, res) => {
@@ -267,7 +384,6 @@ router.put(
   })
 );
 
-// DELETE /inventory/:id  -- only allowed once stock is zeroed out, to avoid silently losing stock data
 router.delete(
   "/:id",
   asyncHandler(async (req, res) => {

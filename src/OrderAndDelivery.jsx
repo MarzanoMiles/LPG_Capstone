@@ -7,22 +7,22 @@ const peso = (n) =>
   "₱ " + Number(n || 0).toLocaleString("en-PH", { minimumFractionDigits: 2, maximumFractionDigits: 2 });
 
 const orderStatusClass = {
-  Preparing: "badge-yellow",
-  Ready: "badge-blue",
-  Completed: "badge-green",
-  Cancelled: "badge-red",
+  Preparing: "od-badge-yellow",
+  Ready: "od-badge-blue",
+  Completed: "od-badge-green",
+  Cancelled: "od-badge-red",
 };
 
 const paymentStatusClass = {
-  Paid: "badge-green",
-  Unpaid: "badge-red",
+  Paid: "od-badge-green",
+  Unpaid: "od-badge-red",
 };
 
 const deliveryStatusClass = {
-  Pending: "badge-yellow",
-  "Out for Delivery": "badge-blue",
-  Delivered: "badge-green",
-  Failed: "badge-red",
+  Pending: "od-badge-yellow",
+  "Out for Delivery": "od-badge-blue",
+  Delivered: "od-badge-green",
+  Failed: "od-badge-red",
 };
 
 const IconView = () => (
@@ -54,12 +54,12 @@ const IconDelete = () => (
 );
 
 function Badge({ text, map }) {
-  return <span className={`badge ${map[text] || "badge-gray"}`}>{text}</span>;
+  return <span className={`od-badge ${map[text] || "od-badge-gray"}`}>{text}</span>;
 }
 
 function Field({ label, children }) {
   return (
-    <div className="form-row">
+    <div className="od-form-row">
       <label>{label}</label>
       {children}
     </div>
@@ -68,7 +68,7 @@ function Field({ label, children }) {
 
 function Row({ label, value, bold }) {
   return (
-    <div className={bold ? "grand" : ""}>
+    <div className={bold ? "od-grand" : ""}>
       <span>{label}</span>
       <span>{value}</span>
     </div>
@@ -98,10 +98,6 @@ function printOrderReceipt(order) {
   });
 }
 
-// ---------------------------------------------------------------------------
-// New Order Modal — customer is optional for Walk-in orders
-// ---------------------------------------------------------------------------
-
 function NewOrderModal({ isOpen, onClose, onCreated, customers }) {
   const [products, setProducts] = useState([]);
   const [customerId, setCustomerId] = useState("");
@@ -119,13 +115,6 @@ function NewOrderModal({ isOpen, onClose, onCreated, customers }) {
       .then(setProducts)
       .catch((err) => setError(err.message || "Failed to load products."));
   }, [isOpen]);
-
-  // Reset the customer selection whenever switching away from a state where
-  // it's optional, so an old Walk-in "no account" choice doesn't silently
-  // carry over into a Pickup/Delivery order.
-  useEffect(() => {
-    if (orderType === "Walk-in") return;
-  }, [orderType]);
 
   if (!isOpen) return null;
 
@@ -186,8 +175,8 @@ function NewOrderModal({ isOpen, onClose, onCreated, customers }) {
   };
 
   return (
-    <div className="modal-overlay open" onClick={(e) => e.target === e.currentTarget && onClose()}>
-      <div className="modal">
+    <div className="od-modal-overlay open" onClick={(e) => e.target === e.currentTarget && onClose()}>
+      <div className="od-modal">
         <h3>New Order</h3>
         {error && <p style={{ color: "#dc2626", fontWeight: 600 }}>{error}</p>}
 
@@ -216,13 +205,13 @@ function NewOrderModal({ isOpen, onClose, onCreated, customers }) {
           </Field>
         )}
 
-        <div className="items-header">
+        <div className="od-items-header">
           <span>Product</span><span>Qty</span><span>Price</span><span></span>
         </div>
         {items.map((it, idx) => {
           const p = productMap[it.productId];
           return (
-            <div key={idx} className="item-row">
+            <div key={idx} className="od-item-row">
               <select value={it.productId} onChange={(e) => updateItem(idx, "productId", e.target.value)}>
                 <option value="">Select product</option>
                 {products.map((prod) => (
@@ -237,15 +226,15 @@ function NewOrderModal({ isOpen, onClose, onCreated, customers }) {
                 style={{ width: 60 }}
               />
               <span>{p ? peso(p.unitPrice) : "—"}</span>
-              <button type="button" className="btn btn-outline" onClick={() => removeRow(idx)}>✕</button>
+              <button type="button" className="od-btn od-btn-outline" onClick={() => removeRow(idx)}>✕</button>
             </div>
           );
         })}
-        <button type="button" className="btn btn-outline" onClick={addRow} style={{ marginTop: 8 }}>
+        <button type="button" className="od-btn od-btn-outline" onClick={addRow} style={{ marginTop: 8 }}>
           + Add Item
         </button>
 
-        <div className="totals">
+        <div className="od-totals">
           <Row label="Subtotal:" value={peso(subtotal)} bold />
         </div>
 
@@ -264,9 +253,9 @@ function NewOrderModal({ isOpen, onClose, onCreated, customers }) {
           </Field>
         )}
 
-        <div className="modal-actions">
-          <button className="btn btn-outline" onClick={onClose}>Cancel</button>
-          <button className="btn btn-primary" onClick={handleSubmit} disabled={isSubmitting}>
+        <div className="od-modal-actions">
+          <button className="od-btn od-btn-outline" onClick={onClose}>Cancel</button>
+          <button className="od-btn od-btn-primary" onClick={handleSubmit} disabled={isSubmitting}>
             {isSubmitting ? "Creating…" : "Create Order"}
           </button>
         </div>
@@ -274,10 +263,6 @@ function NewOrderModal({ isOpen, onClose, onCreated, customers }) {
     </div>
   );
 }
-
-// ---------------------------------------------------------------------------
-// Main Component
-// ---------------------------------------------------------------------------
 
 export default function OrderAndDelivery() {
   const [customers, setCustomers] = useState([]);
@@ -301,8 +286,6 @@ export default function OrderAndDelivery() {
   const [toastMsg, setToastMsg] = useState("");
   const [isSavingOrder, setIsSavingOrder] = useState(false);
 
-  // Only opens when the delivery status select is actually set to "Delivered" —
-  // never on load, never for any other status change.
   const [showDeliveredConfirm, setShowDeliveredConfirm] = useState(false);
 
   function showToast(msg) {
@@ -349,8 +332,6 @@ export default function OrderAndDelivery() {
     }
   };
 
-  // Any delivery status EXCEPT "Delivered" is applied immediately, no pop-up.
-  // Selecting "Delivered" opens a confirmation instead of applying right away.
   const handleDeliveryStatusSelect = (value) => {
     if (value === "Delivered") {
       setShowDeliveredConfirm(true);
@@ -372,8 +353,6 @@ export default function OrderAndDelivery() {
         body: JSON.stringify({
           orderType: orderModal.type,
           orderStatus: orderModal.status,
-          // Only sent when the order is being switched to Delivery and has no
-          // delivery record yet — see backend PUT /orders/:id.
           deliveryAddress:
             orderModal.type === "Delivery" && !orderModal.deliveryId ? orderModal.deliveryAddress : undefined,
         }),
@@ -394,10 +373,7 @@ export default function OrderAndDelivery() {
             deliveryStatus: orderModal.deliveryStatus,
             deliveryRiderId: orderModal.deliveryRiderId || null,
           }),
-        }).catch(() => {
-          // No delivery record yet on the first save that just created it via
-          // the PUT above — harmless to skip; the next save will find it.
-        });
+        }).catch(() => {});
       }
       showToast(`Order ${orderModal.id} saved.`);
       setOrderModal(null);
@@ -420,9 +396,6 @@ export default function OrderAndDelivery() {
     }
   };
 
-  // Delivery tab: any order whose type is "Delivery" — a Delivery record is now
-  // guaranteed to exist for these (created on order creation, or auto-created
-  // on save if the type was switched to Delivery afterward).
   const deliveryRows = orders.filter((o) => o.type === "Delivery");
 
   const filteredDelivery = deliveryRows.filter((d) => {
@@ -489,41 +462,41 @@ export default function OrderAndDelivery() {
   };
 
   return (
-    <div className="order-delivery-page">
-      <h1 className="page-title">Order and Delivery</h1>
+    <div className="od-page">
+      <h1 className="od-page-title">Order and Delivery</h1>
 
       {loadError && <p style={{ color: "#dc2626", fontWeight: 600 }}>{loadError}</p>}
 
-      <div className="panel">
-        <div className="panel-header">
+      <div className="od-panel">
+        <div className="od-panel-header">
           {tab === "orders" && (
-            <button className="btn btn-primary" onClick={() => setIsNewOrderOpen(true)}>
+            <button className="od-btn od-btn-primary" onClick={() => setIsNewOrderOpen(true)}>
               + New Order
             </button>
           )}
           {tab === "customers" && (
-            <button className="btn btn-primary" onClick={openAddCustomer}>
+            <button className="od-btn od-btn-primary" onClick={openAddCustomer}>
               + Add Customer
             </button>
           )}
         </div>
 
-        <div className="tabs">
+        <div className="od-tabs">
           {[
             { id: "orders", label: "Orders" },
             { id: "delivery", label: "Delivery" },
             { id: "customers", label: "Customers" },
           ].map((t) => (
-            <button key={t.id} className={`tab ${tab === t.id ? "active" : ""}`} onClick={() => setTab(t.id)}>
+            <button key={t.id} className={`od-tab ${tab === t.id ? "active" : ""}`} onClick={() => setTab(t.id)}>
               {t.label}
             </button>
           ))}
         </div>
 
         {tab === "orders" && (
-          <section className="tab-panel active">
-            <div className="filters">
-              <div className="search-box">
+          <section>
+            <div className="od-filters">
+              <div className="od-search-box">
                 <input value={ordersSearch} onChange={(e) => setOrdersSearch(e.target.value)} placeholder="Search Orders" />
               </div>
               <select value={ordersStatusFilter} onChange={(e) => setOrdersStatusFilter(e.target.value)}>
@@ -541,7 +514,7 @@ export default function OrderAndDelivery() {
               </select>
             </div>
 
-            <div className="table-wrap">
+            <div className="od-table-wrap">
               <table>
                 <thead>
                   <tr>
@@ -552,7 +525,7 @@ export default function OrderAndDelivery() {
                 </thead>
                 <tbody>
                   {isLoading && (
-                    <tr><td colSpan={8} className="empty-state">Loading…</td></tr>
+                    <tr><td colSpan={8} className="od-empty-state">Loading…</td></tr>
                   )}
                   {!isLoading && filteredOrders.map((o) => (
                     <tr key={o.orderId}>
@@ -563,48 +536,50 @@ export default function OrderAndDelivery() {
                       <td><Badge text={o.paymentStatus} map={paymentStatusClass} /></td>
                       <td>{peso(o.totalAmount)}</td>
                       <td>{new Date(o.date).toLocaleDateString()}</td>
-                      <td className="actions">
-                        <button className="action-btn act-view" onClick={() => openOrder(o)} title="View/Edit">
-                          <IconView />
-                        </button>
-                        <button className="action-btn act-edit" onClick={() => openOrder(o)} title="Edit">
-                          <IconEdit />
-                        </button>
-                        <button
-                          className="action-btn act-print"
-                          onClick={async () => {
-                            try {
-                              const full = await apiRequest(`/orders/${o.orderId}`);
-                              printOrderReceipt(full);
-                            } catch (err) {
-                              showToast(err.message || "Failed to load order for printing.");
-                            }
-                          }}
-                          title="Print"
-                        >
-                          <IconPrint />
-                        </button>
-                        <button
-                          className="action-btn act-delete"
-                          onClick={() => setConfirmDelete({ kind: "order", order: o })}
-                          title="Cancel"
-                        >
-                          <IconDelete />
-                        </button>
+                      <td>
+                        <div className="od-actions">
+                          <button className="od-action-btn od-act-view" onClick={() => openOrder(o)} title="View/Edit">
+                            <IconView />
+                          </button>
+                          <button className="od-action-btn od-act-edit" onClick={() => openOrder(o)} title="Edit">
+                            <IconEdit />
+                          </button>
+                          <button
+                            className="od-action-btn od-act-print"
+                            onClick={async () => {
+                              try {
+                                const full = await apiRequest(`/orders/${o.orderId}`);
+                                printOrderReceipt(full);
+                              } catch (err) {
+                                showToast(err.message || "Failed to load order for printing.");
+                              }
+                            }}
+                            title="Print"
+                          >
+                            <IconPrint />
+                          </button>
+                          <button
+                            className="od-action-btn od-act-delete"
+                            onClick={() => setConfirmDelete({ kind: "order", order: o })}
+                            title="Cancel"
+                          >
+                            <IconDelete />
+                          </button>
+                        </div>
                       </td>
                     </tr>
                   ))}
                 </tbody>
               </table>
-              {!isLoading && filteredOrders.length === 0 && <p className="empty-state">No orders match your search.</p>}
+              {!isLoading && filteredOrders.length === 0 && <p className="od-empty-state">No orders match your search.</p>}
             </div>
           </section>
         )}
 
         {tab === "delivery" && (
-          <section className="tab-panel active">
-            <div className="filters">
-              <div className="search-box">
+          <section>
+            <div className="od-filters">
+              <div className="od-search-box">
                 <input value={deliverySearch} onChange={(e) => setDeliverySearch(e.target.value)} placeholder="Search Delivery / Order" />
               </div>
               <select value={deliveryStatusFilter} onChange={(e) => setDeliveryStatusFilter(e.target.value)}>
@@ -616,7 +591,7 @@ export default function OrderAndDelivery() {
               </select>
             </div>
 
-            <div className="table-wrap">
+            <div className="od-table-wrap">
               <table>
                 <thead>
                   <tr>
@@ -632,36 +607,38 @@ export default function OrderAndDelivery() {
                       <td>{d.deliveryRiderName || "Unassigned"}</td>
                       <td>{d.deliveryStatus ? <Badge text={d.deliveryStatus} map={deliveryStatusClass} /> : "—"}</td>
                       <td>{d.deliveredAt ? new Date(d.deliveredAt).toLocaleString() : "N/A"}</td>
-                      <td className="actions">
-                        <button className="action-btn act-view" onClick={() => openOrder(d)} title="View/Edit">
-                          <IconView />
-                        </button>
-                        <button
-                          className="action-btn act-delete"
-                          onClick={() => setConfirmDelete({ kind: "order", order: d })}
-                          title="Cancel"
-                        >
-                          <IconDelete />
-                        </button>
+                      <td>
+                        <div className="od-actions">
+                          <button className="od-action-btn od-act-view" onClick={() => openOrder(d)} title="View/Edit">
+                            <IconView />
+                          </button>
+                          <button
+                            className="od-action-btn od-act-delete"
+                            onClick={() => setConfirmDelete({ kind: "order", order: d })}
+                            title="Cancel"
+                          >
+                            <IconDelete />
+                          </button>
+                        </div>
                       </td>
                     </tr>
                   ))}
                 </tbody>
               </table>
-              {filteredDelivery.length === 0 && <p className="empty-state">No delivery orders match your search.</p>}
+              {filteredDelivery.length === 0 && <p className="od-empty-state">No delivery orders match your search.</p>}
             </div>
           </section>
         )}
 
         {tab === "customers" && (
-          <section className="tab-panel active">
-            <div className="filters">
-              <div className="search-box">
+          <section>
+            <div className="od-filters">
+              <div className="od-search-box">
                 <input value={customersSearch} onChange={(e) => setCustomersSearch(e.target.value)} placeholder="Search Customer" />
               </div>
             </div>
 
-            <div className="table-wrap">
+            <div className="od-table-wrap">
               <table>
                 <thead>
                   <tr>
@@ -676,25 +653,27 @@ export default function OrderAndDelivery() {
                       <td>{c.name}</td>
                       <td>{c.phone || "—"}</td>
                       <td>{c.address || "—"}</td>
-                      <td><Badge text={c.status} map={{ Active: "badge-green", Inactive: "badge-red" }} /></td>
+                      <td><Badge text={c.status} map={{ Active: "od-badge-green", Inactive: "od-badge-red" }} /></td>
                       <td>{new Date(c.created).toLocaleDateString()}</td>
-                      <td className="actions">
-                        <button className="action-btn act-edit" onClick={() => openEditCustomer(c)} title="Edit">
-                          <IconEdit />
-                        </button>
-                        <button
-                          className="action-btn act-delete"
-                          onClick={() => setConfirmDelete({ kind: "customer", customer: c })}
-                          title="Deactivate"
-                        >
-                          <IconDelete />
-                        </button>
+                      <td>
+                        <div className="od-actions">
+                          <button className="od-action-btn od-act-edit" onClick={() => openEditCustomer(c)} title="Edit">
+                            <IconEdit />
+                          </button>
+                          <button
+                            className="od-action-btn od-act-delete"
+                            onClick={() => setConfirmDelete({ kind: "customer", customer: c })}
+                            title="Deactivate"
+                          >
+                            <IconDelete />
+                          </button>
+                        </div>
                       </td>
                     </tr>
                   ))}
                 </tbody>
               </table>
-              {filteredCustomers.length === 0 && <p className="empty-state">No customers match your search.</p>}
+              {filteredCustomers.length === 0 && <p className="od-empty-state">No customers match your search.</p>}
             </div>
           </section>
         )}
@@ -711,8 +690,8 @@ export default function OrderAndDelivery() {
       />
 
       {orderModal && (
-        <div className="modal-overlay open" onClick={(e) => e.target === e.currentTarget && setOrderModal(null)}>
-          <div className="modal">
+        <div className="od-modal-overlay open" onClick={(e) => e.target === e.currentTarget && setOrderModal(null)}>
+          <div className="od-modal">
             <h3>Order Details — {orderModal.id}</h3>
             <Field label="Order Type">
               <select
@@ -732,15 +711,15 @@ export default function OrderAndDelivery() {
               </select>
             </Field>
 
-            <div className="items-header">
+            <div className="od-items-header">
               <span>Product Name</span><span>Qty</span><span>Unit Price</span><span>Subtotal</span>
             </div>
             {(orderModal.items || []).map((it, i) => (
-              <div key={i} className="item-row">
+              <div key={i} className="od-item-row">
                 <span>{it.name}</span><span>{it.qty}</span><span>{peso(it.unitPrice)}</span><span>{peso(it.subtotal)}</span>
               </div>
             ))}
-            <div className="totals">
+            <div className="od-totals">
               <Row label="Delivery Fee:" value={peso(orderModal.deliveryFee)} />
               <Row label="Total Amount:" value={peso(orderModal.totalAmount)} bold />
             </div>
@@ -806,9 +785,9 @@ export default function OrderAndDelivery() {
               </>
             )}
 
-            <div className="modal-actions">
-              <button className="btn btn-outline" onClick={() => setOrderModal(null)}>Cancel</button>
-              <button className="btn btn-primary" onClick={saveOrder} disabled={isSavingOrder}>
+            <div className="od-modal-actions">
+              <button className="od-btn od-btn-outline" onClick={() => setOrderModal(null)}>Cancel</button>
+              <button className="od-btn od-btn-primary" onClick={saveOrder} disabled={isSavingOrder}>
                 {isSavingOrder ? "Saving…" : "Save"}
               </button>
             </div>
@@ -816,24 +795,22 @@ export default function OrderAndDelivery() {
         </div>
       )}
 
-      {/* Delivered confirmation — the ONLY delivery-related pop-up, and only
-          appears when "Delivered" is explicitly selected in the dropdown above. */}
       {showDeliveredConfirm && (
-        <div className="modal-overlay open" onClick={(e) => e.target === e.currentTarget && setShowDeliveredConfirm(false)}>
-          <div className="modal modal-xs">
+        <div className="od-modal-overlay open" onClick={(e) => e.target === e.currentTarget && setShowDeliveredConfirm(false)}>
+          <div className="od-modal od-modal-xs">
             <h3>Mark as Delivered?</h3>
             <p>Confirm that order {orderModal?.id} has been delivered to the customer.</p>
-            <div className="modal-actions">
-              <button className="btn btn-outline" onClick={() => setShowDeliveredConfirm(false)}>Cancel</button>
-              <button className="btn btn-primary" onClick={confirmDelivered}>Confirm Delivered</button>
+            <div className="od-modal-actions">
+              <button className="od-btn od-btn-outline" onClick={() => setShowDeliveredConfirm(false)}>Cancel</button>
+              <button className="od-btn od-btn-primary" onClick={confirmDelivered}>Confirm Delivered</button>
             </div>
           </div>
         </div>
       )}
 
       {customerModal && (
-        <div className="modal-overlay open" onClick={(e) => e.target === e.currentTarget && setCustomerModal(null)}>
-          <div className="modal modal-sm">
+        <div className="od-modal-overlay open" onClick={(e) => e.target === e.currentTarget && setCustomerModal(null)}>
+          <div className="od-modal od-modal-sm">
             <h3>{customerModal.isNew ? "Add Customer" : "Edit Customer"}</h3>
             <Field label="Customer Name">
               <input value={customerModal.name} onChange={(e) => setCustomerModal({ ...customerModal, name: e.target.value })} placeholder="Name" />
@@ -855,27 +832,27 @@ export default function OrderAndDelivery() {
                 </select>
               </Field>
             )}
-            <div className="modal-actions">
-              <button className="btn btn-outline" onClick={() => setCustomerModal(null)}>Cancel</button>
-              <button className="btn btn-primary" onClick={saveCustomer}>Save</button>
+            <div className="od-modal-actions">
+              <button className="od-btn od-btn-outline" onClick={() => setCustomerModal(null)}>Cancel</button>
+              <button className="od-btn od-btn-primary" onClick={saveCustomer}>Save</button>
             </div>
           </div>
         </div>
       )}
 
       {confirmDelete && (
-        <div className="modal-overlay open" onClick={(e) => e.target === e.currentTarget && setConfirmDelete(null)}>
-          <div className="modal modal-xs">
+        <div className="od-modal-overlay open" onClick={(e) => e.target === e.currentTarget && setConfirmDelete(null)}>
+          <div className="od-modal od-modal-xs">
             <h3>{confirmDelete.kind === "order" ? "Cancel order?" : "Deactivate customer?"}</h3>
             <p>
               {confirmDelete.kind === "order"
                 ? `This will cancel order ${confirmDelete.order.id} and restore its stock. This cannot be undone.`
                 : `This will deactivate ${confirmDelete.customer.name}. They can be reactivated later.`}
             </p>
-            <div className="modal-actions">
-              <button className="btn btn-outline" onClick={() => setConfirmDelete(null)}>Back</button>
+            <div className="od-modal-actions">
+              <button className="od-btn od-btn-outline" onClick={() => setConfirmDelete(null)}>Back</button>
               <button
-                className="btn btn-danger"
+                className="od-btn od-btn-danger"
                 onClick={() =>
                   confirmDelete.kind === "order" ? deleteOrder(confirmDelete.order) : deleteCustomer(confirmDelete.customer)
                 }
@@ -887,7 +864,7 @@ export default function OrderAndDelivery() {
         </div>
       )}
 
-      {toastMsg && <div className="toast show">{toastMsg}</div>}
+      {toastMsg && <div className="od-toast show">{toastMsg}</div>}
     </div>
   );
 }

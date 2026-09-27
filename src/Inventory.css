@@ -93,14 +93,20 @@
   display: flex;
   gap: 10px;
   align-items: center;
+  flex-wrap: wrap;
 }
 
+/* Action buttons (Add Stock In / Add Stock Out / Import) — explicitly
+   forced fully opaque and visible at all times, only the background
+   darkens on hover. Previously these could render as near-invisible
+   until hovered if an inherited opacity/transition rule applied. */
+.inventory-actions .action-btn,
 .action-btn {
-  display: inline-flex;
+  display: inline-flex !important;
   align-items: center;
   gap: 6px;
-  background: #0082fb;
-  color: #ffffff;
+  background: #0082fb !important;
+  color: #ffffff !important;
   border: none;
   border-radius: 8px;
   padding: 10px 16px;
@@ -108,10 +114,28 @@
   font-weight: 700;
   cursor: pointer;
   white-space: nowrap;
+  opacity: 1 !important;
+  visibility: visible !important;
+  pointer-events: auto !important;
+  transition: background-color 0.15s ease;
 }
 
+.inventory-actions .action-btn svg,
+.action-btn svg {
+  color: #ffffff !important;
+  stroke: #ffffff !important;
+  opacity: 1 !important;
+}
+
+.inventory-actions .action-btn:hover,
 .action-btn:hover {
-  background: #006dd2;
+  background: #006dd2 !important;
+}
+
+.inventory-actions .action-btn:disabled,
+.action-btn:disabled {
+  opacity: 0.5 !important;
+  cursor: not-allowed;
 }
 
 /* ---------------------------------------------------------------------- */
@@ -185,7 +209,7 @@
 }
 
 /* ---------------------------------------------------------------------- */
-/* Table  (Inventory and Inventory Transactions)                                                                 */
+/* Table  (Inventory and Inventory Transactions)                          */
 /* ---------------------------------------------------------------------- */
 
 .inventory-table-wrap {
@@ -214,7 +238,6 @@
   white-space: nowrap;
   vertical-align: middle;
 }
-
 
 .inventory-table thead th:nth-child(6),
 .inventory-table thead th:nth-child(7) {
@@ -249,21 +272,21 @@
 }
 
 /* Transactions Table Column Sizing & Centering */
-.transactions-table th, 
+.transactions-table th,
 .transactions-table td {
   padding: 14px 16px;
   vertical-align: middle;
 }
 
-.transactions-table th:nth-child(1), .transactions-table td:nth-child(1) { width: 10%; text-align: left; }  /* Transaction ID */
-.transactions-table th:nth-child(2), .transactions-table td:nth-child(2) { width: 9%; text-align: left; }  /* Product ID */
-.transactions-table th:nth-child(3), .transactions-table td:nth-child(3) { width: 17%; text-align: left; }  /* Product Name */
-.transactions-table th:nth-child(4), .transactions-table td:nth-child(4) { width: 12%; text-align: center; }/* Warehouse */
-.transactions-table th:nth-child(5), .transactions-table td:nth-child(5) { width: 8%;  text-align: center; }/* Type */
-.transactions-table th:nth-child(6), .transactions-table td:nth-child(6) { width: 8%;  text-align: center; }/* Quantity */
-.transactions-table th:nth-child(7), .transactions-table td:nth-child(7) { width: 11%; text-align: center; }/* Reference */
-.transactions-table th:nth-child(8), .transactions-table td:nth-child(8) { width: 13%; text-align: center; }/* Date */
-.transactions-table th:nth-child(9), .transactions-table td:nth-child(9) { width: 12%; text-align: center; }/* User */
+.transactions-table th:nth-child(1), .transactions-table td:nth-child(1) { width: 10%; text-align: left; }
+.transactions-table th:nth-child(2), .transactions-table td:nth-child(2) { width: 9%; text-align: left; }
+.transactions-table th:nth-child(3), .transactions-table td:nth-child(3) { width: 17%; text-align: left; }
+.transactions-table th:nth-child(4), .transactions-table td:nth-child(4) { width: 12%; text-align: center; }
+.transactions-table th:nth-child(5), .transactions-table td:nth-child(5) { width: 8%;  text-align: center; }
+.transactions-table th:nth-child(6), .transactions-table td:nth-child(6) { width: 8%;  text-align: center; }
+.transactions-table th:nth-child(7), .transactions-table td:nth-child(7) { width: 11%; text-align: center; }
+.transactions-table th:nth-child(8), .transactions-table td:nth-child(8) { width: 13%; text-align: center; }
+.transactions-table th:nth-child(9), .transactions-table td:nth-child(9) { width: 12%; text-align: center; }
 
 /* Status Pill Variations */
 
@@ -305,6 +328,7 @@
   display: flex;
   align-items: center;
   padding: 2px;
+  opacity: 1 !important;
 }
 
 .inventory-action-icon.view {
@@ -320,5 +344,5 @@
 }
 
 .inventory-action-icon:hover {
-  opacity: 0.7;
+  opacity: 0.7 !important;
 }

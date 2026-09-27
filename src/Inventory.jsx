@@ -1,4 +1,4 @@
-import React, { useEffect, useMemo, useState } from "react";
+import React, { useEffect, useMemo, useRef, useState } from "react";
 import {
   Search,
   ChevronDown,
@@ -8,6 +8,7 @@ import {
   Trash2,
   Upload,
   X,
+  Download,
 } from "lucide-react";
 import AddStockInModal from "./AddStockInModal";
 import AddStockOutModal from "./AddStockOutModal";
@@ -25,6 +26,22 @@ function getStatusClass(status) {
     default:
       return "";
   }
+}
+
+function downloadInventoryCsvTemplate() {
+  const template =
+    "ProductID,WarehouseID,Quantity,Mode\n" +
+    "1,1,50,Set\n" +
+    "2,1,10,Add\n";
+  const blob = new Blob([template], { type: "text/csv" });
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement("a");
+  a.href = url;
+  a.download = "inventory_import_template.csv";
+  document.body.appendChild(a);
+  a.click();
+  document.body.removeChild(a);
+  URL.revokeObjectURL(url);
 }
 
 const overlayStyle = {
@@ -173,9 +190,12 @@ export default function Inventory() {
   const [editItem, setEditItem] = useState(null);
   const [isSaving, setIsSaving] = useState(false);
   const [actionError, setActionError] = useState("");
+  const [actionMessage, setActionMessage] = useState("");
 
   const [isStockInOpen, setIsStockInOpen] = useState(false);
   const [isStockOutOpen, setIsStockOutOpen] = useState(false);
+  const [isImporting, setIsImporting] = useState(false);
+  const fileInputRef = useRef(null);
 
   const loadInventory = () => {
     setIsLoading(true);
@@ -261,6 +281,39 @@ export default function Inventory() {
     }
   };
 
+  const handleImportClick = () => {
+    setActionError("");
+    setActionMessage("");
+    fileInputRef.current?.click();
+  };
+
+  const handleFileSelected = async (e) => {
+    const file = e.target.files?.[0];
+    e.target.value = ""; // allow re-selecting the same file later
+    if (!file) return;
+
+    setIsImporting(true);
+    setActionError("");
+    setActionMessage("");
+    try {
+      const csvText = await file.text();
+      const result = await apiRequest("/inventory/import", {
+        method: "POST",
+        body: JSON.stringify({ csvText, fileName: file.name }),
+      });
+      setActionMessage(
+        `Imported ${result.imported} row(s).${result.skipped ? ` ${result.skipped} row(s) skipped — check console for details.` : ""}`
+      );
+      if (result.errors?.length) console.warn("Import errors:", result.errors);
+      loadInventory();
+      loadTransactions();
+    } catch (err) {
+      setActionError(err.message || "Failed to import inventory CSV.");
+    } finally {
+      setIsImporting(false);
+    }
+  };
+
   return (
     <div className="inventory-page">
       <div className="inventory-inner">
@@ -268,6 +321,9 @@ export default function Inventory() {
 
         {actionError && (
           <p style={{ color: "#dc2626", fontWeight: 600, margin: 0 }}>{actionError}</p>
+        )}
+        {actionMessage && (
+          <p style={{ color: "#16a34a", fontWeight: 600, margin: 0 }}>{actionMessage}</p>
         )}
         {loadError && (
           <p style={{ color: "#dc2626", fontWeight: 600, margin: 0 }}>{loadError}</p>
@@ -307,8 +363,18 @@ export default function Inventory() {
           </div>
 
           <div className="inventory-actions">
-            <button className="action-btn">
-              <Upload size={16} /> Import Inventory Data
+            <button className="action-btn" onClick={downloadInventoryCsvTemplate} style={{ background: "#6b7280" }}>
+              <Download size={16} /> CSV Template
+            </button>
+            <input
+              ref={fileInputRef}
+              type="file"
+              accept=".csv"
+              style={{ display: "none" }}
+              onChange={handleFileSelected}
+            />
+            <button className="action-btn" onClick={handleImportClick} disabled={isImporting}>
+              <Upload size={16} /> {isImporting ? "Importing…" : "Import Inventory Data"}
             </button>
             <button className="action-btn" onClick={() => setIsStockInOpen(true)}>
               <Plus size={16} /> Add Stock In
