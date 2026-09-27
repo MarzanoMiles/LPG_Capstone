@@ -1,5 +1,6 @@
-import React, { useState } from "react";
+import React, { useState, useEffect } from "react";
 import Login from "./Login";
+import ResetPasswordPage from "./ResetPasswordPage";
 import Sidebar from "./Sidebar";
 import Dashboard from "./Dashboard";
 import PosTerminal from "./PosTerminal";
@@ -19,14 +20,6 @@ import OrderAndDelivery from "./OrderAndDelivery";
 import LogoutModal from "./LogoutModal";
 import { apiRequest } from "./api";
 
-// ---------------------------------------------------------------------------
-// App shell — Sidebar on the left, active page on the right.
-//
-// As you build out more pages (POS Terminal, Inventory, Products, etc.),
-// add them to the `pages` map below. The `id` values must match the `id`s
-// in Sidebar.jsx's `navItems` array.
-// ---------------------------------------------------------------------------
-
 const pages = {
   dashboard: Dashboard,
   pos: PosTerminal,
@@ -42,18 +35,26 @@ const pages = {
   orders: OrderAndDelivery,
 };
 
+function isResetPasswordRoute() {
+  return window.location.hash.startsWith("#/reset-password");
+}
+
 export default function App() {
   const [isAuthenticated, setIsAuthenticated] = useState(() => Boolean(localStorage.getItem("token")));
   const [activeItem, setActiveItem] = useState("dashboard");
   const [isLogoutModalOpen, setIsLogoutModalOpen] = useState(false);
+  const [showResetPage, setShowResetPage] = useState(isResetPasswordRoute);
+
+  useEffect(() => {
+    const handleHashChange = () => setShowResetPage(isResetPasswordRoute());
+    window.addEventListener("hashchange", handleHashChange);
+    return () => window.removeEventListener("hashchange", handleHashChange);
+  }, []);
 
   const handleLogin = async ({ email, password }) => {
     const data = await apiRequest("/auth/login", {
       method: "POST",
-      body: JSON.stringify({
-        email,
-        password,
-      }),
+      body: JSON.stringify({ email, password }),
     });
 
     localStorage.setItem("token", data.token);
@@ -61,9 +62,6 @@ export default function App() {
     setIsAuthenticated(true);
   };
 
-  // Called by Login.jsx after a successful POST /auth/register, which returns
-  // the same { token, user } shape as /auth/login — so registration logs the
-  // new admin straight into the dashboard rather than bouncing back to login.
   const handleRegisterSuccess = (data) => {
     localStorage.setItem("token", data.token);
     localStorage.setItem("user", JSON.stringify(data.user));
@@ -77,6 +75,19 @@ export default function App() {
     setIsAuthenticated(false);
     setActiveItem("dashboard");
   };
+
+  // The password-reset link takes priority over everything else, whether or
+  // not the person happens to already be logged in on this browser.
+  if (showResetPage) {
+    return (
+      <ResetPasswordPage
+        onDone={() => {
+          window.location.hash = "";
+          setShowResetPage(false);
+        }}
+      />
+    );
+  }
 
   if (!isAuthenticated) {
     return <Login onLogin={handleLogin} onRegisterSuccess={handleRegisterSuccess} />;

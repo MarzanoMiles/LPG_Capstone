@@ -3,6 +3,7 @@ import { Eye, EyeOff, User, Lock, Phone, Mail, Clock, ChevronDown } from "lucide
 import navLogo from "./assets/logo-login.png";
 import cardLogo from "./assets/logo.png";
 import { apiRequest } from "./api";
+import ForgotPasswordModal from "./ForgotPasswordModal";
 import "./Login.css";
 
 // ---------------------------------------------------------------------------
@@ -125,6 +126,7 @@ export default function Login({ onLogin, onRegisterSuccess }) {
   const [showPassword, setShowPassword] = useState(false);
   const [error, setError] = useState("");
   const [isSubmitting, setIsSubmitting] = useState(false);
+  const [isForgotPasswordOpen, setIsForgotPasswordOpen] = useState(false);
 
   // Registration Form State
   const [regForm, setRegForm] = useState({
@@ -300,7 +302,11 @@ export default function Login({ onLogin, onRegisterSuccess }) {
               {error && <p className="login-error">{error}</p>}
 
               <div className="forgot-wrap">
-                <button type="button" className="login-forgot">
+                <button
+                  type="button"
+                  className="login-forgot"
+                  onClick={() => setIsForgotPasswordOpen(true)}
+                >
                   Forgot your password?
                 </button>
               </div>
@@ -715,6 +721,10 @@ export default function Login({ onLogin, onRegisterSuccess }) {
           </div>
         )}
       </main>
+      <ForgotPasswordModal
+        isOpen={isForgotPasswordOpen}
+        onClose={() => setIsForgotPasswordOpen(false)}
+      />
     </div>
   );
 }

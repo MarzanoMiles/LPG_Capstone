@@ -1,10 +1,12 @@
 const router = require("express").Router();
 const bcrypt = require("bcryptjs");
 const jwt = require("jsonwebtoken");
+const crypto = require("crypto");
 const pool = require("../config/db");
 const asyncHandler = require("../utils/asyncHandler");
 const ApiError = require("../utils/apiError");
 const { authenticate } = require("../middleware/auth");
+const { sendMail } = require("../config/mailer");
 
 // POST /auth/login
 router.post(
@@ -61,24 +63,13 @@ router.post(
   })
 );
 
-// POST /auth/register — self-service company + first admin account signup.
-// Creates: Company, its primary Warehouse (branch), the Admin User, and a starter
-// CompanySettings row, all in one transaction. Returns a token so the caller can
-// be logged in immediately, same shape as /auth/login.
+// POST /auth/register — (unchanged from before)
 router.post(
   "/register",
   asyncHandler(async (req, res) => {
     const {
-      companyName,
-      dtiSecNo,
-      doeLicenseNo,
-      branchName,
-      cityMunicipality,
-      completeAddress,
-      firstName,
-      lastName,
-      email,
-      password,
+      companyName, dtiSecNo, doeLicenseNo, branchName, cityMunicipality,
+      completeAddress, firstName, lastName, email, password,
     } = req.body;
 
     if (
@@ -88,8 +79,6 @@ router.post(
       throw new ApiError(400, "All required fields must be filled in.");
     }
 
-    // Server-side format validation — mirrors the frontend's guards, since the
-    // frontend can always be bypassed. This is the actual source of truth.
     const DTI_PATTERN = /^[A-Z]{2,4}\d{6,12}$/;
     const DOE_PATTERN = /^DOE-LPG-\d{4}-\d{3,4}$/;
     const EMAIL_PATTERN = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
@@ -185,6 +174,158 @@ router.post(
         token,
         user: { id: userId, firstName, lastName, email, role: "Admin", companyId },
       });
+    } catch (err) {
+      await conn.rollback();
+      throw err;
+    } finally {
+      conn.release();
+    }
+  })
+);
+
+// ---------------------------------------------------------------------------
+// Password recovery
+// ---------------------------------------------------------------------------
+
+const RESET_TOKEN_TTL_MINUTES = 30;
+
+function hashToken(rawToken) {
+  return crypto.createHash("sha256").update(rawToken).digest("hex");
+}
+
+// POST /auth/forgot-password  { email }
+// Always responds with the same generic success message whether or not the
+// email exists — this prevents attackers from using this endpoint to discover
+// which emails are registered ("email enumeration").
+router.post(
+  "/forgot-password",
+  asyncHandler(async (req, res) => {
+    const { email } = req.body;
+    if (!email) throw new ApiError(400, "Email is required.");
+
+    const genericResponse = {
+      message: "If an account exists for that email, a password reset link has been sent.",
+    };
+
+    const [rows] = await pool.query(
+      `SELECT UserID, FirstName, Status FROM User WHERE Email = :email`,
+      { email }
+    );
+    const user = rows[0];
+
+    if (!user || user.Status !== "Active") {
+      // Don't reveal whether the account exists — respond the same either way.
+      return res.json(genericResponse);
+    }
+
+    const rawToken = crypto.randomBytes(32).toString("hex");
+    const tokenHash = hashToken(rawToken);
+    const expiresAt = new Date(Date.now() + RESET_TOKEN_TTL_MINUTES * 60 * 1000);
+
+    // Invalidate any previous unused tokens for this user before issuing a new one.
+    await pool.query(
+      `UPDATE PasswordResetToken SET UsedAt = NOW() WHERE UserID = :userId AND UsedAt IS NULL`,
+      { userId: user.UserID }
+    );
+    await pool.query(
+      `INSERT INTO PasswordResetToken (UserID, TokenHash, ExpiresAt) VALUES (:userId, :tokenHash, :expiresAt)`,
+      { userId: user.UserID, tokenHash, expiresAt }
+    );
+
+    const resetUrl = `${process.env.FRONTEND_URL || "http://localhost:5173"}${process.env.FRONTEND_BASE_PATH || ""}/#/reset-password?token=${rawToken}`;
+
+    try {
+      await sendMail({
+        to: email,
+        subject: "Reset your GasTrack password",
+        html: `
+          <div style="font-family: Arial, sans-serif; max-width: 480px; margin: 0 auto;">
+            <h2 style="color:#1e3a5f;">Reset your password</h2>
+            <p>Hi ${user.FirstName || "there"},</p>
+            <p>We received a request to reset your GasTrack password. Click the button below to choose a new one. This link expires in ${RESET_TOKEN_TTL_MINUTES} minutes.</p>
+            <p style="text-align:center; margin: 28px 0;">
+              <a href="${resetUrl}" style="background:#1e3a5f;color:#fff;padding:12px 28px;border-radius:8px;text-decoration:none;font-weight:bold;">Reset Password</a>
+            </p>
+            <p style="color:#6b7280; font-size:0.85rem;">If you didn't request this, you can safely ignore this email — your password will remain unchanged.</p>
+            <p style="color:#9ca3af; font-size:0.75rem;">If the button doesn't work, copy and paste this link into your browser:<br>${resetUrl}</p>
+          </div>
+        `,
+        text: `Reset your GasTrack password: ${resetUrl} (expires in ${RESET_TOKEN_TTL_MINUTES} minutes)`,
+      });
+    } catch (err) {
+      console.error("Failed to send password reset email:", err);
+      // Still return the generic success response — we don't want to leak
+      // whether the email send failed vs. the account not existing, and a
+      // transient SMTP outage shouldn't surface as a scary error to the user.
+    }
+
+    res.json(genericResponse);
+  })
+);
+
+// GET /auth/reset-password/validate?token=...
+// Lets the frontend check a token is still valid before showing the "new
+// password" form, so the user isn't told "invalid" only after typing a new
+// password.
+router.get(
+  "/reset-password/validate",
+  asyncHandler(async (req, res) => {
+    const { token } = req.query;
+    if (!token) throw new ApiError(400, "Token is required.");
+
+    const tokenHash = hashToken(token);
+    const [rows] = await pool.query(
+      `SELECT TokenID, ExpiresAt, UsedAt FROM PasswordResetToken WHERE TokenHash = :hash`,
+      { hash: tokenHash }
+    );
+    const record = rows[0];
+
+    if (!record || record.UsedAt || new Date(record.ExpiresAt) < new Date()) {
+      return res.json({ valid: false });
+    }
+    res.json({ valid: true });
+  })
+);
+
+// POST /auth/reset-password  { token, newPassword }
+router.post(
+  "/reset-password",
+  asyncHandler(async (req, res) => {
+    const { token, newPassword } = req.body;
+    if (!token || !newPassword) throw new ApiError(400, "Token and newPassword are required.");
+    if (newPassword.length < 8) throw new ApiError(400, "Password must be at least 8 characters.");
+
+    const tokenHash = hashToken(token);
+    const conn = await pool.getConnection();
+    try {
+      await conn.beginTransaction();
+
+      const [rows] = await conn.query(
+        `SELECT TokenID, UserID, ExpiresAt, UsedAt FROM PasswordResetToken WHERE TokenHash = :hash FOR UPDATE`,
+        { hash: tokenHash }
+      );
+      const record = rows[0];
+
+      if (!record || record.UsedAt || new Date(record.ExpiresAt) < new Date()) {
+        throw new ApiError(400, "This reset link is invalid or has expired. Please request a new one.");
+      }
+
+      const passwordHash = await bcrypt.hash(newPassword, 10);
+      await conn.query(`UPDATE User SET PasswordHash = :hash WHERE UserID = :id`, {
+        hash: passwordHash,
+        id: record.UserID,
+      });
+      await conn.query(`UPDATE PasswordResetToken SET UsedAt = NOW() WHERE TokenID = :id`, {
+        id: record.TokenID,
+      });
+      await conn.query(
+        `INSERT INTO UserActivity (UserID, ActivityType, Module, Description)
+         VALUES (:userId, 'Update', 'Auth', 'Password reset via email link')`,
+        { userId: record.UserID }
+      );
+
+      await conn.commit();
+      res.json({ message: "Your password has been reset. You can now log in with your new password." });
     } catch (err) {
       await conn.rollback();
       throw err;
