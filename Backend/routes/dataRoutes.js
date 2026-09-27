@@ -5,6 +5,7 @@ const ApiError = require("../utils/apiError");
 const { authenticate } = require("../middleware/auth");
 const { buildCsv, buildXlsx, buildPdf } = require("../utils/fileGenerators");
 const { resolveDateRange } = require("../utils/dateRanges");
+const { getAnnualReportData, buildAnnualReportXlsx, buildAnnualReportPdf } = require("../utils/annualReport");
 
 router.use(authenticate);
 
@@ -28,7 +29,6 @@ router.get(
   })
 );
 
-// Query builders per data type — each returns { title, headers, rows }
 async function queryDataset(dataType, start, end) {
   if (dataType === "Sales Data") {
     const [rows] = await pool.query(
@@ -48,9 +48,6 @@ async function queryDataset(dataType, start, end) {
     };
   }
 
-  // Re-importable format: one row per line item, matching exactly what
-  // POST /sales/import (see salesRoutes.js) and the Sales page's CSV importer expect.
-  // CSV-only in practice, but we still support Excel/PDF for consistency with other datasets.
   if (dataType === "Sales Line Items") {
     const [rows] = await pool.query(
       `SELECT s.SaleNo, od.ProductID, od.Quantity, od.UnitPrice, s.SalesDiscount,
@@ -133,14 +130,69 @@ async function queryDataset(dataType, start, end) {
   throw new ApiError(400, `Unsupported data type: ${dataType}`);
 }
 
-// POST /data/export  { dataType, dateRange, dateFrom?, dateTo?, format }
+// POST /data/export  { dataType, dateRange, dateFrom?, dateTo?, format, year?, brandId? }
 // format: "CSV" | "Excel" | "PDF"
-// Returns the file content as base64 so the frontend can trigger a download without a static file server.
+// "Annual Report" is handled separately below: it needs a year + brandId
+// instead of a date range, and only supports Excel/PDF (it's a structured
+// regulatory form, not a flat table — CSV can't represent it).
 router.post(
   "/export",
   asyncHandler(async (req, res) => {
-    const { dataType, dateRange, dateFrom, dateTo, format } = req.body;
+    const { dataType, dateRange, dateFrom, dateTo, format, year, brandId } = req.body;
     if (!dataType || !format) throw new ApiError(400, "dataType and format are required.");
+
+    if (dataType === "Annual Report") {
+      if (format === "CSV") {
+        throw new ApiError(400, "Annual Report must follow the AR-E-2 structure and can only be exported as Excel or PDF.");
+      }
+      if (!year || !brandId) {
+        throw new ApiError(400, "year and brandId are required for Annual Report.");
+      }
+
+      const reportData = await getAnnualReportData(pool, brandId, Number(year));
+
+      const [[settingsRow]] = await pool.query(
+        `SELECT FullName, ContactEmail FROM CompanySettings WHERE CompanyID = :companyId`,
+        { companyId: req.user.companyId }
+      );
+      const [[userRow]] = await pool.query(
+        `SELECT CONCAT(FirstName,' ',LastName) AS name FROM User WHERE UserID = :id`,
+        { id: req.user.userId }
+      );
+      const meta = {
+        companyName: settingsRow?.FullName || "",
+        contactEmail: settingsRow?.ContactEmail || "",
+        preparedBy: userRow?.name || "",
+      };
+
+      let buffer, mimeType, extension;
+      if (format === "Excel") {
+        buffer = await buildAnnualReportXlsx(reportData, meta);
+        mimeType = "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet";
+        extension = "xlsx";
+      } else if (format === "PDF") {
+        buffer = await buildAnnualReportPdf(reportData, meta);
+        mimeType = "application/pdf";
+        extension = "pdf";
+      } else {
+        throw new ApiError(400, `Unsupported format for Annual Report: ${format}`);
+      }
+
+      const fileName = `AR-E-2_${reportData.brandName.replace(/\s+/g, "_")}_${year}.${extension}`;
+
+      await pool.query(
+        `INSERT INTO DataActivityLog (UserID, ActivityType, DataType, FileName, FileFormat, DateFrom, DateTo, Status)
+         VALUES (:userId, 'Export', 'Annual Report', :fileName, :format, :start, :end, 'Successful')`,
+        { userId: req.user.userId, fileName, format, start: `${year}-01-01`, end: `${year}-12-31` }
+      );
+
+      return res.status(201).json({
+        fileName,
+        mimeType,
+        rowCount: 13,
+        fileBase64: buffer.toString("base64"),
+      });
+    }
 
     let start, end;
     try {
@@ -185,7 +237,7 @@ router.post(
   })
 );
 
-// POST /data/import { dataType, fileName, format }  -- logging only; see Sales page for real CSV sales import
+// POST /data/import { dataType, fileName, format }  -- logging only
 router.post(
   "/import",
   asyncHandler(async (req, res) => {

@@ -19,6 +19,8 @@ function downloadBase64File(fileName, mimeType, base64) {
   URL.revokeObjectURL(url);
 }
 
+const currentYear = new Date().getFullYear();
+
 export default function Data() {
   const [activeTab, setActiveTab] = useState("Export");
 
@@ -26,9 +28,14 @@ export default function Data() {
   const [exportDateRange, setExportDateRange] = useState("Today");
   const [exportDateFrom, setExportDateFrom] = useState("");
   const [exportDateTo, setExportDateTo] = useState("");
-  const [isExporting, setIsExporting] = useState(null); // holds the format currently exporting
+  const [isExporting, setIsExporting] = useState(null);
   const [exportError, setExportError] = useState("");
   const [exportMessage, setExportMessage] = useState("");
+
+  // Annual Report specific fields
+  const [brands, setBrands] = useState([]);
+  const [reportYear, setReportYear] = useState(currentYear - 1); // annual reports are typically filed for the prior year
+  const [reportBrandId, setReportBrandId] = useState("");
 
   const [importDataType, setImportDataType] = useState("Sales Data");
   const [importDateRange, setImportDateRange] = useState("Today");
@@ -37,6 +44,9 @@ export default function Data() {
   const [importLogs, setImportLogs] = useState([]);
   const [isLoadingLogs, setIsLoadingLogs] = useState(false);
   const [selectedLogRow, setSelectedLogRow] = useState(null);
+
+  const isAnnualReport = exportDataType === "Annual Report";
+  const isReimportable = exportDataType === "Sales Line Items";
 
   const loadLogs = () => {
     setIsLoadingLogs(true);
@@ -56,6 +66,17 @@ export default function Data() {
     loadLogs();
   }, []);
 
+  useEffect(() => {
+    if (!isAnnualReport) return;
+    apiRequest("/brands")
+      .then((data) => {
+        setBrands(data);
+        if (data[0] && !reportBrandId) setReportBrandId(data[0].id);
+      })
+      .catch(() => {});
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [isAnnualReport]);
+
   const getPageTitle = () => {
     return activeTab === "Export" || activeTab === "Export Logs" ? "Data Export" : "Data Import";
   };
@@ -65,6 +86,24 @@ export default function Data() {
     setExportError("");
     setExportMessage("");
     try {
+      if (isAnnualReport) {
+        if (!reportBrandId) throw new Error("Please select a brand.");
+        if (!reportYear) throw new Error("Please enter a year.");
+        const result = await apiRequest("/data/export", {
+          method: "POST",
+          body: JSON.stringify({
+            dataType: "Annual Report",
+            format,
+            year: Number(reportYear),
+            brandId: Number(reportBrandId),
+          }),
+        });
+        downloadBase64File(result.fileName, result.mimeType, result.fileBase64);
+        setExportMessage(`Generated ${result.fileName}.`);
+        loadLogs();
+        return;
+      }
+
       if (exportDateRange === "Custom" && (!exportDateFrom || !exportDateTo)) {
         throw new Error("Please select both a start and end date for a custom range.");
       }
@@ -87,8 +126,6 @@ export default function Data() {
       setIsExporting(null);
     }
   };
-
-  const isReimportable = exportDataType === "Sales Line Items";
 
   return (
     <div className="data-page">
@@ -140,29 +177,32 @@ export default function Data() {
                       <option value="Products Data">Products Data</option>
                       <option value="Restocking Logs">Restocking Logs</option>
                       <option value="Supplier Records">Supplier Records</option>
+                      <option value="Annual Report">Annual Report (DOE Annex AR-E-2)</option>
                     </select>
                     <ChevronDown size={18} className="data-select-icon" />
                   </div>
                 </div>
 
-                <div className="data-input-group">
-                  <label className="data-label">Date Range</label>
-                  <div className="data-select-wrap">
-                    <select
-                      className="data-select"
-                      value={exportDateRange}
-                      onChange={(e) => setExportDateRange(e.target.value)}
-                    >
-                      <option value="Today">Today</option>
-                      <option value="This Week">This Week</option>
-                      <option value="This Month">This Month</option>
-                      <option value="Custom">Custom</option>
-                    </select>
-                    <ChevronDown size={18} className="data-select-icon" />
+                {!isAnnualReport && (
+                  <div className="data-input-group">
+                    <label className="data-label">Date Range</label>
+                    <div className="data-select-wrap">
+                      <select
+                        className="data-select"
+                        value={exportDateRange}
+                        onChange={(e) => setExportDateRange(e.target.value)}
+                      >
+                        <option value="Today">Today</option>
+                        <option value="This Week">This Week</option>
+                        <option value="This Month">This Month</option>
+                        <option value="Custom">Custom</option>
+                      </select>
+                      <ChevronDown size={18} className="data-select-icon" />
+                    </div>
                   </div>
-                </div>
+                )}
 
-                {exportDateRange === "Custom" && (
+                {!isAnnualReport && exportDateRange === "Custom" && (
                   <div style={{ display: "flex", gap: 12 }}>
                     <div className="data-input-group" style={{ flex: 1 }}>
                       <label className="data-label">From</label>
@@ -185,22 +225,61 @@ export default function Data() {
                   </div>
                 )}
 
-                <p style={{ fontSize: "0.75rem", color: "#9ca3af", margin: 0 }}>
-                  Note: Inventory Data, Products Data, and Supplier Records are always exported as a
-                  full current snapshot — the date range above only filters Sales Data, Sales Line
-                  Items, and Restocking Logs.
-                </p>
-                {isReimportable ? (
+                {isAnnualReport && (
+                  <>
+                    <div className="data-input-group">
+                      <label className="data-label">Brand / Trademark</label>
+                      <div className="data-select-wrap">
+                        <select
+                          className="data-select"
+                          value={reportBrandId}
+                          onChange={(e) => setReportBrandId(e.target.value)}
+                        >
+                          <option value="">Select a brand</option>
+                          {brands.map((b) => (
+                            <option key={b.id} value={b.id}>{b.name}</option>
+                          ))}
+                        </select>
+                        <ChevronDown size={18} className="data-select-icon" />
+                      </div>
+                    </div>
+                    <div className="data-input-group">
+                      <label className="data-label">Covered Year</label>
+                      <input
+                        type="number"
+                        className="data-select"
+                        value={reportYear}
+                        onChange={(e) => setReportYear(e.target.value)}
+                        min="2000"
+                        max={currentYear}
+                      />
+                    </div>
+                    <p style={{ fontSize: "0.75rem", color: "#9ca3af", margin: 0 }}>
+                      Generates DOE Annex AR-E-2 — the Annual Update Report on LPG Supply and Demand
+                      Balance for the selected brand, with month-by-month Beginning Inventory,
+                      Purchases, Sales and Ending Inventory reconstructed from your inventory
+                      transaction history.
+                    </p>
+                  </>
+                )}
+
+                {!isAnnualReport && (
+                  <p style={{ fontSize: "0.75rem", color: "#9ca3af", margin: 0 }}>
+                    Note: Inventory Data, Products Data, and Supplier Records are always exported as a
+                    full current snapshot — the date range above only filters Sales Data, Sales Line
+                    Items, and Restocking Logs.
+                  </p>
+                )}
+                {isReimportable && (
                   <p style={{ fontSize: "0.75rem", color: "#16a34a", margin: "8px 0 0 0", fontWeight: 600 }}>
                     ✓ This CSV can be re-imported directly via the "Import Sales Data" button on the Sales page.
                   </p>
-                ) : (
-                  exportDataType === "Sales Data" && (
-                    <p style={{ fontSize: "0.75rem", color: "#9ca3af", margin: "8px 0 0 0" }}>
-                      This is a summary report (one row per sale) for record-keeping — it can't be
-                      re-imported. Use "Sales Line Items" above if you need a re-importable CSV.
-                    </p>
-                  )
+                )}
+                {!isAnnualReport && exportDataType === "Sales Data" && (
+                  <p style={{ fontSize: "0.75rem", color: "#9ca3af", margin: "8px 0 0 0" }}>
+                    This is a summary report (one row per sale) for record-keeping — it can't be
+                    re-imported. Use "Sales Line Items" above if you need a re-importable CSV.
+                  </p>
                 )}
               </div>
 
@@ -209,14 +288,16 @@ export default function Data() {
                 <h3 className="data-action-title">Ready to Export</h3>
                 <p className="data-action-sub">Select your preferred format to download</p>
                 <div className="data-format-buttons">
-                  <button
-                    type="button"
-                    className="data-btn-format"
-                    onClick={() => handleExport("CSV")}
-                    disabled={isExporting !== null}
-                  >
-                    <Download size={14} /> {isExporting === "CSV" ? "Exporting…" : "CSV"}
-                  </button>
+                  {!isAnnualReport && (
+                    <button
+                      type="button"
+                      className="data-btn-format"
+                      onClick={() => handleExport("CSV")}
+                      disabled={isExporting !== null}
+                    >
+                      <Download size={14} /> {isExporting === "CSV" ? "Exporting…" : "CSV"}
+                    </button>
+                  )}
                   <button
                     type="button"
                     className="data-btn-format"
@@ -299,9 +380,7 @@ export default function Data() {
           <div className="data-card-container">
             <p style={{ color: "#6b7280", fontSize: "0.85rem", marginBottom: 12 }}>
               For importing Sales data specifically, use the "Import Sales Data" button on the{" "}
-              <strong>Sales</strong> page — it expects the "Sales Line Items" CSV format (export one from
-              this page's Export tab, or use the page's own "CSV Template" button). General bulk import
-              for other data types isn't wired up yet.
+              <strong>Sales</strong> page. General bulk import for other data types isn't wired up yet.
             </p>
             <div className="data-options-grid">
               <div className="data-form-side">
