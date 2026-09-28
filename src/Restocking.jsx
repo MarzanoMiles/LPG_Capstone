@@ -356,11 +356,11 @@ export default function Restocking() {
                       />
                     </th>
                     <th>Restock ID</th>
-                    <th>Product</th>
-                    <th>Supplier</th>
+                    <th>Product ID</th>
                     <th>Current Stock</th>
                     <th>Reorder Level</th>
                     <th>Suggested Qty</th>
+                    <th>Confidence</th>
                     <th>Priority</th>
                     <th>Actions</th>
                   </tr>
@@ -380,7 +380,7 @@ export default function Restocking() {
                     filteredData.map((item) => {
                       const isSelected = selectedRows.includes(item.restockId);
                       return (
-                        <tr key={item.restockId} className={isSelected ? "selected-row" : ""}>
+                        <tr key={item.restockId} className={isSelected ? "selected-row" : ""} title={`${item.productName} · ${item.supplierName}`}>
                           <td>
                             <input
                               type="checkbox"
@@ -390,11 +390,11 @@ export default function Restocking() {
                             />
                           </td>
                           <td>R-{String(item.restockId).padStart(3, "0")}</td>
-                          <td>{item.productName}</td>
-                          <td>{item.supplierName}</td>
+                          <td>P-{String(item.productId).padStart(3, "0")}</td>
                           <td>{item.currentStock}</td>
                           <td>{item.reorderLevel}</td>
                           <td>{item.suggestedQty}</td>
+                          <td>{item.confidence != null ? `${Number(item.confidence).toFixed(0)}%` : "—"}</td>
                           <td>
                             <span className={`restocking-priority-pill ${item.priority.toLowerCase()}`}>
                               {item.priority}

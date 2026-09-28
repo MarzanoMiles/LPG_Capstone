@@ -198,14 +198,7 @@ router.post(
 );
 
 // POST /inventory/import — bulk import inventory levels from a CSV.
-//
-// Expected CSV columns (header row required):
-//   ProductID,WarehouseID,Quantity,Mode
-//
-// - ProductID / WarehouseID: must match existing records
-// - Quantity: a non-negative integer
-// - Mode: "Set" (replace StockOnHand with Quantity) or "Add" (increment StockOnHand by Quantity).
-//   Defaults to "Set" if the column is omitted or blank.
+// Expected columns: ProductID,WarehouseID,Quantity,Mode ("Set" or "Add")
 router.post(
   "/import",
   asyncHandler(async (req, res) => {
@@ -231,7 +224,7 @@ router.post(
       await conn.beginTransaction();
 
       for (const [index, row] of rows.entries()) {
-        const rowNum = index + 2; // +2 accounts for the header row and 1-based line numbers
+        const rowNum = index + 2;
         try {
           const productId = Number(row.ProductID);
           const warehouseId = Number(row.WarehouseID);
@@ -384,9 +377,21 @@ router.put(
   })
 );
 
+// DELETE /inventory/:id?force=true
+//
+// By default, refuses to delete an Inventory row that has any
+// InventoryTransaction history — that history is an audit trail (who moved
+// how much stock, when, and why), and MySQL's own foreign key would reject
+// the delete anyway once any transaction references this row. Rather than
+// letting that raw FK error reach the user, we check for it first and
+// explain clearly, offering an explicit "force" delete that also wipes the
+// transaction history for this record (used only when the user has
+// confirmed they understand that trade-off).
 router.delete(
   "/:id",
   asyncHandler(async (req, res) => {
+    const force = req.query.force === "true";
+
     const [rows] = await pool.query(`SELECT StockOnHand FROM Inventory WHERE InventoryID = :id`, {
       id: req.params.id,
     });
@@ -397,8 +402,49 @@ router.delete(
         "This product still has stock on hand. Adjust the quantity to 0 before deleting the record."
       );
     }
-    await pool.query(`DELETE FROM Inventory WHERE InventoryID = :id`, { id: req.params.id });
-    res.json({ message: "Inventory record deleted." });
+
+    const [[{ count }]] = await pool.query(
+      `SELECT COUNT(*) AS count FROM InventoryTransaction WHERE InventoryID = :id`,
+      { id: req.params.id }
+    );
+
+    if (count > 0 && !force) {
+      throw new ApiError(
+        409,
+        `This inventory record has ${count} transaction(s) in its history (Stock In/Out/Adjustment). ` +
+          `Deleting it also permanently deletes that history and cannot be undone. ` +
+          `If you're sure, confirm again to force-delete it along with its history.`
+      );
+    }
+
+    const conn = await pool.getConnection();
+    try {
+      await conn.beginTransaction();
+      if (count > 0) {
+        await conn.query(`DELETE FROM InventoryTransaction WHERE InventoryID = :id`, { id: req.params.id });
+      }
+      await conn.query(`DELETE FROM Inventory WHERE InventoryID = :id`, { id: req.params.id });
+
+      if (force && count > 0) {
+        await conn.query(
+          `INSERT INTO UserActivity (UserID, ActivityType, Module, RecordID, Description)
+           VALUES (:userId, 'Delete', 'Inventory', :recordId, :description)`,
+          {
+            userId: req.user.userId,
+            recordId: req.params.id,
+            description: `Force-deleted inventory record and its ${count} transaction record(s)`,
+          }
+        );
+      }
+
+      await conn.commit();
+      res.json({ message: "Inventory record deleted." });
+    } catch (err) {
+      await conn.rollback();
+      throw err;
+    } finally {
+      conn.release();
+    }
   })
 );
 

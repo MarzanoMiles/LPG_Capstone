@@ -276,7 +276,26 @@ export default function Inventory() {
     try {
       await apiRequest(`/inventory/${item.inventoryId}`, { method: "DELETE" });
       loadInventory();
+      loadTransactions();
     } catch (err) {
+      // 409 means this record has transaction history — offer a second,
+      // explicit confirmation to force-delete it along with that history.
+      if (err.status === 409 || /transaction\(s\) in its history/.test(err.message || "")) {
+        const forceConfirmed = window.confirm(
+          `${err.message}\n\nForce-delete this record AND its transaction history now?`
+        );
+        if (!forceConfirmed) return;
+
+        try {
+          await apiRequest(`/inventory/${item.inventoryId}?force=true`, { method: "DELETE" });
+          loadInventory();
+          loadTransactions();
+        } catch (forceErr) {
+          setActionError(forceErr.message || "Failed to force-delete inventory record.");
+        }
+        return;
+      }
+
       setActionError(err.message || "Failed to delete inventory record.");
     }
   };

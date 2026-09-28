@@ -7,10 +7,27 @@ yarn-error.log*
 pnpm-debug.log*
 lerna-debug.log*
 
+# Dependencies
 node_modules/
 dist/
+
+# Environment files (contain DB passwords, JWT secret, SMTP credentials)
 .env
+.env.*
+!.env.example
 *.local
+
+# Python (ML service)
+ML/venv/
+venv/
+.venv/
+__pycache__/
+*.pyc
+*.pyo
+.pytest_cache/
+
+# Trained model artifacts (regenerate with `python train_model.py`)
+ML/*.pkl
 
 # Editor directories and files
 .vscode/*
