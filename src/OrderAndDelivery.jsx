@@ -378,14 +378,14 @@ export default function OrderAndDelivery() {
     }catch(err){showToast(err.message || "Failed to load order history.");}
   };
   function openAddCustomer() {
-    setCustomerModal({ firstName: "", lastName: "", phone: "", address: "", customerType: "Residential", isNew: true });
+    setCustomerModal({ companyName: "", firstName: "", lastName: "", phone: "", address: "", customerType: "Residential", isNew: true });
   }
   function openEditCustomer(c) {
-    setCustomerModal({ ...c, firstName:c.firstName || "", lastName:c.lastName || "", customerType:c.type, isNew: false });
+    setCustomerModal({ ...c, companyName:c.companyName || "", firstName:c.firstName || "", lastName:c.lastName || "", customerType:c.type, isNew: false });
   }
   const saveCustomer = async () => {
-    if (![customerModal.firstName,customerModal.lastName,customerModal.phone,customerModal.address].every(value=>value?.trim()) || !["Residential","Commercial"].includes(customerModal.customerType)) {
-      showToast("First Name, Last Name, Contact Number, Address and Customer Type are required.");
+    if ((customerModal.customerType === "Commercial" && !customerModal.companyName?.trim()) || ![customerModal.firstName,customerModal.lastName,customerModal.phone,customerModal.address].every(value=>value?.trim()) || !["Residential","Commercial"].includes(customerModal.customerType)) {
+      showToast("First Name, Last Name, Contact Number, Address and Customer Type are required. Commercial customers also require Company Name.");
       return;
     }
     try {
@@ -393,6 +393,7 @@ export default function OrderAndDelivery() {
         await apiRequest("/customers", {
           method: "POST",
           body: JSON.stringify({
+            companyName: customerModal.customerType === "Commercial" ? customerModal.companyName.trim() : null,
             firstName: customerModal.firstName.trim(),
             lastName: customerModal.lastName.trim(),
             phone: customerModal.phone.trim(),
@@ -405,6 +406,7 @@ export default function OrderAndDelivery() {
         await apiRequest(`/customers/${customerModal.id}`, {
           method: "PUT",
           body: JSON.stringify({
+            companyName: customerModal.customerType === "Commercial" ? customerModal.companyName.trim() : null,
             firstName: customerModal.firstName.trim(),
             lastName: customerModal.lastName.trim(),
             phone: customerModal.phone.trim(),
@@ -540,18 +542,18 @@ export default function OrderAndDelivery() {
               <table>
                 <thead>
                   <tr>
-                    <th>Customer ID</th><th>Customer Name</th><th>Contact Number</th>
-                    <th>Address</th><th>Customer Type</th><th>Actions</th>
+                    <th>Customer ID</th><th>Customer Type</th><th>Customer Name</th><th>Contact Number</th>
+                    <th>Address</th><th>Actions</th>
                   </tr>
                 </thead>
                 <tbody>
                   {paginatedCustomers.map((c) => (
                     <tr key={c.id}>
                       <td className="od-customer-id">{c.id}</td>
+                      <td><Badge text={c.type} map={{Residential:"od-badge-blue",Commercial:"od-badge-green"}} /></td>
                       <td className="od-customer-name">{c.name}</td>
                       <td>{c.phone || "\u2014"}</td>
                       <td className="od-customer-address">{c.address || "\u2014"}</td>
-                      <td><Badge text={c.type} map={{Residential:"od-badge-blue",Commercial:"od-badge-green"}} /></td>
                       <td>
                         <div className="od-actions">
                           <button type="button" className="od-action-btn od-act-view" title="View Profile & Order History" aria-label={`View profile and order history for ${c.name}`} onClick={()=>viewCustomerHistory(c)}><IconView /></button>
@@ -593,7 +595,7 @@ export default function OrderAndDelivery() {
             {customerViewTab==="profile" ? (
               <div role="tabpanel" id="customer-profile-panel" aria-labelledby="customer-profile-tab" tabIndex={0}>
                 <dl className="od-customer-profile">
-                  {[['Customer ID',customerHistory.customer.id],['Customer Type',customerHistory.customer.type],['First Name',customerHistory.customer.firstName],['Last Name',customerHistory.customer.lastName],['Contact Number',customerHistory.customer.phone],['Address',customerHistory.customer.address]].map(([label,value])=>(
+                  {[['Customer ID',customerHistory.customer.id],['Customer Type',customerHistory.customer.type],...(customerHistory.customer.type === 'Commercial' ? [['Company Name',customerHistory.customer.companyName],['Contact Person',`${customerHistory.customer.firstName || ''} ${customerHistory.customer.lastName || ''}`]] : []),['First Name',customerHistory.customer.firstName],['Last Name',customerHistory.customer.lastName],['Contact Number',customerHistory.customer.phone],['Address',customerHistory.customer.address]].map(([label,value])=>(
                     <div key={label} className={label==="Address"?"od-profile-address":""}><dt>{label}</dt><dd>{value || "?"}</dd></div>
                   ))}
                 </dl>
@@ -696,14 +698,6 @@ export default function OrderAndDelivery() {
           <div className="od-modal od-modal-sm">
             <h3>{customerModal.isNew ? "Add Customer" : "Edit Customer"}</h3>
             <Field label="Customer ID"><input disabled value={customerModal.id || "Auto-generated (CUST-001)"} /></Field>
-            <Field label="First Name"><input required maxLength={75} value={customerModal.firstName} onChange={e=>setCustomerModal({...customerModal,firstName:e.target.value})} /></Field>
-            <Field label="Last Name"><input required maxLength={75} value={customerModal.lastName} onChange={e=>setCustomerModal({...customerModal,lastName:e.target.value})} /></Field>
-            <Field label="Contact Number">
-              <input required maxLength={30} value={customerModal.phone} onChange={(e) => setCustomerModal({ ...customerModal, phone: e.target.value })} placeholder="Phone Number" />
-            </Field>
-            <Field label="Address">
-              <textarea required maxLength={255} value={customerModal.address} onChange={(e) => setCustomerModal({ ...customerModal, address: e.target.value })} placeholder="Street, Brgy, City, Province, Zip Code" />
-            </Field>
               <Field label="Customer Type">
                 <select
                   value={customerModal.customerType}
@@ -713,6 +707,19 @@ export default function OrderAndDelivery() {
                   <option>Commercial</option>
                 </select>
               </Field>
+            {customerModal.customerType === "Commercial" && <>
+              <Field label="Company Name"><input required maxLength={150} value={customerModal.companyName || ""} onChange={e=>setCustomerModal({...customerModal,companyName:e.target.value})} /></Field>
+              <h4>Contact Person</h4>
+            </>}
+            <Field label="First Name"><input required maxLength={75} value={customerModal.firstName} onChange={e=>setCustomerModal({...customerModal,firstName:e.target.value})} /></Field>
+            <Field label="Last Name"><input required maxLength={75} value={customerModal.lastName} onChange={e=>setCustomerModal({...customerModal,lastName:e.target.value})} /></Field>
+            <Field label="Contact Number">
+              <input required maxLength={30} value={customerModal.phone} onChange={(e) => setCustomerModal({ ...customerModal, phone: e.target.value })} placeholder="Phone Number" />
+            </Field>
+            <Field label="Address">
+              <textarea required maxLength={255} value={customerModal.address} onChange={(e) => setCustomerModal({ ...customerModal, address: e.target.value })} placeholder="Street, Brgy, City, Province, Zip Code" />
+            </Field>
+
             <div className="od-modal-actions">
               <button className="od-btn od-btn-outline" onClick={() => setCustomerModal(null)}>Cancel</button>
               <button className="od-btn od-btn-primary" onClick={saveCustomer}>Save</button>

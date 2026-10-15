@@ -16,7 +16,13 @@ function validateCustomer(body) {
   if (!['Residential','Commercial'].includes(body.customerType)) throw new ApiError(400,'Customer Type must be Residential or Commercial.');
   if (data.phone === 'WALKIN' || data.phone === 'IMPORTED') throw new ApiError(400,'Contact number is reserved.');
   if (`${data.firstName} ${data.lastName}`.length > 150) throw new ApiError(400,'Full name must be at most 150 characters.');
-  return {...data,name:`${data.firstName} ${data.lastName}`,type:body.customerType};
+  let companyName = null;
+  if (body.customerType === 'Commercial') {
+    if (typeof body.companyName !== 'string' || !body.companyName.trim() || body.companyName.trim().length > 150)
+      throw new ApiError(400,'Company Name is required for commercial customers and must be at most 150 characters.');
+    companyName = body.companyName.trim();
+  }
+  return {...data,companyName,name:companyName || `${data.firstName} ${data.lastName}`,type:body.customerType};
 }
 async function hardDeleteCustomer(pool,id) {
   const conn = await pool.getConnection();

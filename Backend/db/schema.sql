@@ -152,6 +152,7 @@ CREATE TABLE Customer (
   CustomerType  VARCHAR(20) NOT NULL,                   -- Commercial | Residential
   FirstName     VARCHAR(75) NULL,
   LastName      VARCHAR(75) NULL,
+  CompanyName   VARCHAR(150) NULL,
   CustomerName  VARCHAR(150) NOT NULL DEFAULT '',
   ContactNo     VARCHAR(30) NOT NULL,
   Address       VARCHAR(255) NOT NULL,

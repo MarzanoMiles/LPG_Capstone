@@ -6,6 +6,7 @@ async function migrate() {
  try {
   const [customerColumns]=await conn.query('SHOW COLUMNS FROM Customer');
   for(const name of ['FirstName','LastName']) if(!customerColumns.some(c=>c.Field===name)) await conn.query(`ALTER TABLE Customer ADD COLUMN ${name} VARCHAR(75) NULL`);
+  if(!customerColumns.some(c=>c.Field==='CompanyName')) await conn.query('ALTER TABLE Customer ADD COLUMN CompanyName VARCHAR(150) NULL');
   await conn.query(`UPDATE Customer SET FirstName=COALESCE(FirstName,SUBSTRING_INDEX(CustomerName,' ',1)), LastName=COALESCE(LastName,CASE WHEN LOCATE(' ',CustomerName)>0 THEN SUBSTRING(CustomerName,LOCATE(' ',CustomerName)+1) ELSE '' END)`);
   const [checks]=await conn.query("SELECT CONSTRAINT_NAME FROM information_schema.TABLE_CONSTRAINTS WHERE CONSTRAINT_SCHEMA=DATABASE() AND LOWER(TABLE_NAME)='customer' AND CONSTRAINT_NAME='customer_type_valid'");
   if(!checks.length) await conn.query("ALTER TABLE Customer ADD CONSTRAINT customer_type_valid CHECK (CustomerType IN ('Residential','Commercial'))");

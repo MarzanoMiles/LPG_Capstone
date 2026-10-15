@@ -2,6 +2,19 @@ const {test}=require('node:test');
 const assert=require('node:assert/strict');
 const {validateCustomer,hardDeleteCustomer,fields}=require('../utils/customerHistory');
 const profile={firstName:'Jane',lastName:'Rivera',phone:'09123456789',address:'Old address',customerType:'Residential'};
+test('commercial customer uses company name and requires a named contact',()=>{
+ const commercial={...profile,customerType:'Commercial',companyName:'  Rivera Trading  '};
+ const result=validateCustomer(commercial);
+ assert.equal(result.name,'Rivera Trading');
+ assert.equal(result.companyName,'Rivera Trading');
+ assert.equal(result.firstName,'Jane');
+ assert.equal(result.lastName,'Rivera');
+ for(const companyName of [undefined,' ','x'.repeat(151)]) assert.throws(()=>validateCustomer({...commercial,companyName}));
+ for(const key of ['firstName','lastName','phone','address']) assert.throws(()=>validateCustomer({...commercial,[key]:''}));
+ const residential=validateCustomer({...profile,companyName:'Old company'});
+ assert.equal(residential.companyName,null);
+ assert.equal(residential.name,'Jane Rivera');
+});
 test('required split names, allowed types, lengths and legacy POS full name',()=>{
  assert.equal(validateCustomer(profile).name,'Jane Rivera');
  assert.equal(validateCustomer({...profile,firstName:undefined,lastName:undefined,name:'Jane Rivera'}).lastName,'Rivera');

@@ -536,6 +536,10 @@ async function seed() {
   `);
 
   await pool.query("UPDATE Product SET UnitValue = LOWER(REGEXP_SUBSTR(ProductName, '[0-9]+([.][0-9]+)?[ ]*[kK][gG]')) WHERE UnitValue IS NULL AND ProductName REGEXP '[0-9]+([.][0-9]+)?[ ]*[kK][gG]'");
+  // Keep seeded databases compatible with the customer profile/history APIs.
+  await require("./migrate_customer_history")();
+  // Pickup queues and claims require all three pickup migration stages.
+  await require("./migrate_pickup_claim")();
   console.log("Database schema creation and seeding complete.");
   process.exit(0);
 }

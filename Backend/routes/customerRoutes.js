@@ -41,12 +41,12 @@ router.get(
   asyncHandler(async (req, res) => {
     const { search, customerType } = req.query;
     let sql = `
-      SELECT CustomerID AS id, CustomerName AS name, FirstName AS firstName, LastName AS lastName, CustomerType AS type, ContactNo AS phone,
+      SELECT CustomerID AS id, CustomerName AS name, FirstName AS firstName, LastName AS lastName, CompanyName AS companyName, CustomerType AS type, ContactNo AS phone,
              Address AS address, Status AS status, CreatedAt AS created, UpdatedAt AS updated
       FROM Customer WHERE ContactNo != 'WALKIN' AND ContactNo != 'IMPORTED'`;
     const params = {};
     if (search) {
-      sql += ` AND (CustomerName LIKE :s OR ContactNo LIKE :s OR CustomerID = :sid)`;
+      sql += ` AND (CustomerName LIKE :s OR FirstName LIKE :s OR LastName LIKE :s OR ContactNo LIKE :s OR CustomerID = :sid)`;
       params.s = `%${search}%`;
       params.sid = String(search);
     }
@@ -65,7 +65,7 @@ router.get(
   "/:id",
   asyncHandler(async (req, res) => {
     const [rows] = await pool.query(
-      `SELECT CustomerID AS id, CustomerName AS name, FirstName AS firstName, LastName AS lastName, CustomerType AS type, ContactNo AS phone,
+      `SELECT CustomerID AS id, CustomerName AS name, FirstName AS firstName, LastName AS lastName, CompanyName AS companyName, CustomerType AS type, ContactNo AS phone,
               Address AS address, Status AS status, CreatedAt AS created, UpdatedAt AS updated
        FROM Customer WHERE CustomerID = :id`,
       { id: req.params.id }
@@ -78,7 +78,7 @@ router.get(
 router.post(
   "/",
   asyncHandler(async (req, res) => {
-    const { name, firstName, lastName, type, phone, address } = validateCustomer(req.body);
+    const { name, firstName, lastName, companyName, type, phone, address } = validateCustomer(req.body);
 
     const conn = await pool.getConnection();
     try {
@@ -88,12 +88,12 @@ router.post(
         const customerId = await nextCustomerId(conn);
         try {
           await conn.query(
-            `INSERT INTO Customer (CustomerID, CustomerName, FirstName, LastName, CustomerType, ContactNo, Address, Status)
-             VALUES (:customerId, :name, :firstName, :lastName, :type, :phone, :address, :status)`,
+            `INSERT INTO Customer (CustomerID, CustomerName, FirstName, LastName, CompanyName, CustomerType, ContactNo, Address, Status)
+             VALUES (:customerId, :name, :firstName, :lastName, :companyName, :type, :phone, :address, :status)`,
             {
               customerId,
               name,
-              firstName, lastName, type,
+              firstName, lastName, companyName, type,
               phone,
               address: address || "N/A",
               status: "Active",
@@ -122,7 +122,7 @@ router.put(
   asyncHandler(async (req, res) => {
     const data = validateCustomer(req.body);
     const [result] = await pool.query(
-      `UPDATE Customer SET CustomerName=:name, FirstName=:firstName, LastName=:lastName,
+      `UPDATE Customer SET CustomerName=:name, FirstName=:firstName, LastName=:lastName, CompanyName=:companyName,
        ContactNo=:phone, Address=:address, CustomerType=:type WHERE CustomerID=:id`,
       {...data,id:req.params.id}
     );
