@@ -1,4 +1,5 @@
-﻿import React, { useEffect, useState } from "react";
+import InventoryItemSelector from "./InventoryItemSelector";
+import React, { useEffect, useState } from "react";
 import "./AddStockOutModal.css";
 import { apiRequest } from "./api";
 import { filterVisibleWarehouses } from "./utils/warehouseFilters";
@@ -231,6 +232,9 @@ export default function AddStockOutModal({ isOpen, onClose, onSuccess }) {
             <thead>
               <tr>
                 <th className="text-center">#</th>
+                <th>Category</th>
+                <th>Brand</th>
+                <th>Unit Value</th>
                 <th>Product</th>
                 <th className="text-center">Current Stock</th>
                 <th className="text-center">Qty</th>
@@ -247,18 +251,12 @@ export default function AddStockOutModal({ isOpen, onClose, onSuccess }) {
                 return (
                   <tr key={index}>
                     <td className="text-center">{index + 1}</td>
-                    <td>
-                      <select
-                        value={item.productId}
-                        onChange={(e) => updateItem(index, "productId", e.target.value)}
-                        style={{ width: "100%", padding: "6px 8px" }}
-                      >
-                        <option value="">Select product</option>
-                        {products.map((p) => (
-                          <option key={p.productId} value={p.productId}>{p.name}</option>
-                        ))}
-                      </select>
-                    </td>
+                    <InventoryItemSelector
+                        products={products}
+                        item={item}
+                        rowNumber={index + 1}
+                        onChange={(next) => setItems((previous) => previous.map((row, rowIndex) => rowIndex === index ? next : row))}
+                      />
                     <td className="text-center">{product && !isLoadingStock ? availableStock : "-"}</td>
                     <td className="text-center">
                       <input

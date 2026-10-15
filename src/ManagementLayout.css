@@ -49,7 +49,7 @@
   padding: 9px 12px;
 }
 
-:is(.inventory-tabs, .restocking-tabs, .users-tabs) {
+:is(.restocking-tabs, .users-tabs) {
   flex-wrap: wrap;
   gap: 16px;
 }

@@ -1,4 +1,5 @@
-﻿import React, { useEffect, useMemo, useState } from "react";
+import InventoryItemSelector from "./InventoryItemSelector";
+import React, { useEffect, useMemo, useState } from "react";
 import { apiRequest } from "./api";
 import { filterVisibleWarehouses } from "./utils/warehouseFilters";
 import "./AddStockOutModal.css";
@@ -8,6 +9,7 @@ import "./AddTransferModal.css";
 export default function AddTransferModal({ isOpen, onClose, onSuccess }) {
   const [warehouses, setWarehouses] = useState([]);
   const [inventory, setInventory] = useState([]);
+  const [products, setProducts] = useState([]);
 
   const [fromWarehouseId, setFromWarehouseId] = useState("");
   const [toWarehouseId, setToWarehouseId] = useState("");
@@ -18,9 +20,10 @@ export default function AddTransferModal({ isOpen, onClose, onSuccess }) {
   const [error, setError] = useState("");
 
   const loadModalData = async () => {
-    const [warehouseRows, inventoryRows] = await Promise.all([
+    const [warehouseRows, inventoryRows, productRows] = await Promise.all([
       apiRequest("/warehouses"),
       apiRequest("/inventory"),
+      apiRequest("/products?status=Active"),
     ]);
 
     const activeWarehouses = filterVisibleWarehouses(
@@ -31,6 +34,7 @@ export default function AddTransferModal({ isOpen, onClose, onSuccess }) {
 
     setWarehouses(activeWarehouses);
     setInventory(Array.isArray(inventoryRows) ? inventoryRows : []);
+    setProducts(productRows);
 
     const firstWarehouseId = activeWarehouses[0]?.id || "";
     const secondWarehouseId = activeWarehouses[1]?.id || activeWarehouses[0]?.id || "";
@@ -55,7 +59,7 @@ export default function AddTransferModal({ isOpen, onClose, onSuccess }) {
   const sourceProductMap = useMemo(() => {
     const map = new Map();
     for (const row of sourceInventory) {
-      map.set(row.productId, {
+      map.set(String(row.productId), {
         productId: row.productId,
         productName: row.productName,
         currentStock: Number(row.currentStock),
@@ -63,6 +67,8 @@ export default function AddTransferModal({ isOpen, onClose, onSuccess }) {
     }
     return map;
   }, [sourceInventory]);
+
+  const availableProducts = products.filter(product => sourceProductMap.has(String(product.productId)));
 
   const destinationStockMap = useMemo(() => new Map(
     inventory.filter((row) => row.warehouseId === toWarehouseId)
@@ -157,7 +163,7 @@ export default function AddTransferModal({ isOpen, onClose, onSuccess }) {
             <select
               className="form-select"
               value={fromWarehouseId}
-              onChange={(e) => setFromWarehouseId(e.target.value)}
+              onChange={(e) => { setFromWarehouseId(e.target.value); setItems([{ productId: "", quantity: "" }]); }}
             >
               <option value="" disabled>Select warehouse</option>
               {warehouses.map((w) => (
@@ -197,17 +203,12 @@ export default function AddTransferModal({ isOpen, onClose, onSuccess }) {
 
         <div className="modal-table-wrap">
           <table className="modal-table transfer-items-table">
-            <colgroup>
-              <col className="transfer-index-col" />
-              <col className="transfer-product-col" />
-              <col className="transfer-qty-col" />
-              <col className="transfer-stock-col" />
-              <col className="transfer-stock-col" />
-              <col className="transfer-action-col" />
-            </colgroup>
             <thead>
               <tr>
                 <th className="text-center">#</th>
+                <th>Category</th>
+                <th>Brand</th>
+                <th>Unit Value</th>
                 <th>Product</th>
                 <th className="text-center">Qty</th>
                 <th className="text-center">Available</th>
@@ -221,20 +222,12 @@ export default function AddTransferModal({ isOpen, onClose, onSuccess }) {
                 return (
                   <tr key={index}>
                     <td className="text-center">{index + 1}</td>
-                    <td>
-                      <select
-                        value={item.productId}
-                        onChange={(e) => updateItem(index, "productId", e.target.value)}
-                        className="transfer-product-select"
-                      >
-                        <option value="">Select product</option>
-                        {Array.from(sourceProductMap.values()).map((product) => (
-                          <option key={product.productId} value={product.productId}>
-                            {product.productName}
-                          </option>
-                        ))}
-                      </select>
-                    </td>
+                    <InventoryItemSelector
+                        products={availableProducts}
+                        item={item}
+                        rowNumber={index + 1}
+                        onChange={(next) => setItems((previous) => previous.map((row, rowIndex) => rowIndex === index ? next : row))}
+                      />
                     <td className="text-center">
                       <input
                         type="number"

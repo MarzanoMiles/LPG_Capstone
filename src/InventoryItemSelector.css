@@ -1,0 +1,47 @@
+/* Keep every item on one table row, with room for each selection. */
+.modal-container.inventory-movement-modal { max-width: 1200px; }
+.inventory-movement-modal .modal-table-wrap {
+  overflow-x: auto;
+  border: 1px solid #e5e7eb;
+  border-radius: 8px;
+}
+.inventory-movement-modal .modal-table,
+.transfer-modal .transfer-items-table {
+  min-width: 1100px;
+  table-layout: auto;
+}
+.inventory-movement-modal .modal-table :is(th, td) { vertical-align: middle; }
+.inventory-movement-modal .movement-category-cell { min-width: 160px; }
+.inventory-movement-modal .movement-brand-cell { min-width: 145px; }
+.inventory-movement-modal .movement-weight-cell { min-width: 115px; }
+.inventory-movement-modal .movement-product-cell { min-width: 210px; }
+.inventory-movement-modal .modal-table td select,
+.inventory-movement-modal .modal-table td output {
+  display: block;
+  width: 100%;
+  min-width: 0;
+  min-height: 40px;
+  padding: 9px 10px;
+  border: 1px solid #cbd5e1;
+  border-radius: 6px;
+  background: #fff;
+  color: #111827;
+  font-size: 13px;
+  font-weight: 400;
+  line-height: 20px;
+}
+.inventory-movement-modal .modal-table td select:focus-visible {
+  outline: 2px solid #2563eb;
+  outline-offset: 2px;
+}
+.inventory-movement-modal .modal-table td select:disabled,
+.inventory-movement-modal .modal-table td output { background: #eef2f6; color: #475569; }
+.inventory-movement-modal .modal-table td output { overflow-wrap: anywhere; }
+.movement-not-applicable { display: block; text-align: center; color: #64748b; }
+.inventory-movement-modal .modal-table input[type="number"] {
+  height: 40px;
+  border: 1px solid #cbd5e1;
+  border-radius: 6px;
+  background: #fff;
+  color: #111827;
+}
