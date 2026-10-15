@@ -4,7 +4,8 @@ import {
   ChevronDown,
   Plus,
   FileText,
-  Pencil,
+  Minus,
+  ArrowLeftRight,
   Trash2,
   Upload,
   X,
@@ -506,10 +507,10 @@ export default function Inventory() {
               <Plus size={16} /> Add Stock In
             </button>
             <button className="action-btn" onClick={() => setIsStockOutOpen(true)}>
-              <Plus size={16} /> Add Stock Out
+              <Minus size={16} /> Add Stock Out
             </button>
             <button className="action-btn" onClick={() => setIsTransferOpen(true)}>
-              <Plus size={16} /> Transfer
+              <ArrowLeftRight size={16} /> Transfer
             </button>
           </div>
         </div>
@@ -633,13 +634,6 @@ export default function Inventory() {
                               <FileText size={16} />
                             </button>
                             <button
-                              className="inventory-action-icon edit"
-                              title="Edit"
-                              onClick={() => setEditItem(item)}
-                            >
-                              <Pencil size={16} />
-                            </button>
-                            <button
                               className="inventory-action-icon delete"
                               title="Delete"
                               onClick={() => handleDelete(item)}
@@ -709,6 +703,7 @@ export default function Inventory() {
                     <th>Warehouse</th>
                     <th>Type</th>
                     <th>Quantity</th>
+                    <th>Reason</th>
                     <th>Reference</th>
                     <th>Date</th>
                     <th>User</th>
@@ -716,7 +711,7 @@ export default function Inventory() {
                 </thead>
                 <tbody>
                   {paginatedTransactions.length === 0 && (
-                    <tr><td colSpan={9} style={{ textAlign: "center", padding: 24 }}>No transactions yet.</td></tr>
+                    <tr><td colSpan={10} style={{ textAlign: "center", padding: 24 }}>No transactions yet.</td></tr>
                   )}
                   {paginatedTransactions.map((tx) => (
                     <tr key={tx.transactionId}>
@@ -726,6 +721,7 @@ export default function Inventory() {
                       <td>{tx.warehouse}</td>
                       <td>{String(tx.reason || "").toLowerCase() === "transfer" ? "Transfer" : tx.type}</td>
                       <td>{tx.quantity}</td>
+                      <td>{tx.reason || "—"}</td>
                       <td>{tx.reference || "—"}</td>
                       <td>{new Date(tx.date).toLocaleString()}</td>
                       <td>{tx.user}</td>

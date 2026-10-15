@@ -8,6 +8,8 @@ const STOCK_IN_REASONS = ["Supplier Delivery", "Customer Return", "Inventory Adj
 export default function AddStockInModal({ isOpen, onClose, onSuccess }) {
   const [warehouses, setWarehouses] = useState([]);
   const [products, setProducts] = useState([]);
+  const [warehouseStockRows, setWarehouseStockRows] = useState([]);
+  const [isLoadingStock, setIsLoadingStock] = useState(true);
   const [warehouseId, setWarehouseId] = useState("");
   const [referenceNo, setReferenceNo] = useState("");
   const [reason, setReason] = useState("Supplier Delivery");
@@ -30,8 +32,22 @@ export default function AddStockInModal({ isOpen, onClose, onSuccess }) {
       .catch((err) => setError(err.message || "Failed to load warehouses/products."));
   }, [isOpen]);
 
+  useEffect(() => {
+    if (!isOpen || !warehouseId) return;
+    let cancelled = false;
+    setIsLoadingStock(true);
+    setWarehouseStockRows([]);
+    apiRequest(`/inventory?warehouseId=${encodeURIComponent(warehouseId)}`)
+      .then((rows) => { if (!cancelled) { setWarehouseStockRows(rows); setIsLoadingStock(false); } })
+      .catch((err) => { if (!cancelled) setError(err.message || "Failed to load stock levels."); });
+    return () => { cancelled = true; };
+  }, [isOpen, warehouseId]);
+
   if (!isOpen) return null;
 
+  const showCosts = reason === "Supplier Delivery";
+  const stockByProduct = new Map(warehouseStockRows.map((row) => [String(row.productId), Number(row.currentStock || 0)]));
+  const currentStock = (productId) => stockByProduct.get(String(productId)) || 0;
   const productMap = Object.fromEntries(products.map((p) => [p.productId, p]));
 
   const updateItem = (index, field, value) => {
@@ -64,12 +80,14 @@ export default function AddStockInModal({ isOpen, onClose, onSuccess }) {
     const normalizedOtherReason = otherReason.trim();
     const normalizedRemarks = remarks.trim();
 
+    if (isSubmitting || isLoadingStock) return;
     if (!warehouseId) return setError("Please select a warehouse.");
-    if (!normalizedReferenceNo) return setError("Reference ID is required.");
+    if (reason === "Supplier Delivery" && !normalizedReferenceNo) return setError("Reference ID is required for Supplier Delivery.");
     if (!reason) return setError("Please select a reason.");
     if (reason === "Other" && !normalizedOtherReason) {
       return setError("Please provide details when Other reason is selected.");
     }
+    if (items.some((item) => !item.productId || !Number.isSafeInteger(Number(item.quantity)) || Number(item.quantity) <= 0)) return setError("Complete every item with a product and a positive whole-number quantity.");
     if (!validItems.length) return setError("Add at least one item with a product and quantity.");
 
     const remarksParts = [];
@@ -87,7 +105,7 @@ export default function AddStockInModal({ isOpen, onClose, onSuccess }) {
         method: "POST",
         body: JSON.stringify({
           warehouseId,
-          referenceNo: normalizedReferenceNo,
+          referenceNo: normalizedReferenceNo || null,
           reason,
           remarks: remarksParts.length ? remarksParts.join(" | ") : null,
           items: validItems.map((it) => ({
@@ -107,7 +125,7 @@ export default function AddStockInModal({ isOpen, onClose, onSuccess }) {
 
   return (
     <div className="modal-overlay">
-      <div className="modal-container">
+      <form className="modal-container inventory-movement-modal" onSubmit={handleSubmit}>
         <h2 className="modal-title">Add Stock In</h2>
 
         {error && <p style={{ color: "#dc2626", fontWeight: 600, marginTop: -8 }}>{error}</p>}
@@ -122,18 +140,6 @@ export default function AddStockInModal({ isOpen, onClose, onSuccess }) {
                 <option key={w.id} value={w.id}>{w.name}</option>
               ))}
             </select>
-          </div>
-
-          <div className="form-row">
-            <span className="form-label">Reference ID</span>
-            <span className="form-colon">:</span>
-            <input
-              type="text"
-              className="form-input"
-              placeholder="Reference ID"
-              value={referenceNo}
-              onChange={(e) => setReferenceNo(e.target.value)}
-            />
           </div>
 
           <div className="form-row form-row-top">
@@ -164,6 +170,20 @@ export default function AddStockInModal({ isOpen, onClose, onSuccess }) {
           </div>
 
           <div className="form-row">
+            <span className="form-label">Reference ID {reason === "Supplier Delivery" ? "(required)" : "(optional)"}</span>
+            <span className="form-colon">:</span>
+            <input
+              type="text"
+              className="form-input"
+              maxLength={50}
+              placeholder={reason === "Supplier Delivery" ? "Reference ID" : "Optional reference ID"}
+              required={reason === "Supplier Delivery"}
+              value={referenceNo}
+              onChange={(e) => setReferenceNo(e.target.value)}
+            />
+          </div>
+
+          <div className="form-row">
             <span className="form-label">Remarks</span>
             <span className="form-colon">:</span>
             <input
@@ -189,9 +209,11 @@ export default function AddStockInModal({ isOpen, onClose, onSuccess }) {
               <tr>
                 <th className="text-center">#</th>
                 <th>Product</th>
+                <th className="text-center">Current Stock</th>
                 <th className="text-center">Qty</th>
-                <th className="text-right">Cost Price</th>
-                <th className="text-right">Subtotal</th>
+                <th className="text-center">New Stock Level</th>
+                {showCosts && <th className="text-right">Cost Price</th>}
+                {showCosts && <th className="text-right">Subtotal</th>}
                 <th className="text-center"></th>
               </tr>
             </thead>
@@ -214,6 +236,7 @@ export default function AddStockInModal({ isOpen, onClose, onSuccess }) {
                         ))}
                       </select>
                     </td>
+                    <td className="text-center">{item.productId ? (isLoadingStock ? "Loading?" : currentStock(item.productId)) : "-"}</td>
                     <td className="text-center">
                       <input
                         type="number"
@@ -223,8 +246,9 @@ export default function AddStockInModal({ isOpen, onClose, onSuccess }) {
                         style={{ width: 70, padding: "6px 8px", textAlign: "center" }}
                       />
                     </td>
-                    <td className="text-right">{product ? `₱ ${Number(product.costPrice).toFixed(2)}` : "—"}</td>
-                    <td className="text-right">{`₱ ${subtotal.toFixed(2)}`}</td>
+                    <td className="text-center">{item.productId && item.quantity !== "" && Number(item.quantity) > 0 && !isLoadingStock ? currentStock(item.productId) + validItems.filter((row) => row.productId === item.productId).reduce((sum, row) => sum + Number(row.quantity), 0) : ""}</td>
+                    {showCosts && <td className="text-right">{product ? `₱ ${Number(product.costPrice).toFixed(2)}` : "—"}</td>}
+                    {showCosts && <td className="text-right">{`₱ ${subtotal.toFixed(2)}`}</td>}
                     <td className="text-center">
                       <button
                         type="button"
@@ -244,17 +268,17 @@ export default function AddStockInModal({ isOpen, onClose, onSuccess }) {
         {/* Totals Summary */}
         <div className="modal-summary">
           <div className="summary-row">Total Items: {totalItems}</div>
-          <div className="summary-row">Estimated Cost: ₱ {estimatedCost.toFixed(2)}</div>
+          {showCosts && <div className="summary-row">Estimated Cost: ₱ {estimatedCost.toFixed(2)}</div>}
         </div>
 
         {/* Action Buttons */}
         <div className="modal-actions">
-          <button type="button" className="btn-cancel" onClick={resetAndClose}>Cancel</button>
-          <button type="button" className="btn-received" onClick={handleSubmit} disabled={isSubmitting}>
-            {isSubmitting ? "Saving…" : "Received"}
+          <button type="button" className="btn-cancel" onClick={resetAndClose} disabled={isSubmitting}>Cancel</button>
+          <button type="submit" className="btn-received" disabled={isSubmitting || isLoadingStock}>
+            {isSubmitting ? "Saving…" : "Confirm"}
           </button>
         </div>
-      </div>
+      </form>
     </div>
   );
 }

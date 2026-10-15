@@ -2,8 +2,8 @@
 import { apiRequest } from "./api";
 import { filterVisibleWarehouses } from "./utils/warehouseFilters";
 import "./AddStockOutModal.css";
+import "./AddTransferModal.css";
 
-const TRANSFER_STATUS = ["Completed", "In Transit", "Pending"];
 
 export default function AddTransferModal({ isOpen, onClose, onSuccess }) {
   const [warehouses, setWarehouses] = useState([]);
@@ -11,7 +11,6 @@ export default function AddTransferModal({ isOpen, onClose, onSuccess }) {
 
   const [fromWarehouseId, setFromWarehouseId] = useState("");
   const [toWarehouseId, setToWarehouseId] = useState("");
-  const [status, setStatus] = useState("Completed");
   const [remarks, setRemarks] = useState("");
   const [items, setItems] = useState([{ productId: "", quantity: "" }]);
 
@@ -65,6 +64,11 @@ export default function AddTransferModal({ isOpen, onClose, onSuccess }) {
     return map;
   }, [sourceInventory]);
 
+  const destinationStockMap = useMemo(() => new Map(
+    inventory.filter((row) => row.warehouseId === toWarehouseId)
+      .map((row) => [row.productId, Number(row.currentStock || 0)])
+  ), [inventory, toWarehouseId]);
+
   const updateItem = (index, field, value) => {
     setItems((prev) => prev.map((item, i) => (i === index ? { ...item, [field]: value } : item)));
   };
@@ -79,10 +83,12 @@ export default function AddTransferModal({ isOpen, onClose, onSuccess }) {
       quantity: Number(item.quantity),
     }));
 
+  const totalItems = new Set(validItems.map((item) => item.productId)).size;
+  const totalTransferQty = validItems.reduce((sum, item) => sum + item.quantity, 0);
+
   const resetAndClose = () => {
     setItems([{ productId: "", quantity: "" }]);
     setRemarks("");
-    setStatus("Completed");
     setError("");
     onClose();
   };
@@ -94,6 +100,8 @@ export default function AddTransferModal({ isOpen, onClose, onSuccess }) {
     if (fromWarehouseId === toWarehouseId) {
       return setError("Source and destination warehouses must be different.");
     }
+    if (isSubmitting) return;
+    if (items.some((item) => !item.productId || !Number.isSafeInteger(Number(item.quantity)) || Number(item.quantity) <= 0)) return setError("Complete every item with a product and a positive whole-number quantity.");
     if (!validItems.length) {
       return setError("Add at least one product with quantity.");
     }
@@ -103,7 +111,7 @@ export default function AddTransferModal({ isOpen, onClose, onSuccess }) {
       if (!source) {
         return setError(`Product ${item.productId} is not available in selected source warehouse.`);
       }
-      if (item.quantity > source.currentStock) {
+      if (validItems.filter((row) => row.productId === item.productId).reduce((sum, row) => sum + row.quantity, 0) > source.currentStock) {
         return setError(
           `Cannot transfer ${item.quantity} of ${source.productName}. Available stock: ${source.currentStock}.`
         );
@@ -119,17 +127,13 @@ export default function AddTransferModal({ isOpen, onClose, onSuccess }) {
         body: JSON.stringify({
           fromWarehouseId,
           toWarehouseId,
-          status,
           remarks: remarks || null,
           items: validItems,
         }),
       });
 
-      await loadModalData();
       onSuccess?.();
-      setItems([{ productId: "", quantity: "" }]);
-      setRemarks("");
-      setStatus("Completed");
+      resetAndClose();
     } catch (err) {
       setError(err.message || "Failed to create transfer.");
     } finally {
@@ -140,8 +144,8 @@ export default function AddTransferModal({ isOpen, onClose, onSuccess }) {
   if (!isOpen) return null;
 
   return (
-    <div className="modal-overlay" onClick={resetAndClose}>
-      <div className="modal-container" onClick={(e) => e.stopPropagation()}>
+    <div className="modal-overlay" onClick={() => { if (!isSubmitting) resetAndClose(); }}>
+      <div className="modal-container inventory-movement-modal transfer-modal" onClick={(e) => e.stopPropagation()}>
         <h2 className="modal-title">Warehouse Transfer</h2>
 
         {error && <p style={{ color: "#dc2626", fontWeight: 600, marginTop: -8 }}>{error}</p>}
@@ -174,16 +178,6 @@ export default function AddTransferModal({ isOpen, onClose, onSuccess }) {
           </div>
 
           <div className="form-row">
-            <span className="form-label">Status</span>
-            <span className="form-colon">:</span>
-            <select className="form-select" value={status} onChange={(e) => setStatus(e.target.value)}>
-              {TRANSFER_STATUS.map((itemStatus) => (
-                <option key={itemStatus} value={itemStatus}>{itemStatus}</option>
-              ))}
-            </select>
-          </div>
-
-          <div className="form-row">
             <span className="form-label">Remarks</span>
             <span className="form-colon">:</span>
             <input
@@ -202,13 +196,22 @@ export default function AddTransferModal({ isOpen, onClose, onSuccess }) {
         </div>
 
         <div className="modal-table-wrap">
-          <table className="modal-table">
+          <table className="modal-table transfer-items-table">
+            <colgroup>
+              <col className="transfer-index-col" />
+              <col className="transfer-product-col" />
+              <col className="transfer-qty-col" />
+              <col className="transfer-stock-col" />
+              <col className="transfer-stock-col" />
+              <col className="transfer-action-col" />
+            </colgroup>
             <thead>
               <tr>
                 <th className="text-center">#</th>
                 <th>Product</th>
                 <th className="text-center">Qty</th>
                 <th className="text-center">Available</th>
+                <th className="text-center">Destination Stock</th>
                 <th className="text-center"></th>
               </tr>
             </thead>
@@ -222,7 +225,7 @@ export default function AddTransferModal({ isOpen, onClose, onSuccess }) {
                       <select
                         value={item.productId}
                         onChange={(e) => updateItem(index, "productId", e.target.value)}
-                        style={{ width: "100%", padding: "6px 8px" }}
+                        className="transfer-product-select"
                       >
                         <option value="">Select product</option>
                         {Array.from(sourceProductMap.values()).map((product) => (
@@ -238,15 +241,17 @@ export default function AddTransferModal({ isOpen, onClose, onSuccess }) {
                         min="1"
                         value={item.quantity}
                         onChange={(e) => updateItem(index, "quantity", e.target.value)}
-                        style={{ width: 70, padding: "6px 8px", textAlign: "center" }}
+                        className="transfer-quantity-input"
                       />
                     </td>
                     <td className="text-center">{sourceProduct ? sourceProduct.currentStock : "—"}</td>
+                    <td className="text-center">{item.productId && toWarehouseId ? (destinationStockMap.get(item.productId) || 0) : "—"}</td>
                     <td className="text-center">
                       <button
                         type="button"
                         onClick={() => removeItemRow(index)}
-                        style={{ background: "none", border: "none", color: "#d90429", cursor: "pointer", fontWeight: 700 }}
+                        className="transfer-remove-button"
+                        aria-label={`Remove item ${index + 1}`}
                       >
                         ×
                       </button>
@@ -258,8 +263,13 @@ export default function AddTransferModal({ isOpen, onClose, onSuccess }) {
           </table>
         </div>
 
+        <div className="modal-summary" aria-label="Transfer summary">
+          <div className="summary-row">Total Items: {totalItems}</div>
+          <div className="summary-row">Total Transfer Qty: {totalTransferQty}</div>
+        </div>
+
         <div className="modal-actions">
-          <button type="button" className="btn-cancel" onClick={resetAndClose}>Close</button>
+          <button type="button" className="btn-cancel" onClick={resetAndClose} disabled={isSubmitting}>Cancel</button>
           <button type="button" className="btn-approved" onClick={handleSubmit} disabled={isSubmitting}>
             {isSubmitting ? "Saving…" : "Create Transfer"}
           </button>

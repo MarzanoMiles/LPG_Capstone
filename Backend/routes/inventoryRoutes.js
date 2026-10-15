@@ -39,9 +39,7 @@ router.use(authenticate);
 
 function normalizeReferenceNo(referenceNo) {
   const normalized = String(referenceNo || "").trim();
-  if (!normalized) {
-    throw new ApiError(400, "referenceNo is required.");
-  }
+  if (!normalized) return null;
   if (normalized.length > 50) {
     throw new ApiError(400, "referenceNo must not exceed 50 characters.");
   }
@@ -136,6 +134,7 @@ function buildReferenceLockKey(transactionType, warehouseId, referenceNo) {
 }
 
 async function ensureReferenceNotAlreadyUsed(conn, { warehouseId, referenceNo, transactionType }) {
+  if (!referenceNo) return;
   const [rows] = await conn.query(
     `SELECT t.TransactionID AS transactionId
      FROM InventoryTransaction t
@@ -301,11 +300,14 @@ router.post(
 
     const normalizedReferenceNo = normalizeReferenceNo(referenceNo);
     const normalizedReason = normalizeReason(reason, "Purchase");
+    if (normalizedReason === "Supplier Delivery" && !normalizedReferenceNo) {
+      throw new ApiError(400, "Reference ID is required for Supplier Delivery.");
+    }
     const normalizedRemarks = normalizeRemarks(remarks);
     const normalizedItems = normalizeMovementItems(items);
 
     const conn = await pool.getConnection();
-    const lockKey = buildReferenceLockKey("stock-in", warehouseId, normalizedReferenceNo.toUpperCase());
+    const lockKey = buildReferenceLockKey("stock-in", warehouseId, (normalizedReferenceNo || "").toUpperCase());
     let txStarted = false;
     try {
       await acquireReferenceLock(conn, lockKey);
@@ -373,7 +375,7 @@ router.post(
     const normalizedItems = normalizeMovementItems(items);
 
     const conn = await pool.getConnection();
-    const lockKey = buildReferenceLockKey("stock-out", warehouseId, normalizedReferenceNo.toUpperCase());
+    const lockKey = buildReferenceLockKey("stock-out", warehouseId, (normalizedReferenceNo || "").toUpperCase());
     let txStarted = false;
     try {
       await acquireReferenceLock(conn, lockKey);

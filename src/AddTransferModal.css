@@ -1,0 +1,46 @@
+.transfer-modal .transfer-items-table {
+  width: 100%;
+  min-width: 720px;
+  table-layout: fixed;
+  border-collapse: collapse;
+}
+.transfer-index-col { width: 5%; }
+.transfer-product-col { width: 39%; }
+.transfer-qty-col { width: 12%; }
+.transfer-stock-col { width: 19%; }
+.transfer-action-col { width: 6%; }
+.transfer-modal .transfer-items-table th,
+.transfer-modal .transfer-items-table td {
+  padding: 12px 10px;
+  vertical-align: middle;
+}
+.transfer-modal .transfer-items-table th { line-height: 1.4; }
+.transfer-modal .transfer-items-table .text-center { text-align: center; }
+.transfer-product-select,
+.transfer-quantity-input {
+  width: 100%;
+  height: 40px;
+  box-sizing: border-box;
+  border: 1px solid #d1d5db;
+  border-radius: 6px;
+  padding: 8px 10px;
+  background: #fff;
+  color: #111827;
+  font-size: 0.875rem;
+}
+.transfer-quantity-input { text-align: center; }
+.transfer-remove-button {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 32px;
+  height: 32px;
+  padding: 0;
+  border: none;
+  border-radius: 6px;
+  background: transparent;
+  color: #d90429;
+  font-size: 1.25rem;
+  cursor: pointer;
+}
+.transfer-remove-button:hover { background: #fff1f2; }

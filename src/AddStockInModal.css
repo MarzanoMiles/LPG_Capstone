@@ -251,3 +251,6 @@
 .btn-received:hover {
   background: #1456c7;
 }
+
+.modal-container.inventory-movement-modal { max-width: 960px; }
+.inventory-movement-modal .modal-table { min-width: 650px; }
