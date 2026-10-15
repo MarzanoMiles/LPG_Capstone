@@ -15,6 +15,7 @@ import PaymentModal from "./PaymentModal";
 import { apiRequest } from "./api";
 import { printReceipt } from "./utils/receipt";
 import { filterVisibleWarehouses } from "./utils/warehouseFilters";
+import { resolveProductImage, productImagePlaceholder } from "./utils/productImages";
 import "./PosTerminal.css";
 
 const discountOptions = [
@@ -28,27 +29,6 @@ const customerTypes = ["Walk-in", "Pickup", "Delivery"];
 const vehicleTypes = ["Motor", "Tricycle", "Truck"];
 const HELD_CARTS_KEY = "gastrack_held_carts";
 const DEFAULT_WAREHOUSE_OPTION = "All Warehouses";
-
-const resolveImageUrl = (product) => {
-  if (!product) return "https://gastrack-backend-wtrs.onrender.com/uploads/gasul-50kg.png";
-
-  let url = product.ImageURL || product.imageUrl || product.Imageurl || product.imageURL;
-  if (!url) return "https://gastrack-backend-wtrs.onrender.com/uploads/gasul-50kg.png";
-
-  if (url.includes("https://gastrack-backend-wtrs.onrender.com/")) {
-    const parts = url.split("https://gastrack-backend-wtrs.onrender.com/");
-    return "https://gastrack-backend-wtrs.onrender.com/" + parts[parts.length - 1];
-  }
-
-  if (url.startsWith("http://") || url.startsWith("https://")) {
-    return url;
-  }
-
-  const baseUrl = import.meta.env.VITE_API_BASE_URL || "https://gastrack-backend-wtrs.onrender.com";
-  const cleanBase = baseUrl.replace(/\/$/, "");
-  const cleanPath = url.replace(/^\//, "");
-  return `${cleanBase}/${cleanPath}`;
-};
 
 function formatPeso(amount) {
   return `\u20B1${(amount || 0).toFixed(2)}`;
@@ -85,12 +65,13 @@ function ProductCard({ product, onAdd }) {
       <span className="product-category">{product.category}</span>
       <div className="product-image">
         <img
-          src={resolveImageUrl(product)}
+          src={resolveProductImage(product)}
           alt={product.ProductName || product.name}
           className="product-image-img"
           onError={(e) => {
-            e.target.onerror = null;
-            e.target.src = "https://gastrack-backend-wtrs.onrender.com/uploads/gasul-50kg.png";
+            if (e.currentTarget.src !== productImagePlaceholder) {
+              e.currentTarget.src = productImagePlaceholder;
+            }
           }}
         />
       </div>
@@ -1087,7 +1068,7 @@ export default function PosTerminal() {
       const matchesCategory = category === "All Categories" || p.category === category;
       const matchesSearch = p.name.toLowerCase().includes(searchTerm.toLowerCase());
       return matchesCategory && matchesSearch;
-    });
+    }).sort((a, b) => a.name.localeCompare(b.name, "en", { numeric: true, sensitivity: "base" }));
   }, [products, searchTerm, category]);
 
   const addToCart = (product) => {

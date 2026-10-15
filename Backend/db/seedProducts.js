@@ -2,11 +2,11 @@ require("dotenv").config();
 const pool = require("../config/db");
 
 async function seedProducts() {
-  const categoryGasul = "CAT-001";
-  const categoryCylinder = "CAT-002";
-  const brandGasul = "BRD-001";
+  const categoryGasul = "CTGRY-001";
+  const categoryCylinder = "CTGRY-002";
+  const brandGasul = "BD-001";
   const supplierId = "SUP-001";
-  const warehouseId = "W-001";
+  const warehouseId = "WH-001";
 
   // Seed Supplier
   await pool.query(
