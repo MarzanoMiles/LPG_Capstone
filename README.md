@@ -48,3 +48,15 @@ For an existing database, apply `Backend/db/patch_product_unit_value.sql` to
 add Product.UnitValue and populate recognizable LPG/cylinder weights. The patch
 can be run again without replacing saved values. Enter or edit Unit Value
 (e.g. `11 kg`) in Products; returned-cylinder Weight uses this saved value.
+
+To remove legacy inventory for `P-001` through `P-006` from another `gastrack`
+database, back it up and stop the app, then run from the project root:
+
+```powershell
+mysql -u root -p gastrack -e "source Backend/db/patch_remove_legacy_inventory.sql"
+```
+
+This removes their stock and linked inventory transactions and marks the six
+products inactive. Product and sales records remain. A Git push includes the
+migration file; each database must apply it separately. Run this patch after
+demo seeding if those seed scripts recreate the legacy products.
