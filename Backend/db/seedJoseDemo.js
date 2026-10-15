@@ -3,7 +3,7 @@ const bcrypt = require("bcryptjs");
 const pool = require("../config/db");
 const { nextSequence } = require("../utils/generateNumbers");
 
-const TARGET_EMAIL = "jose.villanueva@gloriouscommercial.ph";
+const TARGET_EMAIL = "jose.villanueva.admin@gmail.com";
 const DEMO_TAG = "DEMO-JOSE-2026";
 
 async function nextId(conn, table, column, prefix, pad = 3) {
