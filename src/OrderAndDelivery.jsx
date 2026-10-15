@@ -1,5 +1,6 @@
+import { customerPageData } from "./utils/customers";
 import { useCallback, useEffect, useState } from "react";
-import { FileSearch, Printer, Ban } from "lucide-react";
+import { FileSearch, Printer, Ban, X } from "lucide-react";
 import { apiRequest } from "./api";
 import { printReceipt } from "./utils/receipt";
 import Pagination from "./Pagination";
@@ -230,6 +231,8 @@ export default function OrderAndDelivery() {
   const [pickupModal, setPickupModal] = useState(null);
   const [pickupBusy, setPickupBusy] = useState(false);
   const [customerHistory,setCustomerHistory]=useState(null);
+  const [customerViewTab,setCustomerViewTab]=useState("profile");
+  const [historyPage,setHistoryPage]=useState(1);
   const [customers, setCustomers] = useState([]);
   const [orders, setOrders] = useState([]);
   const [drivers, setDrivers] = useState([]);
@@ -241,6 +244,8 @@ export default function OrderAndDelivery() {
   const [deliveryStatusFilter, setDeliveryStatusFilter] = useState("");
   const [deliveryPage,setDeliveryPage]=useState(1);
   const [customersSearch, setCustomersSearch] = useState("");
+  const [customerTypeFilter,setCustomerTypeFilter]=useState("");
+  const [customerPage,setCustomerPage]=useState(1);
 
   const [orderModal, setOrderModal] = useState(null);
   const [customerModal, setCustomerModal] = useState(null);
@@ -357,26 +362,29 @@ export default function OrderAndDelivery() {
   const deliveryStart=(currentDeliveryPage-1)*DELIVERY_PAGE_SIZE;
   const paginatedDeliveries=filteredDelivery.slice(deliveryStart,deliveryStart+DELIVERY_PAGE_SIZE);
 
-  const filteredCustomers = customers.filter((c) => {
-    const q = customersSearch.trim().toLowerCase();
-    return !q || String(c.id).includes(q) || c.name.toLowerCase().includes(q);
-  });
+  const {filtered:filteredCustomers,totalPages:customerTotalPages,currentPage:currentCustomerPage,rows:paginatedCustomers} = customerPageData(customers,{search:customersSearch,type:customerTypeFilter,page:customerPage});
+
+  const historyTotalPages=Math.max(1,Math.ceil((customerHistory?.rows.length || 0)/5));
+  const currentHistoryPage=Math.min(historyPage,historyTotalPages);
+  const historyRows=(customerHistory?.rows || []).slice((currentHistoryPage-1)*5,currentHistoryPage*5);
 
   const viewCustomerHistory=async(customer)=>{
     try {
       const rows=await apiRequest(`/orders/customer/${encodeURIComponent(customer.id)}/history`);
+      setCustomerViewTab("profile");
+      setHistoryPage(1);
       setCustomerHistory({customer,rows});
     }catch(err){showToast(err.message || "Failed to load order history.");}
   };
   function openAddCustomer() {
-    setCustomerModal({ name: "", phone: "", address: "", customerType: "Residential", isNew: true });
+    setCustomerModal({ firstName: "", lastName: "", phone: "", address: "", customerType: "Residential", isNew: true });
   }
   function openEditCustomer(c) {
-    setCustomerModal({ ...c, isNew: false });
+    setCustomerModal({ ...c, firstName:c.firstName || "", lastName:c.lastName || "", customerType:c.type, isNew: false });
   }
   const saveCustomer = async () => {
-    if (!customerModal.name.trim() || !customerModal.phone.trim()) {
-      showToast("Customer name and phone are required.");
+    if (![customerModal.firstName,customerModal.lastName,customerModal.phone,customerModal.address].every(value=>value?.trim()) || !["Residential","Commercial"].includes(customerModal.customerType)) {
+      showToast("First Name, Last Name, Contact Number, Address and Customer Type are required.");
       return;
     }
     try {
@@ -384,9 +392,10 @@ export default function OrderAndDelivery() {
         await apiRequest("/customers", {
           method: "POST",
           body: JSON.stringify({
-            name: customerModal.name.trim(),
+            firstName: customerModal.firstName.trim(),
+            lastName: customerModal.lastName.trim(),
             phone: customerModal.phone.trim(),
-            address: customerModal.address.trim() || "N/A",
+            address: customerModal.address.trim(),
             customerType: customerModal.customerType,
           }),
         });
@@ -395,9 +404,11 @@ export default function OrderAndDelivery() {
         await apiRequest(`/customers/${customerModal.id}`, {
           method: "PUT",
           body: JSON.stringify({
-            name: customerModal.name.trim(),
+            firstName: customerModal.firstName.trim(),
+            lastName: customerModal.lastName.trim(),
             phone: customerModal.phone.trim(),
-            address: customerModal.address.trim() || "N/A",
+            address: customerModal.address.trim(),
+            customerType: customerModal.customerType,
           }),
         });
         showToast("Customer updated.");
@@ -411,11 +422,12 @@ export default function OrderAndDelivery() {
   const deleteCustomer = async (customer) => {
     try {
       await apiRequest(`/customers/${customer.id}`, { method: "DELETE" });
-      showToast(`Customer ${customer.name} deactivated.`);
+      setCustomers(previous=>previous.filter(c=>c.id!==customer.id));
+      showToast(`Customer ${customer.name} permanently deleted.`);
       setConfirmDelete(null);
       loadAll();
     } catch (err) {
-      showToast(err.message || "Failed to deactivate customer.");
+      showToast(err.message || "Failed to delete customer.");
     }
   };
 
@@ -427,11 +439,6 @@ export default function OrderAndDelivery() {
 
       <div className="od-panel">
         <div className="od-panel-header">
-          {tab === "customers" && (
-            <button className="od-btn od-btn-primary" onClick={openAddCustomer}>
-              + Add Customer
-            </button>
-          )}
         </div>
 
         <div className="od-tabs">
@@ -517,40 +524,43 @@ export default function OrderAndDelivery() {
         )}
 
         {tab === "customers" && (
-          <section>
+          <section className="od-customer-section">
             <div className="od-filters">
               <div className="od-search-box">
-                <input value={customersSearch} onChange={(e) => setCustomersSearch(e.target.value)} placeholder="Search Customer" />
+                <input value={customersSearch} onChange={(e) => {setCustomersSearch(e.target.value);setCustomerPage(1);}} placeholder="Search Customer" />
               </div>
+              <select aria-label="Customer Type filter" value={customerTypeFilter} onChange={e=>{setCustomerTypeFilter(e.target.value);setCustomerPage(1);}}><option value="">All Customer Types</option><option>Residential</option><option>Commercial</option></select>
+              <button className="od-btn od-btn-primary od-add-customer" onClick={openAddCustomer}>
+                + Add Customer
+              </button>
             </div>
 
             <div className="od-table-wrap">
               <table>
                 <thead>
                   <tr>
-                    <th>Customer ID</th><th>Customer Name</th><th>Phone Number</th>
-                    <th>Address</th><th>Status</th><th>Created At</th><th>Action</th>
+                    <th>Customer ID</th><th>Customer Name</th><th>Contact Number</th>
+                    <th>Address</th><th>Customer Type</th><th>Actions</th>
                   </tr>
                 </thead>
                 <tbody>
-                  {filteredCustomers.map((c) => (
+                  {paginatedCustomers.map((c) => (
                     <tr key={c.id}>
-                      <td>{c.id}</td>
-                      <td>{c.name}</td>
+                      <td className="od-customer-id">{c.id}</td>
+                      <td className="od-customer-name">{c.name}</td>
                       <td>{c.phone || "\u2014"}</td>
-                      <td>{c.address || "\u2014"}</td>
-                      <td><Badge text={c.status} map={{ Active: "od-badge-green", Inactive: "od-badge-red" }} /></td>
-                      <td>{new Date(c.created).toLocaleDateString()}</td>
+                      <td className="od-customer-address">{c.address || "\u2014"}</td>
+                      <td><Badge text={c.type} map={{Residential:"od-badge-blue",Commercial:"od-badge-green"}} /></td>
                       <td>
                         <div className="od-actions">
-                          <button type="button" className="od-action-btn od-act-view" title="View Order History" aria-label={`View order history for ${c.name}`} onClick={()=>viewCustomerHistory(c)}><IconView /></button>
+                          <button type="button" className="od-action-btn od-act-view" title="View Profile & Order History" aria-label={`View profile and order history for ${c.name}`} onClick={()=>viewCustomerHistory(c)}><IconView /></button>
                           <button className="od-action-btn od-act-edit" onClick={() => openEditCustomer(c)} title="Edit">
                             <IconEdit />
                           </button>
                           <button
                             className="od-action-btn od-act-delete"
                             onClick={() => setConfirmDelete({ kind: "customer", customer: c })}
-                            title="Deactivate"
+                            title="Delete"
                           >
                             <IconDelete />
                           </button>
@@ -562,22 +572,59 @@ export default function OrderAndDelivery() {
               </table>
               {filteredCustomers.length === 0 && <p className="od-empty-state">No customers match your search.</p>}
             </div>
+            <div className="od-customer-footer"><span>{filteredCustomers.length ? `Showing ${(currentCustomerPage-1)*10+1}\u2013${Math.min(currentCustomerPage*10,filteredCustomers.length)} of ${filteredCustomers.length} customers` : "0 customers"}</span><Pagination currentPage={currentCustomerPage} totalPages={customerTotalPages} onPageChange={setCustomerPage} /></div>
           </section>
         )}
       </div>
 
-      {customerHistory && <div className="od-modal-overlay open"><div className="od-modal" role="dialog" aria-modal="true" aria-label="Customer Order History">
-        <h3>Order History</h3><p>Customer Name: {customerHistory.customer.name}</p>
-        <div className="od-table-wrap"><table><thead><tr><th>Order ID</th><th>Type</th><th>Status</th><th>Date</th><th>Total</th><th>Settlement</th><th>Net Refund</th><th>Actions</th></tr></thead>
-          <tbody>{customerHistory.rows.map(order=><tr key={order.orderId}><td>{order.id}</td><td>{order.type}</td><td>{order.status}</td><td>{new Date(order.date).toLocaleDateString("en-PH")}</td><td>{peso(order.totalAmount)}</td><td>{order.settledAt ? "Settled" : "N/A"}</td><td>{order.settledAt ? peso(order.netRefundAmount) : "N/A"}</td><td><button type="button" className="od-action-btn od-act-view" title="View Order" aria-label={`View ${order.id}`} onClick={async()=>{try{const full=await apiRequest(`/orders/${order.orderId}`);setCustomerHistory(null);if(full.type==="Delivery")setOrderModal(full);else setPickupModal({kind:"view",order:full});}catch(err){showToast(err.message);}}}><IconView /></button></td></tr>)}</tbody>
-        </table>{!customerHistory.rows.length && <p className="od-empty-state">No orders recorded for this customer.</p>}</div>
-        <div className="od-modal-actions"><button type="button" className="od-btn od-btn-outline" onClick={()=>setCustomerHistory(null)}>Close</button></div>
-      </div></div>}
+      {customerHistory && (
+        <div className="od-modal-overlay open" onClick={e=>e.target===e.currentTarget && setCustomerHistory(null)}>
+          <div className="od-modal od-customer-view" role="dialog" aria-modal="true" aria-labelledby="customer-view-title">
+            <div className="od-customer-view-header">
+              <div><h3 id="customer-view-title">View Customer</h3><p>{customerHistory.customer.name}</p></div>
+              <button type="button" className="od-customer-view-close" aria-label="Close View Customer" title="Close" onClick={()=>setCustomerHistory(null)}><X size={20} aria-hidden="true" /></button>
+            </div>
+            <div className="od-customer-view-tabs" role="tablist" aria-label="Customer details">
+              {[{id:"profile",label:"Customer Profile"},{id:"history",label:"Order History"}].map(item=>(
+                <button key={item.id} type="button" role="tab" id={`customer-${item.id}-tab`} aria-selected={customerViewTab===item.id} aria-controls={`customer-${item.id}-panel`} tabIndex={customerViewTab===item.id?0:-1} className={customerViewTab===item.id?"active":""} onClick={()=>setCustomerViewTab(item.id)} onKeyDown={e=>{if(["ArrowLeft","ArrowRight","Home","End"].includes(e.key)){e.preventDefault();const next=e.key==="Home"?"profile":e.key==="End"?"history":customerViewTab==="profile"?"history":"profile";setCustomerViewTab(next);document.getElementById(`customer-${next}-tab`)?.focus();}}}>{item.label}{item.id==="history" && <span>{customerHistory.rows.length}</span>}</button>
+              ))}
+            </div>
+            {customerViewTab==="profile" ? (
+              <div role="tabpanel" id="customer-profile-panel" aria-labelledby="customer-profile-tab" tabIndex={0}>
+                <dl className="od-customer-profile">
+                  {[['Customer ID',customerHistory.customer.id],['Customer Type',customerHistory.customer.type],['First Name',customerHistory.customer.firstName],['Last Name',customerHistory.customer.lastName],['Contact Number',customerHistory.customer.phone],['Address',customerHistory.customer.address]].map(([label,value])=>(
+                    <div key={label} className={label==="Address"?"od-profile-address":""}><dt>{label}</dt><dd>{value || "?"}</dd></div>
+                  ))}
+                </dl>
+              </div>
+            ) : (
+              <div role="tabpanel" id="customer-history-panel" aria-labelledby="customer-history-tab" tabIndex={0}>
+                <div className="od-table-wrap od-customer-history-table"><table>
+                  <thead><tr><th>Order ID</th><th>Type</th><th>Status</th><th>Date</th><th>Total</th><th>Settlement</th><th>Net Refund</th><th>Actions</th></tr></thead>
+                  <tbody>{historyRows.map(order=><tr key={order.orderId}>
+                    <td>{order.id}</td><td>{order.type}</td><td>{order.status}</td><td>{new Date(order.date).toLocaleDateString("en-PH")}</td><td>{peso(order.totalAmount)}</td><td>{order.settledAt ? "Settled" : "N/A"}</td><td>{order.settledAt ? peso(order.netRefundAmount) : "N/A"}</td>
+                    <td><div className="od-actions">
+                      <button type="button" className="od-action-btn od-act-view" title="View Order" aria-label={`View ${order.id}`} onClick={async()=>{try{const full=await apiRequest(`/orders/${order.orderId}`);if(full.type==="Delivery")setOrderModal({...full,fromCustomerHistory:true});else setPickupModal({kind:"view",order:full});}catch(err){showToast(err.message);}}}><IconView /></button>
+                      <button type="button" className="od-action-btn od-act-print" title="Print Receipt" aria-label={`Print receipt for ${order.id}`} onClick={async()=>{try{printOrderReceipt(await apiRequest(`/orders/${order.orderId}`));}catch(err){showToast(err.message || "Failed to print receipt.");}}}><IconPrint /></button>
+                    </div></td>
+                  </tr>)}</tbody>
+                </table>{!customerHistory.rows.length && <p className="od-empty-state">No orders recorded for this customer.</p>}</div>
+                <div className="od-customer-footer"><span>{customerHistory.rows.length ? `Showing ${(currentHistoryPage-1)*5+1}\u2013${Math.min(currentHistoryPage*5,customerHistory.rows.length)} of ${customerHistory.rows.length} orders` : "0 orders"}</span><Pagination currentPage={currentHistoryPage} totalPages={historyTotalPages} onPageChange={setHistoryPage} /></div>
+              </div>
+            )}
+          </div>
+        </div>
+      )}
 
       {orderModal && (
         <div className="od-modal-overlay open" onClick={(e) => e.target === e.currentTarget && setOrderModal(null)}>
           <div className="od-modal">
-            <h3>Order Details &mdash; {orderModal.id}</h3>
+            {orderModal.fromCustomerHistory ? (
+              <div className="od-customer-view-header">
+                <h3>Order Details &mdash; {orderModal.id}</h3>
+                <button type="button" className="od-customer-view-close" aria-label="Close Order Details" title="Close" onClick={()=>setOrderModal(null)}><X size={20} aria-hidden="true" /></button>
+              </div>
+            ) : <h3>Order Details &mdash; {orderModal.id}</h3>}
             <Field label="Order Type"><input readOnly value={orderModal.type} /></Field>
             <Field label="Date"><input readOnly value={orderModal.date || ""} /></Field>
             <Field label="Order Status"><input readOnly value={orderModal.status} /></Field>
@@ -605,14 +652,14 @@ export default function OrderAndDelivery() {
             <Field label="Delivery No."><input readOnly value={orderModal.drNo || ""} /></Field>
             <Field label="Delivery Status"><input readOnly value={orderModal.deliveryStatus || ""} /></Field>
             <Field label="Delivery Address"><input readOnly value={orderModal.deliveryAddress || ""} /></Field>
-            <Field label="Assigned Delivery Driver"><select disabled={["Delivered","Cancelled","Delivery Failed"].includes(orderModal.deliveryStatus)} value={orderModal.deliveryRiderId || ""} onChange={e=>setOrderModal({...orderModal,deliveryRiderId:e.target.value})}><option value="">Unassigned</option>{drivers.map(d=><option key={d.id} value={d.id}>{d.name}</option>)}</select></Field>
-            <Field label="Notes"><textarea disabled={["Delivered","Cancelled","Delivery Failed"].includes(orderModal.deliveryStatus)} maxLength={255} value={orderModal.deliveryNotes || ""} onChange={e=>setOrderModal({...orderModal,deliveryNotes:e.target.value})} /></Field>
-            <div className="od-modal-actions">
+            <Field label="Assigned Delivery Driver"><select disabled={orderModal.fromCustomerHistory || ["Delivered","Cancelled","Delivery Failed"].includes(orderModal.deliveryStatus)} value={orderModal.deliveryRiderId || ""} onChange={e=>setOrderModal({...orderModal,deliveryRiderId:e.target.value})}><option value="">Unassigned</option>{drivers.map(d=><option key={d.id} value={d.id}>{d.name}</option>)}</select></Field>
+            <Field label="Notes"><textarea disabled={orderModal.fromCustomerHistory || ["Delivered","Cancelled","Delivery Failed"].includes(orderModal.deliveryStatus)} maxLength={255} value={orderModal.deliveryNotes || ""} onChange={e=>setOrderModal({...orderModal,deliveryNotes:e.target.value})} /></Field>
+            {!orderModal.fromCustomerHistory && <div className="od-modal-actions">
               <button className="od-btn od-btn-outline" onClick={() => setOrderModal(null)}>Cancel</button>
               <button className="od-btn od-btn-primary" onClick={saveOrder} disabled={isSavingOrder||["Delivered","Cancelled","Delivery Failed"].includes(orderModal.deliveryStatus)}>
                 {isSavingOrder ? "Saving..." : "Save"}
               </button>
-            </div>
+            </div>}
           </div>
         </div>
       )}
@@ -647,16 +694,15 @@ export default function OrderAndDelivery() {
         <div className="od-modal-overlay open" onClick={(e) => e.target === e.currentTarget && setCustomerModal(null)}>
           <div className="od-modal od-modal-sm">
             <h3>{customerModal.isNew ? "Add Customer" : "Edit Customer"}</h3>
-            <Field label="Customer Name">
-              <input value={customerModal.name} onChange={(e) => setCustomerModal({ ...customerModal, name: e.target.value })} placeholder="Name" />
-            </Field>
-            <Field label="Phone Number">
-              <input value={customerModal.phone} onChange={(e) => setCustomerModal({ ...customerModal, phone: e.target.value })} placeholder="Phone Number" />
+            <Field label="Customer ID"><input disabled value={customerModal.id || "Auto-generated (CUST-001)"} /></Field>
+            <Field label="First Name"><input required maxLength={75} value={customerModal.firstName} onChange={e=>setCustomerModal({...customerModal,firstName:e.target.value})} /></Field>
+            <Field label="Last Name"><input required maxLength={75} value={customerModal.lastName} onChange={e=>setCustomerModal({...customerModal,lastName:e.target.value})} /></Field>
+            <Field label="Contact Number">
+              <input required maxLength={30} value={customerModal.phone} onChange={(e) => setCustomerModal({ ...customerModal, phone: e.target.value })} placeholder="Phone Number" />
             </Field>
             <Field label="Address">
-              <textarea value={customerModal.address} onChange={(e) => setCustomerModal({ ...customerModal, address: e.target.value })} placeholder="Street, Brgy, City, Province, Zip Code" />
+              <textarea required maxLength={255} value={customerModal.address} onChange={(e) => setCustomerModal({ ...customerModal, address: e.target.value })} placeholder="Street, Brgy, City, Province, Zip Code" />
             </Field>
-            {customerModal.isNew && (
               <Field label="Customer Type">
                 <select
                   value={customerModal.customerType}
@@ -666,7 +712,6 @@ export default function OrderAndDelivery() {
                   <option>Commercial</option>
                 </select>
               </Field>
-            )}
             <div className="od-modal-actions">
               <button className="od-btn od-btn-outline" onClick={() => setCustomerModal(null)}>Cancel</button>
               <button className="od-btn od-btn-primary" onClick={saveCustomer}>Save</button>
@@ -678,11 +723,11 @@ export default function OrderAndDelivery() {
       {confirmDelete && (
         <div className="od-modal-overlay open" onClick={(e) => e.target === e.currentTarget && setConfirmDelete(null)}>
           <div className="od-modal od-modal-xs">
-            <h3>{confirmDelete.kind === "order" ? "Cancel order?" : "Deactivate customer?"}</h3>
+            <h3>{confirmDelete.kind === "order" ? "Cancel order?" : "Permanently delete customer?"}</h3>
             <p>
               {confirmDelete.kind === "order"
                 ? `This will cancel order ${confirmDelete.order.id} and restore its stock. This cannot be undone.`
-                : `This will deactivate ${confirmDelete.customer.name}. They can be reactivated later.`}
+                : `This will permanently delete ${confirmDelete.customer.name}. Transaction history will be preserved. This cannot be undone.`}
             </p>
             <div className="od-modal-actions">
               <button className="od-btn od-btn-outline" onClick={() => setConfirmDelete(null)}>Back</button>
@@ -692,7 +737,7 @@ export default function OrderAndDelivery() {
                   confirmDelete.kind === "order" ? deleteOrder(confirmDelete.order) : deleteCustomer(confirmDelete.customer)
                 }
               >
-                {confirmDelete.kind === "order" ? "Cancel Order" : "Deactivate"}
+                {confirmDelete.kind === "order" ? "Cancel Order" : "Delete"}
               </button>
             </div>
           </div>

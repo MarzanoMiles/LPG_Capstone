@@ -8,6 +8,11 @@ const { nextSequence } = require("../utils/generateNumbers");
 const { parseCsv } = require("../utils/csv");
 
 async function nextId(conn, table, column, prefix, pad = 3) {
+  if (table === 'Customer') {
+    const [ids]=await conn.query('SELECT CustomerID AS id FROM Customer UNION SELECT historical_customer_id AS id FROM `Order` UNION SELECT historical_customer_id AS id FROM Sales');
+    const max=ids.reduce((value,row)=>{const match=String(row.id || '').match(/^CUST-?(\d+)$/);return match ? Math.max(value,Number(match[1])) : value;},0);
+    return `CUST-${String(max+1).padStart(3,'0')}`;
+  }
   const normalizedPrefix = String(prefix || "").toUpperCase();
   const [rows] = await conn.query(
     `SELECT ${column} AS id FROM ${table} WHERE ${column} LIKE :pattern`,
@@ -57,8 +62,8 @@ router.get(
     let sql = `
       SELECT s.SaleID AS id, s.SaleNo AS saleNo, s.SaleDate AS datetime, s.UserID AS cashier,
              CONCAT(u.FirstName,' ',u.LastName) AS cashierName, s.OrderID AS orderId,
-             o.OrderType AS type, o.OrderStatus AS status, s.CustomerID AS customerId,
-             CASE WHEN s.CustomerID IS NULL THEN ' \u2014 ' ELSE c.CustomerName END AS customerName,
+             o.OrderType AS type, o.OrderStatus AS status, s.historical_customer_id AS customerId,
+             COALESCE(s.customer_name, ' \u2014 ') AS customerName,
              s.TotalAmount AS amount, s.SalesDiscount AS discount
       FROM Sales s
       JOIN User u ON u.UserID = s.UserID
@@ -95,8 +100,8 @@ router.get(
     const [saleRows] = await pool.query(
       `SELECT s.SaleID AS id, s.SaleNo AS saleNo, s.SaleDate AS datetime, s.UserID AS cashier,
               CONCAT(u.FirstName,' ',u.LastName) AS cashierName, s.OrderID AS orderId,
-              o.OrderType AS type, o.OrderStatus AS status, s.CustomerID AS customerId,
-             CASE WHEN s.CustomerID IS NULL THEN ' \u2014 ' ELSE c.CustomerName END AS customerName,
+              o.OrderType AS type, o.OrderStatus AS status, s.historical_customer_id AS customerId,
+             COALESCE(s.customer_name, ' \u2014 ') AS customerName,
               s.TotalAmount AS amount, s.SalesDiscount AS discount, s.Remarks AS remarks
        FROM Sales s
        JOIN User u ON u.UserID = s.UserID
@@ -116,8 +121,8 @@ router.get(
       { id: req.params.id }
     );
     const [details] = await pool.query(
-      `SELECT CASE WHEN s.CustomerID IS NULL THEN ' \u2014 ' ELSE c.CustomerName END AS customerName, c.ContactNo AS customerPhone,
-              c.Address AS customerAddress, o.OrderNo AS orderNo,
+      `SELECT COALESCE(s.customer_name, ' \u2014 ') AS customerName, s.contact_number AS customerPhone,
+              s.address AS customerAddress, s.customer_type AS customerType, o.OrderNo AS orderNo,
               d.DRNo AS deliveryNo, d.DeliveryCharge AS deliveryFee,
               d.DeliveryAddress AS deliveryAddress, d.Remarks AS deliveryNotes,
               CONCAT(r.FirstName,' ',r.LastName) AS driverName,
@@ -201,24 +206,8 @@ router.post(
         }
       }
 
-      if (!customerId) {
-        const [existing] = await conn.query(
-          `SELECT CustomerID FROM Customer WHERE ContactNo = 'WALKIN' LIMIT 1`
-        );
-        if (existing[0]) {
-          customerId = existing[0].CustomerID;
-        } else {
-          const newCustomerId = await nextId(conn, "Customer", "CustomerID", "CUST");
-          await conn.query(
-            `INSERT INTO Customer (CustomerID, CustomerType, ContactNo, Address, Status)
-             VALUES (:customerId, :type, 'WALKIN', 'Walk-in', 'Active')`,
-            {
-              customerId: newCustomerId,
-              type: customerType === "Business Account" ? "Commercial" : "Residential",
-            }
-          );
-          customerId = newCustomerId;
-        }
+      if (orderType === "Walk-in" || !customerId) {
+        customerId = await require("../utils/walkInCustomer").resolveWalkInCustomer(conn);
       }
 
       const subtotal = items.reduce((sum, it) => sum + it.qty * it.unitPrice, 0);

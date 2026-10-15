@@ -7,6 +7,11 @@ const { authenticate, authorize } = require("../middleware/auth");
 const { nextSequence } = require("../utils/generateNumbers");
 
 async function nextId(conn, table, column, prefix, pad = 3) {
+  if (table === 'Customer') {
+    const [ids]=await conn.query('SELECT CustomerID AS id FROM Customer UNION SELECT historical_customer_id AS id FROM `Order` UNION SELECT historical_customer_id AS id FROM Sales');
+    const max=ids.reduce((value,row)=>{const match=String(row.id || '').match(/^CUST-?(\d+)$/);return match ? Math.max(value,Number(match[1])) : value;},0);
+    return `CUST-${String(max+1).padStart(3,'0')}`;
+  }
   const [rows] = await conn.query(
     `SELECT ${column} AS id FROM ${table} WHERE ${column} LIKE :pattern ORDER BY ${column} DESC LIMIT 500`,
     { pattern: `${prefix}-%` }
@@ -33,8 +38,8 @@ router.use((req,res,next)=> {
 });
 
 const LIST_SELECT = `
-  SELECT o.OrderID AS orderId, o.OrderNo AS id, o.CustomerID AS customerId,
-         c.CustomerName AS customerName, c.ContactNo AS customerPhone, c.Address AS customerAddress,
+  SELECT o.OrderID AS orderId, o.OrderNo AS id, o.historical_customer_id AS customerId,
+         o.customer_name AS customerName, o.contact_number AS customerPhone, o.address AS customerAddress, o.customer_type AS customerType,
          o.OrderType AS type, o.OrderStatus AS status, o.OrderDate AS date,
          o.PickupStatus AS pickupStatus, o.PickupScheduledAt AS pickupScheduledAt, o.PickupSettlementPending AS settlementPending,
          o.TotalAmount AS totalAmount, o.Remarks AS remarks,
@@ -46,7 +51,7 @@ const LIST_SELECT = `
          d.DeliveredByUserID AS deliveryRiderId,
          CASE WHEN rider.UserID IS NOT NULL THEN CONCAT(rider.FirstName,' ',rider.LastName) ELSE NULL END AS deliveryRiderName
   FROM \`Order\` o
-  JOIN Customer c ON c.CustomerID = o.CustomerID
+  LEFT JOIN Customer c ON c.CustomerID = o.CustomerID
   LEFT JOIN Sales s ON s.OrderID = o.OrderID
   LEFT JOIN (SELECT SaleID,SUM(AmountPaid) AS AmountPaid,MAX(PaymentID) AS PaymentID,MAX(ReferenceNo) AS ReferenceNo,MAX(PaymentMethod) AS PaymentMethod FROM Payment WHERE PaymentType='Sale' GROUP BY SaleID) pay ON pay.SaleID = s.SaleID
   LEFT JOIN Delivery d ON d.SaleID = s.SaleID
@@ -124,7 +129,7 @@ router.get("/customer/:customerId/history", asyncHandler(async(req,res)=>{
     LEFT JOIN PickupSettlement ps ON ps.OrderID=o.OrderID AND ps.CompanyID=:companyId
     LEFT JOIN (SELECT OrderID,SUM(CancellationFee) AS settlementFee,SUM(RefundAmount) AS netRefundAmount
       FROM RefundLedger WHERE CompanyID=:companyId AND Reason='Delivery Failed' GROUP BY OrderID) deliveryRefund ON deliveryRefund.OrderID=o.OrderID
-    WHERE o.CustomerID=:customerId AND owner.CompanyID=:companyId ORDER BY o.OrderDate DESC,o.OrderID DESC`,
+    WHERE o.historical_customer_id=:customerId AND owner.CompanyID=:companyId ORDER BY o.OrderDate DESC,o.OrderID DESC`,
     {customerId:req.params.customerId,companyId:req.user.companyId});
   res.json(rows);
 }));
@@ -139,7 +144,7 @@ router.get(
     const params = {companyId:req.user.companyId};
     sql += ` AND EXISTS (SELECT 1 FROM User owner WHERE owner.UserID=s.UserID AND owner.CompanyID=:companyId)`;
     if (search) {
-      sql += ` AND (o.OrderNo LIKE :s OR c.CustomerName LIKE :s)`;
+      sql += ` AND (o.OrderNo LIKE :s OR o.customer_name LIKE :s)`;
       params.s = `%${search}%`;
     }
     if (status) {
@@ -182,18 +187,7 @@ router.get(
 );
 
 // Finds or creates the shared walk-in customer record, same convention as POST /sales.
-async function resolveWalkInCustomer(conn) {
-  const [existing] = await conn.query(`SELECT CustomerID FROM Customer WHERE ContactNo = 'WALKIN' LIMIT 1`);
-  if (existing[0]) return existing[0].CustomerID;
-
-  const customerId = await nextId(conn, "Customer", "CustomerID", "CUST");
-  await conn.query(
-    `INSERT INTO Customer (CustomerID, CustomerType, ContactNo, Address, Status)
-     VALUES (:customerId, 'Residential', 'WALKIN', 'Walk-in', 'Active')`,
-    { customerId }
-  );
-  return customerId;
-}
+const { resolveWalkInCustomer } = require("../utils/walkInCustomer");
 
 // POST /orders
 // body: { customerId?, orderType, items:[{productId, qty, unitPrice}], deliveryAddress?, deliveryFee?,
@@ -238,6 +232,7 @@ router.post(
     try {
       await conn.beginTransaction();
 
+      if (orderType === "Walk-in") customerId = await resolveWalkInCustomer(conn);
       if (customerId) {
         const [customerRows] = await conn.query(`SELECT CustomerID FROM Customer WHERE CustomerID = :id`, {
           id: customerId,
@@ -395,7 +390,7 @@ router.put(
             let address = deliveryAddress;
             if (!address) {
               const [customerRows] = await conn.query(
-                `SELECT c.Address FROM \`Order\` o JOIN Customer c ON c.CustomerID = o.CustomerID WHERE o.OrderID = :id`,
+                `SELECT o.address AS Address FROM \`Order\` o LEFT JOIN Customer c ON c.CustomerID = o.CustomerID WHERE o.OrderID = :id`,
                 { id: req.params.id }
               );
               address = customerRows[0]?.Address;

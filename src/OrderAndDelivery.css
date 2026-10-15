@@ -72,6 +72,10 @@
   flex: 1 1 300px;
   max-width: 400px;
 }
+
+.od-add-customer {
+  margin-left: auto;
+}
 .od-search-box input {
   width: 100%;
   padding: 10px 16px;
@@ -386,6 +390,7 @@
   }
   .od-search-box { flex: 1 1 auto; max-width: 100%; }
   .od-filters select { width: 100%; }
+  .od-add-customer { margin-left: 0; }
   .od-modal {
     padding: 20px;
     max-width: 100%;
@@ -478,4 +483,58 @@
   .od-claim-modal { padding: 24px 16px; }
   .od-claim-modal .cylinder-return-question { flex-wrap: wrap; gap: 12px; }
   .od-claim-modal .cylinder-return-question > span { flex-basis: 100%; }
+}
+/* Customers table and customer details */
+.od-customer-section .od-table-wrap {
+  border: 1px solid #e2e8f0;
+  border-radius: 10px;
+  box-shadow: none;
+}
+.od-customer-section table { min-width: 860px; }
+.od-customer-section .od-table-wrap th,
+.od-customer-section .od-table-wrap td {
+  text-align: left;
+  padding: 16px 20px;
+}
+.od-customer-section .od-table-wrap th { white-space: nowrap; }
+.od-customer-section .od-table-wrap tbody tr:last-child td { border-bottom: 0; }
+.od-customer-section .od-customer-id { color: #64748b; white-space: nowrap; font-weight: 600; }
+.od-customer-section .od-customer-name { font-weight: 600; min-width: 160px; }
+.od-customer-section .od-customer-address { min-width: 190px; max-width: 310px; overflow-wrap: anywhere; }
+.od-customer-section .od-actions { justify-content: flex-start; flex-wrap: nowrap; gap: 8px; }
+.od-customer-section .od-action-btn { width: 32px; height: 32px; border-radius: 6px; }
+.od-customer-section .od-action-btn:hover { background: #f1f5f9; opacity: 1; }
+.od-customer-footer { display: flex; align-items: center; justify-content: space-between; gap: 16px; padding: 14px 0; }
+.od-customer-footer > span { font-size: 13px; color: #64748b; white-space: nowrap; }
+.od-customer-footer .table-pagination { width: auto; padding: 0; border: 0; background: transparent; }
+.od-customer-view { max-width: 1080px; }
+.od-customer-view-header { display: flex; align-items: flex-start; justify-content: space-between; gap: 20px; margin-bottom: 24px; }
+.od-customer-view-header h3 { margin-bottom: 8px; }
+.od-customer-view-close { display: inline-flex; align-items: center; justify-content: center; flex-shrink: 0; width: 36px; height: 36px; padding: 0; border: 0; border-radius: 6px; background: transparent; color: #64748b; cursor: pointer; }
+.od-customer-view-close:hover { background: #f1f5f9; color: #1e293b; }
+.od-customer-view-close:focus-visible { outline: 2px solid #2563eb; outline-offset: 2px; }
+.od-customer-view-header p { margin: 0; }
+.od-customer-view-header p span { color: #64748b; }
+.od-customer-view-tabs { display: flex; gap: 24px; border-bottom: 1px solid #e2e8f0; margin-bottom: 24px; }
+.od-customer-view-tabs button { display: flex; align-items: center; gap: 8px; background: transparent; border: 0; border-bottom: 2px solid transparent; padding: 12px 0; color: #64748b; font-size: 14px; font-weight: 600; cursor: pointer; }
+.od-customer-view-tabs button.active { color: #1d4ed8; border-bottom-color: #1d4ed8; }
+.od-customer-view-tabs button span { border-radius: 12px; padding: 2px 8px; background: #eff6ff; color: #1d4ed8; font-size: 12px; }
+.od-customer-view-tabs button:focus-visible { outline: 2px solid #2563eb; outline-offset: 3px; }
+.od-customer-profile { display: grid; grid-template-columns: repeat(2,minmax(0,1fr)); gap: 24px; padding: 24px; margin: 0; background: #f8fafc; border: 1px solid #e2e8f0; border-radius: 10px; }
+.od-customer-profile dt { font-size: 13px; color: #64748b; margin-bottom: 8px; }
+.od-customer-profile dd { margin: 0; color: #1e293b; font-size: 15px; font-weight: 500; overflow-wrap: anywhere; }
+.od-profile-address { grid-column: 1 / -1; }
+.od-customer-history-table { border: 1px solid #e2e8f0; border-radius: 8px; box-shadow: none; }
+.od-customer-history-table table { min-width: 900px; }
+.od-customer-history-table th,
+.od-customer-history-table td { text-align: left; padding: 14px 16px; }
+.od-customer-history-table th { white-space: nowrap; }
+.od-customer-history-table .od-actions { justify-content: flex-start; flex-wrap: nowrap; }
+.od-customer-history-table td:nth-child(5),
+.od-customer-history-table td:nth-child(7) { white-space: nowrap; }
+@media (max-width: 768px) {
+  .od-customer-footer { align-items: flex-start; flex-direction: column; }
+  .od-customer-footer .table-pagination { width: 100%; }
+  .od-customer-profile { grid-template-columns: 1fr; padding: 18px; gap: 20px; }
+  .od-customer-view-tabs { gap: 20px; }
 }

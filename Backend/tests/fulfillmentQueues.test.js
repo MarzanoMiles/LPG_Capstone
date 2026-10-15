@@ -46,7 +46,7 @@ test("walk-in checkout records completed sale/payment and deducts physical stock
 test("Sales list and transaction details retain null-customer rows and supply dash display",async()=>{
  queries=[];await invoke(sales,"/","get");await invoke(sales,"/:id","get");
  for(const q of queries.filter(q=>q.sql.includes("AS customerName"))) {
-  assert.match(q.sql,/s.CustomerID IS NULL THEN ' \u2014 '/);
+  assert.match(q.sql,/COALESCE\(s.customer_name, ' \u2014 '\)/);
   assert.match(q.sql,/LEFT JOIN Customer c ON c.CustomerID = s.CustomerID/);
  }
  assert.equal(queries.filter(q=>q.sql.includes("AS customerName")).length,3);

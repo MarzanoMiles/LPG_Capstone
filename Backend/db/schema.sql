@@ -150,18 +150,26 @@ CREATE TABLE Customer (
   CustomerID    VARCHAR(20) PRIMARY KEY,                -- CUST-001
   UserID        VARCHAR(20) NULL,
   CustomerType  VARCHAR(20) NOT NULL,                   -- Commercial | Residential
+  FirstName     VARCHAR(75) NULL,
+  LastName      VARCHAR(75) NULL,
   CustomerName  VARCHAR(150) NOT NULL DEFAULT '',
   ContactNo     VARCHAR(30) NOT NULL,
   Address       VARCHAR(255) NOT NULL,
   Status        VARCHAR(20) NOT NULL DEFAULT 'Active',
   CreatedAt     DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
   UpdatedAt     DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+  CONSTRAINT customer_type_valid CHECK (CustomerType IN ('Residential','Commercial')),
   FOREIGN KEY (UserID) REFERENCES User(UserID)
 );
 
 CREATE TABLE `Order` (
+  historical_customer_id VARCHAR(20) NULL,
+  customer_name VARCHAR(150) NULL,
+  contact_number VARCHAR(30) NULL,
+  address VARCHAR(255) NULL,
+  customer_type VARCHAR(20) NULL,
   OrderID      VARCHAR(20) PRIMARY KEY,                 -- ORD-001
-  CustomerID   VARCHAR(20) NOT NULL,
+  CustomerID   VARCHAR(20) NULL,
   OrderNo      VARCHAR(50) NOT NULL UNIQUE,
   OrderDate    DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
   OrderType    VARCHAR(20) NOT NULL,                    -- Walk-in, Pickup, Delivery
@@ -186,9 +194,14 @@ CREATE TABLE OrderDetails (
 );
 
 CREATE TABLE Sales (
+  historical_customer_id VARCHAR(20) NULL,
+  customer_name VARCHAR(150) NULL,
+  contact_number VARCHAR(30) NULL,
+  address VARCHAR(255) NULL,
+  customer_type VARCHAR(20) NULL,
   SaleID         VARCHAR(20) PRIMARY KEY,               -- S-001
   OrderID        VARCHAR(20) NULL,
-  CustomerID     VARCHAR(20) NOT NULL,
+  CustomerID     VARCHAR(20) NULL,
   UserID         VARCHAR(20) NOT NULL,
   SaleNo         VARCHAR(50) NOT NULL UNIQUE,
   SaleDate       DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
@@ -244,6 +257,11 @@ CREATE TABLE PurchaseOrderItem (
 );
 
 CREATE TABLE Payment (
+  historical_customer_id VARCHAR(20) NULL,
+  customer_name VARCHAR(150) NULL,
+  contact_number VARCHAR(30) NULL,
+  address VARCHAR(255) NULL,
+  customer_type VARCHAR(20) NULL,
   PaymentID        VARCHAR(20) PRIMARY KEY,             -- PAY-001
   PaymentType      VARCHAR(20) NOT NULL,                -- Sale | Purchase
   SaleID           VARCHAR(20) NULL,
@@ -258,6 +276,11 @@ CREATE TABLE Payment (
 );
 
 CREATE TABLE Delivery (
+  historical_customer_id VARCHAR(20) NULL,
+  customer_name VARCHAR(150) NULL,
+  contact_number VARCHAR(30) NULL,
+  address VARCHAR(255) NULL,
+  customer_type VARCHAR(20) NULL,
   DeliveryID         VARCHAR(20) PRIMARY KEY,           -- D-001
   SaleID             VARCHAR(20) NOT NULL UNIQUE,
   DRNo               VARCHAR(50) NOT NULL UNIQUE,
@@ -415,3 +438,40 @@ CREATE TABLE IF NOT EXISTS PickupClaim (
 SET FOREIGN_KEY_CHECKS = 1;
 
 
+
+-- Capture customer details once, including POS and imported transactions.
+DELIMITER $$
+CREATE TRIGGER customer_snapshot_order BEFORE INSERT ON `Order` FOR EACH ROW BEGIN
+  SET NEW.historical_customer_id=COALESCE(NEW.historical_customer_id,(SELECT CustomerID FROM Customer WHERE CustomerID=NEW.CustomerID));
+  SET NEW.customer_name=COALESCE(NEW.customer_name,(SELECT CustomerName FROM Customer WHERE CustomerID=NEW.CustomerID));
+  SET NEW.contact_number=COALESCE(NEW.contact_number,(SELECT ContactNo FROM Customer WHERE CustomerID=NEW.CustomerID));
+  SET NEW.address=COALESCE(NEW.address,(SELECT Address FROM Customer WHERE CustomerID=NEW.CustomerID));
+  SET NEW.customer_type=COALESCE(NEW.customer_type,(SELECT CustomerType FROM Customer WHERE CustomerID=NEW.CustomerID));
+END$$
+CREATE TRIGGER customer_snapshot_sales BEFORE INSERT ON `Sales` FOR EACH ROW BEGIN
+  SET NEW.historical_customer_id=COALESCE(NEW.historical_customer_id,(SELECT historical_customer_id FROM `Order` WHERE OrderID=NEW.OrderID));
+  SET NEW.customer_name=COALESCE(NEW.customer_name,(SELECT customer_name FROM `Order` WHERE OrderID=NEW.OrderID));
+  SET NEW.contact_number=COALESCE(NEW.contact_number,(SELECT contact_number FROM `Order` WHERE OrderID=NEW.OrderID));
+  SET NEW.address=COALESCE(NEW.address,(SELECT address FROM `Order` WHERE OrderID=NEW.OrderID));
+  SET NEW.customer_type=COALESCE(NEW.customer_type,(SELECT customer_type FROM `Order` WHERE OrderID=NEW.OrderID));
+  SET NEW.historical_customer_id=COALESCE(NEW.historical_customer_id,(SELECT CustomerID FROM Customer WHERE CustomerID=NEW.CustomerID));
+  SET NEW.customer_name=COALESCE(NEW.customer_name,(SELECT CustomerName FROM Customer WHERE CustomerID=NEW.CustomerID));
+  SET NEW.contact_number=COALESCE(NEW.contact_number,(SELECT ContactNo FROM Customer WHERE CustomerID=NEW.CustomerID));
+  SET NEW.address=COALESCE(NEW.address,(SELECT Address FROM Customer WHERE CustomerID=NEW.CustomerID));
+  SET NEW.customer_type=COALESCE(NEW.customer_type,(SELECT CustomerType FROM Customer WHERE CustomerID=NEW.CustomerID));
+END$$
+CREATE TRIGGER customer_snapshot_payment BEFORE INSERT ON `Payment` FOR EACH ROW BEGIN
+  SET NEW.historical_customer_id=COALESCE(NEW.historical_customer_id,(SELECT historical_customer_id FROM Sales WHERE SaleID=NEW.SaleID));
+  SET NEW.customer_name=COALESCE(NEW.customer_name,(SELECT customer_name FROM Sales WHERE SaleID=NEW.SaleID));
+  SET NEW.contact_number=COALESCE(NEW.contact_number,(SELECT contact_number FROM Sales WHERE SaleID=NEW.SaleID));
+  SET NEW.address=COALESCE(NEW.address,(SELECT address FROM Sales WHERE SaleID=NEW.SaleID));
+  SET NEW.customer_type=COALESCE(NEW.customer_type,(SELECT customer_type FROM Sales WHERE SaleID=NEW.SaleID));
+END$$
+CREATE TRIGGER customer_snapshot_delivery BEFORE INSERT ON `Delivery` FOR EACH ROW BEGIN
+  SET NEW.historical_customer_id=COALESCE(NEW.historical_customer_id,(SELECT historical_customer_id FROM Sales WHERE SaleID=NEW.SaleID));
+  SET NEW.customer_name=COALESCE(NEW.customer_name,(SELECT customer_name FROM Sales WHERE SaleID=NEW.SaleID));
+  SET NEW.contact_number=COALESCE(NEW.contact_number,(SELECT contact_number FROM Sales WHERE SaleID=NEW.SaleID));
+  SET NEW.address=COALESCE(NEW.address,(SELECT address FROM Sales WHERE SaleID=NEW.SaleID));
+  SET NEW.customer_type=COALESCE(NEW.customer_type,(SELECT customer_type FROM Sales WHERE SaleID=NEW.SaleID));
+END$$
+DELIMITER ;

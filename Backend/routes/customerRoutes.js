@@ -2,12 +2,13 @@
 const pool = require("../config/db");
 const asyncHandler = require("../utils/asyncHandler");
 const ApiError = require("../utils/apiError");
+const { validateCustomer, hardDeleteCustomer } = require("../utils/customerHistory");
 const { authenticate } = require("../middleware/auth");
 
-async function nextId(conn, table, column, prefix, pad = 3) {
-  const normalizedPrefix = String(prefix || "").toUpperCase();
+async function nextCustomerId(conn, pad = 3) {
+  const normalizedPrefix = "CUST";
   const [rows] = await conn.query(
-    `SELECT ${column} AS id FROM ${table} WHERE ${column} LIKE :pattern`,
+    `SELECT CustomerID AS id FROM Customer WHERE CustomerID LIKE :pattern UNION SELECT historical_customer_id AS id FROM \`Order\` WHERE historical_customer_id LIKE :pattern UNION SELECT historical_customer_id AS id FROM Sales WHERE historical_customer_id LIKE :pattern`,
     { pattern: `${normalizedPrefix}%` }
   );
 
@@ -25,7 +26,7 @@ async function nextId(conn, table, column, prefix, pad = 3) {
   while (true) {
     const candidateId = `${normalizedPrefix}-${String(next).padStart(pad, "0")}`;
     const [existsRows] = await conn.query(
-      `SELECT ${column} AS id FROM ${table} WHERE ${column} = :id LIMIT 1`,
+      `SELECT CustomerID AS id FROM Customer WHERE CustomerID = :id LIMIT 1`,
       { id: candidateId }
     );
     if (!existsRows[0]) return candidateId;
@@ -38,16 +39,21 @@ router.use(authenticate);
 router.get(
   "/",
   asyncHandler(async (req, res) => {
-    const { search } = req.query;
+    const { search, customerType } = req.query;
     let sql = `
-      SELECT CustomerID AS id, CustomerName AS name, CustomerType AS type, ContactNo AS phone,
+      SELECT CustomerID AS id, CustomerName AS name, FirstName AS firstName, LastName AS lastName, CustomerType AS type, ContactNo AS phone,
              Address AS address, Status AS status, CreatedAt AS created, UpdatedAt AS updated
       FROM Customer WHERE ContactNo != 'WALKIN' AND ContactNo != 'IMPORTED'`;
     const params = {};
     if (search) {
       sql += ` AND (CustomerName LIKE :s OR ContactNo LIKE :s OR CustomerID = :sid)`;
       params.s = `%${search}%`;
-      params.sid = Number(search) || 0;
+      params.sid = String(search);
+    }
+    if (customerType && customerType !== 'All Customer Types') {
+      if (!['Residential','Commercial'].includes(customerType)) throw new ApiError(400,'Invalid Customer Type filter.');
+      sql += ' AND CustomerType=:customerType';
+      params.customerType=customerType;
     }
     sql += ` ORDER BY CustomerID DESC`;
     const [rows] = await pool.query(sql, params);
@@ -59,7 +65,7 @@ router.get(
   "/:id",
   asyncHandler(async (req, res) => {
     const [rows] = await pool.query(
-      `SELECT CustomerID AS id, CustomerName AS name, CustomerType AS type, ContactNo AS phone,
+      `SELECT CustomerID AS id, CustomerName AS name, FirstName AS firstName, LastName AS lastName, CustomerType AS type, ContactNo AS phone,
               Address AS address, Status AS status, CreatedAt AS created, UpdatedAt AS updated
        FROM Customer WHERE CustomerID = :id`,
       { id: req.params.id }
@@ -72,26 +78,25 @@ router.get(
 router.post(
   "/",
   asyncHandler(async (req, res) => {
-    const { name, customerType, phone, address, status } = req.body;
-    if (!name || !phone) throw new ApiError(400, "name and phone are required.");
+    const { name, firstName, lastName, type, phone, address } = validateCustomer(req.body);
 
     const conn = await pool.getConnection();
     try {
       let createdId = null;
 
       for (let attempts = 0; attempts < 5; attempts += 1) {
-        const customerId = await nextId(conn, "Customer", "CustomerID", "CUST");
+        const customerId = await nextCustomerId(conn);
         try {
           await conn.query(
-            `INSERT INTO Customer (CustomerID, CustomerName, CustomerType, ContactNo, Address, Status)
-             VALUES (:customerId, :name, :type, :phone, :address, :status)`,
+            `INSERT INTO Customer (CustomerID, CustomerName, FirstName, LastName, CustomerType, ContactNo, Address, Status)
+             VALUES (:customerId, :name, :firstName, :lastName, :type, :phone, :address, :status)`,
             {
               customerId,
               name,
-              type: customerType || "Residential",
+              firstName, lastName, type,
               phone,
               address: address || "N/A",
-              status: status || "Active",
+              status: "Active",
             }
           );
           createdId = customerId;
@@ -115,44 +120,20 @@ router.post(
 router.put(
   "/:id",
   asyncHandler(async (req, res) => {
-    const { name, phone, address, status, customerType } = req.body;
+    const data = validateCustomer(req.body);
     const [result] = await pool.query(
-      `UPDATE Customer SET
-         CustomerName = COALESCE(:name, CustomerName),
-         ContactNo = COALESCE(:phone, ContactNo),
-         Address = COALESCE(:address, Address),
-         CustomerType = COALESCE(:type, CustomerType),
-         Status = COALESCE(:status, Status)
-       WHERE CustomerID = :id`,
-      {
-        id: req.params.id,
-        name: name || null,
-        phone: phone || null,
-        address: address || null,
-        type: customerType || null,
-        status: status || null,
-      }
+      `UPDATE Customer SET CustomerName=:name, FirstName=:firstName, LastName=:lastName,
+       ContactNo=:phone, Address=:address, CustomerType=:type WHERE CustomerID=:id`,
+      {...data,id:req.params.id}
     );
     if (!result.affectedRows) throw new ApiError(404, "Customer not found.");
     res.json({ message: "Customer updated." });
   })
 );
 
-// DELETE /customers/:id — soft delete: Customer may be referenced by Order/Sales history.
-router.delete(
-  "/:id",
-  asyncHandler(async (req, res) => {
-    const [result] = await pool.query(
-      `UPDATE Customer SET Status = 'Inactive' WHERE CustomerID = :id`,
-      { id: req.params.id }
-    );
-    if (!result.affectedRows) throw new ApiError(404, "Customer not found.");
-    res.json({ message: "Customer deactivated." });
-  })
-);
-
+// Snapshots and FK decoupling are committed atomically with the hard delete.
+router.delete("/:id", asyncHandler(async(req,res)=>{
+  await hardDeleteCustomer(pool,req.params.id);
+  res.json({message:"Customer permanently deleted. Transaction history preserved."});
+}));
 module.exports = router;
-
-
-
-
