@@ -264,7 +264,7 @@ router.get(
              CONCAT(u.FirstName, ' ', u.LastName) AS user
       FROM InventoryTransaction t
       JOIN Inventory i ON i.InventoryID = t.InventoryID
-      JOIN Product p ON p.ProductID = i.ProductID
+      JOIN ProductHistory p ON p.ProductID = i.ProductID
       JOIN Warehouse w ON w.WarehouseID = i.WarehouseID
       JOIN User u ON u.UserID = t.UserID
       ORDER BY t.TransactionDate DESC
@@ -573,7 +573,7 @@ router.get(
        JOIN Warehouse tw ON tw.WarehouseID = t.ToWarehouseID
        JOIN User u ON u.UserID = t.UserID
        JOIN TransferDetail td ON td.TransferID = t.TransferID
-       JOIN Product p ON p.ProductID = td.ProductID
+       JOIN ProductHistory p ON p.ProductID = td.ProductID
        WHERE fw.CompanyID = :companyId OR tw.CompanyID = :companyId
        ORDER BY t.TransferDate DESC, td.TransferDetailID ASC`,
       { companyId: req.user.companyId }

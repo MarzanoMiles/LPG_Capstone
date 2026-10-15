@@ -1,5 +1,7 @@
 ﻿import React, { useEffect, useState } from "react";
 import "./AddProductModal.css";
+import { Settings } from "lucide-react";
+import ManageProductLookup from "./ManageProductLookup";
 import { apiRequest } from "./api";
 
 const emptyForm = {
@@ -25,11 +27,19 @@ export default function AddProductModal({ isOpen, onClose, onSaved, selectedProd
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [error, setError] = useState("");
 
+  const [manager, setManager] = useState(null);
+  const [customName, setCustomName] = useState(false);
+  const categoryName = categories.find(c => String(c.id) === String(form.categoryId))?.name || "";
+  const canDeriveName = ["cylinder", "gasul lpg"].includes(categoryName.trim().toLowerCase());
+  const suggestedName = [brands.find(b => String(b.id) === String(form.brandId))?.name, categories.find(c => String(c.id) === String(form.categoryId))?.name, form.unitValue, form.unit].filter(v => v !== "" && v != null).join(" ");
+  const productName = canDeriveName && !customName ? suggestedName : form.productName;
+
   const isEditing = Boolean(selectedProduct);
 
   useEffect(() => {
     if (!isOpen) return;
     setError("");
+    setManager(null);
     Promise.all([
       apiRequest("/categories"),
       apiRequest("/brands"),
@@ -44,14 +54,15 @@ export default function AddProductModal({ isOpen, onClose, onSaved, selectedProd
   }, [isOpen]);
 
   useEffect(() => {
+    setCustomName(Boolean(selectedProduct));
     if (selectedProduct) {
       setForm({
         productName: selectedProduct.name || "",
         categoryId: selectedProduct.categoryId || "",
         brandId: selectedProduct.brandId || "",
         supplierId: selectedProduct.supplierId || "",
-        unit: selectedProduct.unit || "",
-        unitValue: selectedProduct.unitValue ?? "",
+        unit: selectedProduct.unit === "pcs" ? "pc" : selectedProduct.unit || "",
+        unitValue: String(selectedProduct.unitValue ?? "").replace(/[^0-9.]/g, ""),
         unitPrice: selectedProduct.unitPrice ?? "",
         costPrice: selectedProduct.costPrice ?? "",
         reorderLevel: selectedProduct.reorderLevel ?? "",
@@ -77,18 +88,23 @@ export default function AddProductModal({ isOpen, onClose, onSaved, selectedProd
   const handleSubmit = async (e) => {
     e.preventDefault();
 
-    if (!form.productName || !form.categoryId || !form.brandId || !form.supplierId || !form.unit) {
-      setError("Product name, category, brand, supplier and unit are all required.");
+    if (!productName.trim()) {
+      setError("Product name is required.");
+      return;
+    }
+
+    if (!form.categoryId || !form.brandId || !form.supplierId || !form.unit || form.unitValue === "" || !Number.isFinite(Number(form.unitValue)) || Number(form.unitValue) < 0) {
+      setError("Brand, category, supplier, unit and a non-negative numeric unit value are required.");
       return;
     }
 
     const payload = {
-      productName: form.productName,
+      productName: productName.trim(),
       categoryId: String(form.categoryId),
       brandId: String(form.brandId),
       supplierId: String(form.supplierId),
       unit: form.unit,
-      unitValue: form.unitValue.trim(),
+      unitValue: Number(form.unitValue),
       unitPrice: Number(form.unitPrice) || 0,
       costPrice: Number(form.costPrice) || 0,
       reorderLevel: Number(form.reorderLevel) || 0,
@@ -144,70 +160,49 @@ export default function AddProductModal({ isOpen, onClose, onSaved, selectedProd
               <label>Product Name</label>
               <input
                 type="text"
-                placeholder="Name"
-                value={form.productName}
-                onChange={(e) => updateField("productName", e.target.value)}
+                placeholder="Enter product name"
+                required
+                maxLength={150}
+                value={productName}
+                onChange={(e) => { setCustomName(true); updateField("productName", e.target.value); }}
               />
+              {canDeriveName && <small className="form-field-hint">
+                {customName ? <button type="button" className="product-name-reset" onClick={() => setCustomName(false)}>Use generated name</button> : "Auto-filled from brand, category, unit value and unit. You can edit this name."}
+              </small>}
             </div>
           </div>
 
-          {/* Row 2 */}
+          <div className="form-row-2">
+            {[['Brand', 'brandId', brands, 'brands'], ['Category', 'categoryId', categories, 'categories']].map(([label, field, options, endpoint]) => (
+              <div className="form-field" key={field}>
+                <label htmlFor={field}>{label} <button type="button" className="lookup-settings" aria-label={`Manage ${label}`} onClick={() => setManager({label, endpoint})}><Settings size={16} /></button></label>
+                <select id={field} required value={form[field]} onChange={e => updateField(field, e.target.value)}>
+                  <option value="">Select {label}</option>
+                  {options.map(option => <option key={option.id} value={option.id}>{option.name}</option>)}
+                </select>
+              </div>
+            ))}
+          </div>
+          <div className="form-field">
+            <label htmlFor="supplierId">Supplier</label>
+            <select id="supplierId" required value={form.supplierId} onChange={e => updateField('supplierId', e.target.value)}>
+              <option value="">Select Supplier</option>
+              {suppliers.map(s => <option key={s.id} value={s.id}>{s.name}</option>)}
+            </select>
+          </div>
           <div className="form-row-2">
             <div className="form-field">
-              <label>Category</label>
-              <select
-                value={form.categoryId}
-                onChange={(e) => updateField("categoryId", e.target.value)}
-              >
-                <option value="" disabled hidden>Category</option>
-                {categories.map((c) => (
-                  <option key={c.id} value={c.id}>{c.name}</option>
-                ))}
+              <label htmlFor="productUnit">Unit</label>
+              <select id="productUnit" required value={form.unit} onChange={e => updateField('unit', e.target.value)}>
+                <option value="">Select Unit</option>
+                <option value="kg">Kilogram (kg)</option>
+                <option value="m">Meter (m)</option>
+                <option value="pc">Piece (pc)</option>
               </select>
             </div>
             <div className="form-field">
-              <label>Supplier</label>
-              <select
-                value={form.supplierId}
-                onChange={(e) => updateField("supplierId", e.target.value)}
-              >
-                <option value="" disabled hidden>Supplier</option>
-                {suppliers.map((s) => (
-                  <option key={s.id} value={s.id}>{s.name}</option>
-                ))}
-              </select>
-            </div>
-          </div>
-
-          {/* Row 2b: Brand */}
-          <div className="form-row-2">
-            <div className="form-field">
-              <label>Brand</label>
-              <select
-                value={form.brandId}
-                onChange={(e) => updateField("brandId", e.target.value)}
-              >
-                <option value="" disabled hidden>Brand</option>
-                {brands.map((b) => (
-                  <option key={b.id} value={b.id}>{b.name}</option>
-                ))}
-              </select>
-            </div>
-            <div className="form-field">
-              <label>Unit</label>
-              <select value={form.unit} onChange={(e) => updateField("unit", e.target.value)}>
-                <option value="" disabled hidden>Unit</option>
-                <option value="kg">Kilogram</option>
-                <option value="m">Meter</option>
-                <option value="pcs">Item</option>
-              </select>
-            </div>
-          </div>
-
-          <div className="form-row-3">
-            <div className="form-field">
-              <label>Unit Value</label>
-              <input type="text" maxLength={50} placeholder="e.g. 11 kg" value={form.unitValue} onChange={(e) => updateField("unitValue", e.target.value)} />
+              <label htmlFor="unitValue">Unit Value</label>
+              <input id="unitValue" type="number" required min="0" step="any" placeholder="e.g. 11 or 2.5" value={form.unitValue} onChange={e => updateField('unitValue', e.target.value)} />
             </div>
           </div>
 
@@ -287,6 +282,12 @@ export default function AddProductModal({ isOpen, onClose, onSaved, selectedProd
           </div>
         </form>
       </div>
+      {manager && <ManageProductLookup {...manager} onClose={() => setManager(null)} onChanged={items => {
+        (manager.endpoint === "brands" ? setBrands : setCategories)(items);
+        const field = manager.endpoint === "brands" ? "brandId" : "categoryId";
+        if (!items.some(item => String(item.id) === String(form[field]))) updateField(field, "");
+        onSaved?.();
+      }} />}
     </div>
   );
 }

@@ -81,7 +81,7 @@ router.get(
     const [items] = await pool.query(
       `SELECT od.ProductID AS productId, p.ProductName AS name, od.Quantity AS qty,
               od.UnitPrice AS unitPrice, od.Subtotal AS subtotal
-       FROM OrderDetails od JOIN Product p ON p.ProductID = od.ProductID
+       FROM OrderDetails od JOIN ProductHistory p ON p.ProductID = od.ProductID
        WHERE od.OrderID = :id`,
       { id: req.params.id }
     );

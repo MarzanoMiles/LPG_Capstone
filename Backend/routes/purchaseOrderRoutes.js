@@ -36,7 +36,7 @@ router.get(
       FROM PurchaseOrder po
       JOIN Supplier s ON s.SupplierID = po.SupplierID
       LEFT JOIN PurchaseOrderItem poi ON poi.PurchaseOrderID = po.PurchaseOrderID
-      LEFT JOIN Product p ON p.ProductID = poi.ProductID
+      LEFT JOIN ProductHistory p ON p.ProductID = poi.ProductID
       WHERE 1=1`;
     const params = {};
     if (status) {
@@ -63,7 +63,7 @@ router.get(
     const [items] = await pool.query(
       `SELECT poi.ProductID AS productId, p.ProductName AS productName, poi.Quantity AS qty,
               poi.UnitCost AS costPrice, poi.Subtotal AS subtotal
-       FROM PurchaseOrderItem poi JOIN Product p ON p.ProductID = poi.ProductID
+       FROM PurchaseOrderItem poi JOIN ProductHistory p ON p.ProductID = poi.ProductID
        WHERE poi.PurchaseOrderID = :id`,
       { id: req.params.id }
     );

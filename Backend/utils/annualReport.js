@@ -43,7 +43,7 @@ async function getAnnualReportData(pool, brandId, year) {
   if (!brandRow) throw new Error("Brand not found.");
 
   const [products] = await pool.query(
-    `SELECT ProductID, ProductName FROM Product WHERE BrandID = :brandId`,
+    `SELECT ProductID, ProductName FROM ProductHistory WHERE BrandID = :brandId`,
     { brandId }
   );
 

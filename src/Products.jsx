@@ -49,7 +49,7 @@ function ViewProductModal({ product, onClose }) {
           <div><strong>Brand:</strong> {product.Brand}</div>
           <div><strong>Supplier:</strong> {product.SupplierName}</div>
           <div><strong>Unit:</strong> {product.Unit}</div>
-          <div><strong>Unit Value:</strong> {product.UnitValue || "?"}</div>
+          <div><strong>Unit Value:</strong> {product.UnitValue ?? "?"}</div>
           <div><strong>Unit Price:</strong> {pesoFormatter.format(product.UnitPrice)}</div>
           <div><strong>Cost Price:</strong> {pesoFormatter.format(product.CostPrice)}</div>
           <div><strong>Reorder Level:</strong> {product.ReorderLevel}</div>
@@ -79,6 +79,8 @@ export default function Products() {
   const [isAddProductOpen, setIsAddProductOpen] = useState(false);
   const [editingProduct, setEditingProduct] = useState(null); // raw row from /products used to prefill the modal
   const [viewingProduct, setViewingProduct] = useState(null); // full detail from /products/:id
+  const [deleteTarget, setDeleteTarget] = useState(null);
+  const [deleting, setDeleting] = useState(false);
   const [actionError, setActionError] = useState("");
 
   const loadProducts = () => {
@@ -169,19 +171,16 @@ export default function Products() {
     }
   };
 
-  const handleDelete = async (productId, productName) => {
-    const confirmed = window.confirm(
-      `Deactivate "${productName}"? It will no longer appear in POS or the Active product list, but its sales and inventory history will be kept. You can reactivate it later by editing it and setting Status back to Active.`
-    );
-    if (!confirmed) return;
-
+  const handleDelete = async (productId) => {
+    setDeleting(true);
     setActionError("");
     try {
       await apiRequest(`/products/${productId}`, { method: "DELETE" });
+      setDeleteTarget(null);
       loadProducts();
     } catch (err) {
-      setActionError(err.message || "Failed to deactivate product.");
-    }
+      setActionError(err.message || "Failed to delete product.");
+    } finally { setDeleting(false); }
   };
 
   return (
@@ -287,8 +286,8 @@ export default function Products() {
                           </button>
                           <button
                             className="products-action-icon delete"
-                            title="Deactivate"
-                            onClick={() => handleDelete(product.productId, product.productName)}
+                            title="Delete"
+                            onClick={() => { setActionError(""); setDeleteTarget(product); }}
                           >
                             <Trash2 size={16} />
                           </button>
@@ -313,6 +312,17 @@ export default function Products() {
         onSaved={loadProducts}
       />
 
+      {deleteTarget && <div className="add-product-modal-overlay">
+        <div className="add-product-modal-card" role="alertdialog" aria-modal="true" aria-labelledby="delete-product-title">
+          <h2 id="delete-product-title">Delete Product</h2>
+          <p>Delete "{deleteTarget.productName}"? The product will be removed from the catalog. Existing transaction history will remain available.</p>
+          {actionError && <p role="alert" style={{color: '#dc2626'}}>{actionError}</p>}
+          <div className="add-product-modal-actions">
+            <button className="btn-modal-cancel" disabled={deleting} onClick={() => setDeleteTarget(null)}>Cancel</button>
+            <button className="btn-modal-add" disabled={deleting} onClick={() => handleDelete(deleteTarget.productId)}>{deleting ? 'Deleting?' : 'Delete'}</button>
+          </div>
+        </div>
+      </div>}
       <ViewProductModal product={viewingProduct} onClose={() => setViewingProduct(null)} />
     </div>
   );

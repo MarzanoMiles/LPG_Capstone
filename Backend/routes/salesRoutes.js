@@ -106,7 +106,7 @@ router.get(
               od.UnitPrice AS costPrice, od.Subtotal AS subtotal
        FROM Sales s
        JOIN OrderDetails od ON od.OrderID = s.OrderID
-       JOIN Product p ON p.ProductID = od.ProductID
+       JOIN ProductHistory p ON p.ProductID = od.ProductID
        WHERE s.SaleID = :id`,
       { id: req.params.id }
     );

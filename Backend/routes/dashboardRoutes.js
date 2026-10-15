@@ -45,7 +45,7 @@ router.get(
     const [[bestSeller]] = await pool.query(`
       SELECT p.ProductName AS name, SUM(od.Quantity) AS qty
       FROM OrderDetails od
-      JOIN Product p ON p.ProductID = od.ProductID
+      JOIN ProductHistory p ON p.ProductID = od.ProductID
       JOIN \`Order\` o ON o.OrderID = od.OrderID
       WHERE o.OrderDate >= CURDATE() - INTERVAL 30 DAY
       GROUP BY p.ProductID ORDER BY qty DESC LIMIT 1
@@ -145,7 +145,7 @@ router.get(
       `SELECT p.ProductID AS id, p.ProductName AS name, SUM(od.Quantity) AS unitsSold,
               SUM(od.Subtotal) AS revenue
        FROM OrderDetails od
-       JOIN Product p ON p.ProductID = od.ProductID
+       JOIN ProductHistory p ON p.ProductID = od.ProductID
        JOIN \`Order\` o ON o.OrderID = od.OrderID
        WHERE o.OrderDate >= CURDATE() - INTERVAL :days DAY
        GROUP BY p.ProductID

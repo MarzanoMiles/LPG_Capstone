@@ -32,7 +32,7 @@ async function nextProductId(conn, maxAttempts = 20) {
   for (let attempt = 0; attempt < maxAttempts; attempt++) {
     const candidate = `P-${randomProductCode(8)}`;
     const [rows] = await conn.query(
-      `SELECT ProductID FROM Product WHERE ProductID = :id LIMIT 1`,
+      `SELECT ProductID FROM ProductHistory WHERE ProductID = :id LIMIT 1`,
       { id: candidate }
     );
     if (!rows[0]) return candidate;
@@ -70,6 +70,21 @@ async function seedCoreWarehouseInventoryForProduct(conn, productId, companyId) 
       if (!err || err.code !== "ER_DUP_ENTRY") throw err;
     }
   }
+}
+
+async function productIdentity(body) {
+  const value = String(body.unitValue ?? '').trim();
+  if (!body.brandId || !body.categoryId || !body.supplierId || !['kg', 'm', 'pc'].includes(body.unit) || !/^\d+(\.\d+)?$/.test(value) || !Number.isFinite(Number(value)) || value.length > 50) {
+    throw new ApiError(400, 'Brand, category, supplier, a valid unit (kg, m, pc) and a non-negative numeric unit value are required.');
+  }
+  const [rows] = await pool.query('SELECT b.Brand, c.Category FROM Brand b CROSS JOIN Category c WHERE b.BrandID = :brandId AND c.CategoryID = :categoryId', body);
+  if (!rows[0]) throw new ApiError(400, 'Select an existing brand and category.');
+  const canDeriveName = ['cylinder', 'gasul lpg'].includes(rows[0].Category.trim().toLowerCase());
+  const suppliedName = typeof body.productName === 'string' ? body.productName.trim() : '';
+  const name = suppliedName || (body.productName === undefined && canDeriveName ? `${rows[0].Brand} ${rows[0].Category} ${Number(value)} ${body.unit}` : '');
+  if (!name) throw new ApiError(400, 'Product name is required.');
+  if (name.length > 150) throw new ApiError(400, 'Product name exceeds 150 characters.');
+  return {name, value: String(Number(value))};
 }
 
 router.use(authenticate);
@@ -138,8 +153,9 @@ router.get(
 router.post(
   "/",
   asyncHandler(async (req, res) => {
+    const {name: productName, value: normalizedValue} = await productIdentity(req.body);
     const {
-      productName, categoryId, brandId, supplierId, unit, unitValue,
+      categoryId, brandId, supplierId, unit, unitValue,
       unitPrice, costPrice, reorderLevel, imageUrl, arModelUrl, status,
     } = req.body;
 
@@ -158,7 +174,7 @@ router.post(
       {
         productId,
         productName, categoryId, brandId, supplierId, unit,
-        unitValue: unitValue == null ? null : String(unitValue).trim(),
+        unitValue: normalizedValue,
         unitPrice: unitPrice || 0,
         costPrice: costPrice || 0,
         reorderLevel: reorderLevel || 0,
@@ -188,7 +204,13 @@ router.put(
       "ProductName", "CategoryID", "BrandID", "SupplierID", "Unit", "UnitValue",
       "UnitPrice", "CostPrice", "ReorderLevel", "ImageURL", "ARModelURL", "Status",
     ];
-    const body = req.body;
+    const [existing] = await pool.query('SELECT * FROM Product WHERE ProductID = :id', {id: req.params.id});
+    if (!existing[0]) throw new ApiError(404, 'Product not found.');
+    const row = existing[0];
+    const body = {...{brandId: row.BrandID, categoryId: row.CategoryID, supplierId: row.SupplierID, productName: row.ProductName, unit: row.Unit, unitValue: row.UnitValue}, ...req.body};
+    const identity = await productIdentity(body);
+    body.productName = identity.name;
+    body.unitValue = identity.value;
     if (body.unitValue != null && String(body.unitValue).trim().length > 50) throw new ApiError(400, "Unit Value must be at most 50 characters.");
     const map = {
       ProductName: body.productName, CategoryID: body.categoryId, BrandID: body.brandId,
@@ -223,14 +245,12 @@ router.put(
   })
 );
 
-// DELETE /products/:id — soft delete: sets Status to 'Inactive' instead of removing the row.
-// Products are referenced by OrderDetails, PurchaseOrderItem, Inventory, InventoryTransaction, etc.,
-// so a hard DELETE would throw a foreign-key constraint error once any sales/stock history exists.
+// Delete from the catalog; ProductHistory retains foreign-key targets and details.
 router.delete(
   "/:id",
   asyncHandler(async (req, res) => {
     const [result] = await pool.query(
-      `UPDATE Product SET Status = 'Inactive' WHERE ProductID = :id`,
+      `DELETE FROM Product WHERE ProductID = :id`,
       { id: req.params.id }
     );
     if (!result.affectedRows) throw new ApiError(404, "Product not found.");
@@ -238,11 +258,11 @@ router.delete(
     const userActivityId = await nextId(pool, "UserActivity", "UserActivityID", "UA");
     await pool.query(
       `INSERT INTO UserActivity (UserActivityID, UserID, ActivityType, Module, RecordID, Description)
-       VALUES (:userActivityId, :userId, 'Delete', 'Products — Product Management', :recordId, 'Deactivated a product')`,
+       VALUES (:userActivityId, :userId, 'Delete', 'Products — Product Management', :recordId, 'Deleted a product; transaction details retained in ProductHistory')`,
       { userActivityId, userId: req.user.userId, recordId: req.params.id }
     );
 
-    res.json({ message: "Product deactivated." });
+    res.json({ message: "Product deleted." });
   })
 );
 
