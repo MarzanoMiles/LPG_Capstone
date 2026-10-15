@@ -3,7 +3,7 @@ SET FOREIGN_KEY_CHECKS = 0;
 
 DROP TABLE IF EXISTS UserActivity, DataActivityLog, Delivery, Payment, Sales,
   OrderDetails, `Order`, Customer, TransferDetail, Transfer, InventoryTransaction,
-  Inventory, PurchaseOrderItem, PurchaseOrder, RestockRecommendation, CompanySettings,
+  RefundLedger, Inventory, PurchaseOrderItem, PurchaseOrder, RestockRecommendation, CompanySettings,
   User, Warehouse, Branch, Product, Supplier, Brand, Category, Role, Company;
 
 CREATE TABLE Company (
@@ -308,6 +308,10 @@ CREATE TABLE CompanySettings (
   ClosingTime TIME NOT NULL DEFAULT '17:00:00',
   PickupExpirationDays INT UNSIGNED NOT NULL DEFAULT 3,
   MaxDeliveryAttempts INT UNSIGNED NOT NULL DEFAULT 3,
+  AllowIssueRefund TINYINT(1) NOT NULL DEFAULT 0,
+  EnableCancellationFee TINYINT(1) NOT NULL DEFAULT 0,
+  CancellationFeeType VARCHAR(10) NOT NULL DEFAULT 'Fixed',
+  CancellationFeeValue DECIMAL(12,2) NOT NULL DEFAULT 0,
   TaxRate            DECIMAL(5,2) NOT NULL DEFAULT 12.00,
   TaxEnabled         TINYINT(1) NOT NULL DEFAULT 1,
   Currency           VARCHAR(10) NOT NULL DEFAULT 'PHP',
@@ -326,6 +330,25 @@ CREATE TABLE CompanySettings (
   Theme              VARCHAR(10) NOT NULL DEFAULT 'light',
   UpdatedAt          DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
   FOREIGN KEY (CompanyID) REFERENCES Company(CompanyID)
+);
+
+CREATE TABLE IF NOT EXISTS RefundLedger (
+ RefundID BIGINT UNSIGNED AUTO_INCREMENT PRIMARY KEY,
+ CompanyID VARCHAR(20) NOT NULL,
+ OrderID VARCHAR(20) NOT NULL,
+ UserID VARCHAR(20) NOT NULL,
+ Reason VARCHAR(30) NOT NULL,
+ EligibleAmount DECIMAL(12,2) NOT NULL,
+ FeeType VARCHAR(10) NOT NULL,
+ FeeValue DECIMAL(12,2) NOT NULL,
+ CancellationFee DECIMAL(12,2) NOT NULL,
+ RefundAmount DECIMAL(12,2) NOT NULL,
+ CreatedAt DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+ UNIQUE KEY OneRefundPerOrder (OrderID),
+ FOREIGN KEY (CompanyID) REFERENCES Company(CompanyID),
+ FOREIGN KEY (UserID) REFERENCES User(UserID),
+ CHECK (EligibleAmount > 0 AND CancellationFee >= 0 AND CancellationFee <= EligibleAmount),
+ CHECK (RefundAmount = EligibleAmount - CancellationFee)
 );
 
 SET FOREIGN_KEY_CHECKS = 1;

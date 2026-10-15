@@ -21,6 +21,8 @@ router.post("/", asyncHandler(async (req, res) => {
   if (!paymentType || !paymentMethod || !amountPaid) {
     throw new ApiError(400, "paymentType, paymentMethod and amountPaid are required.");
   }
+  if (!["Sale", "Purchase"].includes(paymentType)) throw new ApiError(400, "Use the authorized order refund workflow for refunds.");
+  if (!Number.isFinite(Number(amountPaid)) || Number(amountPaid) <= 0) throw new ApiError(400, "Payment must be positive.");
   const [result] = await pool.query(
     `INSERT INTO Payment (PaymentType, SaleID, PurchaseOrderID, PaymentMethod, AmountPaid, ReferenceNo, Remarks)
      VALUES (:paymentType, :saleId, :purchaseOrderId, :paymentMethod, :amountPaid, :referenceNo, :remarks)`,

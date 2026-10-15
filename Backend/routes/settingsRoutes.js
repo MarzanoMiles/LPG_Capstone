@@ -7,7 +7,7 @@ const { authenticate, authorize } = require("../middleware/auth");
 router.use(authenticate);
 
 function toBool(v) {
-  return !!v;
+  return v === true || v === 1 || v === "1" || v === "true";
 }
 
 function mapRow(row) {
@@ -24,6 +24,10 @@ function mapRow(row) {
     pickupExpirationDays: row.PickupExpirationDays,
     maxDeliveryAttempts: row.MaxDeliveryAttempts,
 
+    allowIssueRefund: toBool(row.AllowIssueRefund),
+    enableCancellationFee: toBool(row.EnableCancellationFee),
+    cancellationFeeType: row.CancellationFeeType,
+    cancellationFeeValue: Number(row.CancellationFeeValue),
     taxRate: Number(row.TaxRate),
     taxEnabled: toBool(row.TaxEnabled),
     currency: row.Currency,
@@ -50,7 +54,7 @@ function mapRow(row) {
 async function ensureRow(companyId) {
   const [rows] = await pool.query(`SELECT * FROM CompanySettings WHERE CompanyID = :companyId`, { companyId });
   if (rows[0]) return rows[0];
-  await pool.query(`INSERT INTO CompanySettings (CompanyID) VALUES (:companyId)`, { companyId });
+  await pool.query(`INSERT IGNORE INTO CompanySettings (CompanyID) VALUES (:companyId)`, { companyId });
   const [created] = await pool.query(`SELECT * FROM CompanySettings WHERE CompanyID = :companyId`, { companyId });
   return created[0];
 }
@@ -141,10 +145,13 @@ router.put(
   "/tax",
   authorize("Admin", "Manager"),
   asyncHandler(async (req, res) => {
-    await ensureRow(req.user.companyId);
+    const saved = await ensureRow(req.user.companyId);
+    const financial = require("../utils/financialRules").validateSettings(req.body, saved);
     const { taxRate, taxEnabled, currency, roundUp, roundDown, twoDecimalStandard } = req.body;
     await pool.query(
       `UPDATE CompanySettings SET
+         AllowIssueRefund = :allowIssueRefund, EnableCancellationFee = :enableCancellationFee,
+         CancellationFeeType = :cancellationFeeType, CancellationFeeValue = :cancellationFeeValue,
          TaxRate = COALESCE(:taxRate, TaxRate),
          TaxEnabled = COALESCE(:taxEnabled, TaxEnabled),
          Currency = COALESCE(:currency, Currency),
@@ -154,6 +161,7 @@ router.put(
        WHERE CompanyID = :companyId`,
       {
         companyId: req.user.companyId,
+        ...financial,
         taxRate: taxRate != null ? Number(taxRate) : null,
         taxEnabled: taxEnabled != null ? (taxEnabled ? 1 : 0) : null,
         currency: currency ?? null,
@@ -162,7 +170,7 @@ router.put(
         twoDecimalStandard: twoDecimalStandard != null ? (twoDecimalStandard ? 1 : 0) : null,
       }
     );
-    res.json({ message: "Financial & tax rules saved." });
+    res.json({ message: "Financial & tax rules saved.", settings: mapRow(await ensureRow(req.user.companyId)) });
   })
 );
 

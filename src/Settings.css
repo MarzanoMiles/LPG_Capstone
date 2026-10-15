@@ -314,3 +314,38 @@ input:checked + .toggle-slider:before {
   .operations-dialog { padding: 20px; }
   .operations-dialog .card-actions { flex-wrap: wrap; }
 }
+
+/* Financial rules reuse the Settings modal layout. */
+.financial-dialog h2 { margin: 0 0 24px; }
+.financial-dialog .toggle-group { gap: 20px; align-items: center; }
+.financial-dialog .toggle-switch { flex-shrink: 0; }
+.financial-dialog input:disabled + .toggle-slider { opacity: .45; cursor: not-allowed; }
+.financial-dialog .financial-controls .grid-2-col { margin-top: 12px; }
+.financial-dialog .operations-help { margin-top: 6px; }
+.financial-dialog .toggle-switch:focus-within { outline: 2px solid #2563eb; outline-offset: 3px; }
+
+/* Financial modal: paired tax controls and full-width discount rows. */
+.financial-dialog .financial-tax-row { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 20px; }
+.financial-dialog .financial-currency-row { margin-top: 24px; }
+.financial-dialog .financial-discounts { margin-top: 28px; border-top: 1px solid #e2e8f0; padding-top: 24px; }
+.financial-discounts-heading { display: flex; align-items: start; justify-content: space-between; gap: 16px; margin-bottom: 14px; }
+.financial-discounts-heading h3 { margin: 0; font-size: 15px; font-weight: 600; }
+.financial-discounts-heading .operations-help { margin-bottom: 0; }
+.financial-add-discount { border: 1px solid #bfdbfe; border-radius: 8px; background: #eff6ff; color: #1d4ed8; padding: 9px 12px; font-weight: 600; white-space: nowrap; cursor: pointer; }
+.financial-discount-list { border: 1px solid #e2e8f0; border-radius: 10px; overflow: hidden; }
+.financial-discount-row { display: grid; grid-template-columns: minmax(0, 1fr) auto auto; gap: 16px; align-items: center; padding: 14px; }
+.financial-discount-row + .financial-discount-row { border-top: 1px solid #e2e8f0; }
+.financial-discount-name { min-width: 0; cursor: pointer; }
+.financial-discount-name span { overflow-wrap: anywhere; }
+.financial-discount-rate { background: #f1f5f9; color: #334155; padding: 4px 9px; border-radius: 6px; font-size: 13px; font-variant-numeric: tabular-nums; }
+.financial-remove-discount { border: none; background: transparent; color: #b91c1c; cursor: pointer; padding: 6px 0; font-size: 13px; }
+.financial-remove-discount:hover { text-decoration: underline; }
+.financial-discount-empty { padding: 16px; margin: 0; color: #64748b; font-size: 13px; }
+.financial-discount-editor { background: #f8fafc; border: 1px solid #e2e8f0; border-radius: 10px; margin-top: 14px; padding: 16px; }
+.financial-discount-editor-fields { display: grid; grid-template-columns: minmax(0, 2fr) minmax(0, 1fr); gap: 14px; }
+@media (max-width: 480px) {
+ .financial-discounts-heading { flex-direction: column; gap: 10px; }
+ .financial-discount-row { gap: 10px; padding: 12px; }
+ .financial-discount-editor-fields { grid-template-columns: 1fr; }
+ .financial-dialog .financial-tax-row { gap: 12px; }
+}

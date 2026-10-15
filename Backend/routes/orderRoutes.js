@@ -2,7 +2,8 @@
 const pool = require("../config/db");
 const asyncHandler = require("../utils/asyncHandler");
 const ApiError = require("../utils/apiError");
-const { authenticate } = require("../middleware/auth");
+const { issueRefund, settleCancellation } = require("../utils/financialRules");
+const { authenticate, authorize } = require("../middleware/auth");
 const { nextSequence } = require("../utils/generateNumbers");
 
 async function nextId(conn, table, column, prefix, pad = 3) {
@@ -268,6 +269,8 @@ router.put(
       });
       if (!existingRows[0]) throw new ApiError(404, "Order not found.");
 
+      if (orderStatus === "Cancelled") await settleCancellation(conn, req.user, req.params.id);
+
       await conn.query(
         `UPDATE \`Order\` SET
            OrderType = COALESCE(:type, OrderType),
@@ -321,6 +324,25 @@ router.put(
     }
   })
 );
+
+// Records an authorized refund; no external payment provider is configured.
+router.post("/:id/refund", authorize("Admin", "Manager"), asyncHandler(async (req, res) => {
+ const conn = await pool.getConnection();
+ try {
+  await conn.beginTransaction();
+  const [orders] = await conn.query("SELECT OrderStatus FROM `Order` WHERE OrderID = :id FOR UPDATE", {id: req.params.id});
+  const result = await issueRefund(conn, req.user, req.params.id, orders[0]?.OrderStatus === "Cancelled" ? "Cancellation" : "Refund");
+  await conn.commit();
+  res.json({message: "Refund recorded.", refund: result});
+ } catch (err) { await conn.rollback(); throw err; }
+ finally { conn.release(); }
+}));
+
+router.get("/:id/refund", authorize("Admin", "Manager"), asyncHandler(async (req, res) => {
+ const [rows] = await pool.query("SELECT * FROM RefundLedger WHERE OrderID = :id AND CompanyID = :companyId", {id: req.params.id, companyId: req.user.companyId});
+ if (!rows[0]) throw new ApiError(404, "Refund not found.");
+ res.json(rows[0]);
+}));
 
 // PUT /orders/:id/payment
 router.put(
@@ -404,6 +426,8 @@ router.delete(
         id: req.params.id,
       });
       if (!orderRows[0]) throw new ApiError(404, "Order not found.");
+
+      await settleCancellation(conn, req.user, req.params.id);
 
       const [items] = await conn.query(`SELECT ProductID, Quantity FROM OrderDetails WHERE OrderID = :id`, {
         id: req.params.id,

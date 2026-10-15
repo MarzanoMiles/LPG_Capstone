@@ -1,4 +1,5 @@
-﻿const router = require("express").Router();
+const { settleCancellation } = require("../utils/financialRules");
+const router = require("express").Router();
 const pool = require("../config/db");
 const asyncHandler = require("../utils/asyncHandler");
 const ApiError = require("../utils/apiError");
@@ -570,6 +571,8 @@ router.delete(
           "This sale has an active delivery record. Cancel the delivery first before voiding the sale."
         );
       }
+
+      await settleCancellation(conn, req.user, orderId);
 
       const [items] = await conn.query(
         `SELECT ProductID, Quantity FROM OrderDetails WHERE OrderID = :orderId`,
