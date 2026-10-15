@@ -89,7 +89,7 @@ router.get(
 
     let sql = `
       SELECT p.ProductID AS productId, p.ProductName AS name, c.Category AS category,
-             s.SupplierName AS supplier, p.Unit AS unit, p.UnitPrice AS unitPrice,
+             s.SupplierName AS supplier, (SELECT b.Brand FROM Brand b WHERE b.BrandID = p.BrandID) AS brand, p.Unit AS unit, p.UnitValue AS unitValue, p.UnitPrice AS unitPrice,
              p.CostPrice AS costPrice, p.ReorderLevel AS reorderLevel,
              p.ImageURL AS imageUrl, p.ARModelURL AS arModelUrl, p.Status AS status,
              COALESCE(SUM(i.StockOnHand), 0) AS stock
@@ -139,7 +139,7 @@ router.post(
   "/",
   asyncHandler(async (req, res) => {
     const {
-      productName, categoryId, brandId, supplierId, unit,
+      productName, categoryId, brandId, supplierId, unit, unitValue,
       unitPrice, costPrice, reorderLevel, imageUrl, arModelUrl, status,
     } = req.body;
 
@@ -147,16 +147,18 @@ router.post(
       throw new ApiError(400, "productName, categoryId, brandId, supplierId and unit are required.");
     }
 
+    if (unitValue != null && String(unitValue).trim().length > 50) throw new ApiError(400, "Unit Value must be at most 50 characters.");
     const productId = await nextProductId(pool);
 
     await pool.query(
       `INSERT INTO Product
-        (ProductID, ProductName, CategoryID, BrandID, SupplierID, Unit, UnitPrice, CostPrice, ReorderLevel, ImageURL, ARModelURL, Status)
+        (ProductID, ProductName, CategoryID, BrandID, SupplierID, Unit, UnitValue, UnitPrice, CostPrice, ReorderLevel, ImageURL, ARModelURL, Status)
        VALUES
-        (:productId, :productName, :categoryId, :brandId, :supplierId, :unit, :unitPrice, :costPrice, :reorderLevel, :imageUrl, :arModelUrl, :status)`,
+        (:productId, :productName, :categoryId, :brandId, :supplierId, :unit, :unitValue, :unitPrice, :costPrice, :reorderLevel, :imageUrl, :arModelUrl, :status)`,
       {
         productId,
         productName, categoryId, brandId, supplierId, unit,
+        unitValue: unitValue == null ? null : String(unitValue).trim(),
         unitPrice: unitPrice || 0,
         costPrice: costPrice || 0,
         reorderLevel: reorderLevel || 0,
@@ -183,13 +185,14 @@ router.put(
   "/:id",
   asyncHandler(async (req, res) => {
     const fields = [
-      "ProductName", "CategoryID", "BrandID", "SupplierID", "Unit",
+      "ProductName", "CategoryID", "BrandID", "SupplierID", "Unit", "UnitValue",
       "UnitPrice", "CostPrice", "ReorderLevel", "ImageURL", "ARModelURL", "Status",
     ];
     const body = req.body;
+    if (body.unitValue != null && String(body.unitValue).trim().length > 50) throw new ApiError(400, "Unit Value must be at most 50 characters.");
     const map = {
       ProductName: body.productName, CategoryID: body.categoryId, BrandID: body.brandId,
-      SupplierID: body.supplierId, Unit: body.unit, UnitPrice: body.unitPrice,
+      SupplierID: body.supplierId, Unit: body.unit, UnitValue: body.unitValue === undefined ? undefined : body.unitValue == null ? null : String(body.unitValue).trim(), UnitPrice: body.unitPrice,
       CostPrice: body.costPrice, ReorderLevel: body.reorderLevel, ImageURL: body.imageUrl,
       ARModelURL: body.arModelUrl, Status: body.status,
     };

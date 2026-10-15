@@ -49,6 +49,7 @@ CREATE TABLE Product (
   BrandID       VARCHAR(20) NOT NULL,
   SupplierID    VARCHAR(20) NOT NULL,
   Unit          VARCHAR(30) NOT NULL,
+  UnitValue      VARCHAR(50) NULL,
   UnitPrice     DECIMAL(12,2) NOT NULL CHECK (UnitPrice >= 0),
   CostPrice     DECIMAL(12,2) NOT NULL CHECK (CostPrice >= 0),
   ReorderLevel  INT NOT NULL CHECK (ReorderLevel >= 0),

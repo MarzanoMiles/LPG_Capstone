@@ -118,15 +118,25 @@ router.get(
 router.post(
   "/",
   asyncHandler(async (req, res) => {
-    const { customerType, items, discount, paymentMethod, amountCollected, warehouseId, remarks } = req.body;
+    const { customerType, items, discount, paymentMethod, amountCollected, warehouseId, remarks, referenceNo, returnedCylinders = [] } = req.body;
     let { customerId } = req.body;
+    const orderType = customerType || "Walk-in";
+    const methods = orderType === "Walk-in" ? ["Cash", "GCash", "Card", "Bank Transfer"] : orderType === "Pickup" ? ["GCash", "Card", "Bank Transfer"] : orderType === "Delivery" ? ["GCash", "Card", "Bank Transfer", "Cash on Delivery"] : [];
+    if (!methods.includes(paymentMethod)) throw new ApiError(400, "Invalid payment method for this order type.");
+    if (["GCash", "Card", "Bank Transfer"].includes(paymentMethod) && (typeof referenceNo !== "string" || !referenceNo.trim() || referenceNo.length > 50)) throw new ApiError(400, "A reference number (up to 50 characters) is required.");
+    if (!Array.isArray(returnedCylinders) || (returnedCylinders.length && orderType !== "Walk-in")) throw new ApiError(400, "Cylinder returns are only available for walk-in orders.");
+    for (const item of returnedCylinders) {
+      if (!item.productId || !Number.isSafeInteger(item.qty) || item.qty <= 0) throw new ApiError(400, "Returned cylinder quantities must be positive whole numbers.");
+    }
+    if (returnedCylinders.length && !warehouseId) throw new ApiError(400, "Select a warehouse for returned cylinders.");
+
 
     if (!Array.isArray(items) || !items.length) {
       throw new ApiError(400, "At least one item is required.");
     }
 
     for (const item of items) {
-      if (!item.productId || !item.qty || Number(item.qty) <= 0) {
+      if (!item.productId || !Number.isSafeInteger(Number(item.qty)) || Number(item.qty) <= 0 || !Number.isFinite(Number(item.unitPrice)) || Number(item.unitPrice) < 0) {
         throw new ApiError(400, `Invalid productId "${item.productId}" or quantity.`);
       }
       item.productId = String(item.productId);
@@ -139,6 +149,11 @@ router.post(
     const conn = await pool.getConnection();
     try {
       await conn.beginTransaction();
+      if (warehouseId) {
+        const [warehouses] = await conn.query("SELECT WarehouseID FROM Warehouse WHERE WarehouseID = ? AND CompanyID = ? FOR UPDATE", [warehouseId, req.user.companyId]);
+        if (!warehouses.length) throw new ApiError(400, "The warehouse does not belong to your company.");
+      }
+
 
       if (!customerId) {
         const [existing] = await conn.query(
@@ -162,17 +177,18 @@ router.post(
 
       const subtotal = items.reduce((sum, it) => sum + it.qty * it.unitPrice, 0);
       const discountAmount = discount || 0;
-      const vat = taxEnabled ? (subtotal - discountAmount) * taxRate : 0;
-      const totalAmount = subtotal - discountAmount + vat;
+      const vat = taxEnabled ? (subtotal - discountAmount) * taxRate / (1 + taxRate) : 0;
+      const totalAmount = subtotal - discountAmount;
+      if (!Number.isFinite(Number(amountCollected)) || Number(amountCollected) < totalAmount || totalAmount <= 0) throw new ApiError(400, "Amount collected must cover the total due.");
       const hasExplicitWarehouse = !!warehouseId;
       const wid = hasExplicitWarehouse ? warehouseId : DEFAULT_WAREHOUSE_ID;
 
-      const orderNo = await nextSequence(pool, "`Order`", "OrderNo", "ORD");
+      const orderNo = await nextSequence(conn, "`Order`", "OrderNo", "ORD");
       const orderId = await nextId(conn, "`Order`", "OrderID", "ORD");
       await conn.query(
         `INSERT INTO \`Order\` (OrderID, CustomerID, OrderNo, OrderType, OrderStatus, TotalAmount, Remarks)
-         VALUES (:orderId, :customerId, :orderNo, 'Walk-in', 'Completed', :totalAmount, :remarks)`,
-        { orderId, customerId, orderNo, totalAmount, remarks: remarks || null }
+         VALUES (:orderId, :customerId, :orderNo, :orderType, 'Completed', :totalAmount, :remarks)`,
+        { orderId, customerId, orderNo, orderType, totalAmount, remarks: remarks || null }
       );
 
       for (const item of items) {
@@ -265,7 +281,7 @@ router.post(
         }
       }
 
-      const saleNo = await nextSequence(pool, "Sales", "SaleNo", "SALE");
+      const saleNo = await nextSequence(conn, "Sales", "SaleNo", "SALE");
       const saleId = await nextId(conn, "Sales", "SaleID", "S");
       await conn.query(
         `INSERT INTO Sales (SaleID, OrderID, CustomerID, UserID, SaleNo, SalesDiscount, TotalAmount, Remarks)
@@ -285,14 +301,39 @@ router.post(
       if (paymentMethod && amountCollected) {
         const paymentId = await nextId(conn, "Payment", "PaymentID", "PAY");
         await conn.query(
-          `INSERT INTO Payment (PaymentID, PaymentType, SaleID, PaymentMethod, AmountPaid)
-           VALUES (:paymentId, 'Sale', :saleId, :method, :amount)`,
-          { paymentId, saleId, method: paymentMethod, amount: amountCollected }
+          `INSERT INTO Payment (PaymentID, PaymentType, SaleID, PaymentMethod, AmountPaid, ReferenceNo)
+           VALUES (:paymentId, 'Sale', :saleId, :method, :amount, :referenceNo)`,
+          { paymentId, saleId, method: paymentMethod, amount: amountCollected, referenceNo: referenceNo?.trim() || null }
         );
       }
 
+
+      let emptyCylinderReference = null;
+      if (returnedCylinders.length) {
+        const [eligible] = await conn.query("SELECT p.ProductID FROM Product p JOIN Category c ON c.CategoryID=p.CategoryID WHERE p.ProductID IN (?) AND c.Category IN ('Cylinder', 'Gasul LPG')", [items.map((item) => item.productId)]);
+        if (!eligible.length) throw new ApiError(400, "Cylinder returns require a Gasul LPG or Cylinder purchase.");
+        // Lock the company row so ECR references are allocated serially across its warehouses.
+        await conn.query("SELECT CompanyID FROM Company WHERE CompanyID=? FOR UPDATE", [req.user.companyId]);
+        emptyCylinderReference = await nextSequence(conn, "InventoryTransaction", "ReferenceNo", "ECR");
+        for (const item of returnedCylinders) {
+          const [products] = await conn.query("SELECT p.ProductID FROM Product p JOIN Category c ON c.CategoryID=p.CategoryID WHERE p.ProductID=? AND c.Category='Cylinder' AND p.Status='Active'", [item.productId]);
+          if (!products.length) throw new ApiError(400, "Only active Cylinder products can be returned.");
+          const [inventory] = await conn.query("SELECT InventoryID FROM Inventory WHERE WarehouseID=? AND ProductID=? FOR UPDATE", [warehouseId, item.productId]);
+          let inventoryId = inventory[0]?.InventoryID;
+          if (!inventoryId) {
+            inventoryId = await nextId(conn, "Inventory", "InventoryID", "INT");
+            await conn.query("INSERT INTO Inventory (InventoryID,WarehouseID,ProductID,StockOnHand) VALUES (?,?,?,0)", [inventoryId,warehouseId,item.productId]);
+          }
+          await conn.query("UPDATE Inventory SET StockOnHand=StockOnHand+? WHERE InventoryID=?", [item.qty,inventoryId]);
+          const transactionId = await nextId(conn, "InventoryTransaction", "TransactionID", "T");
+          await conn.query("INSERT INTO InventoryTransaction (TransactionID,InventoryID,UserID,TransactionType,Quantity,Reason,ReferenceNo) VALUES (?,?,?,'Stock In',?,'Empty Cylinder Returned',?)", [transactionId,inventoryId,req.user.userId,item.qty,emptyCylinderReference]);
+        }
+      }
+      const [[cashier]] = await conn.query("SELECT CONCAT(FirstName,' ',LastName) AS name FROM User WHERE UserID=?", [req.user.userId]);
       await conn.commit();
       res.status(201).json({
+        cashierName: cashier?.name || "",
+        emptyCylinderReference,
         saleId,
         saleNo,
         subtotal,

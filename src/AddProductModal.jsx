@@ -8,6 +8,7 @@ const emptyForm = {
   brandId: "",
   supplierId: "",
   unit: "",
+  unitValue: "",
   unitPrice: "",
   costPrice: "",
   reorderLevel: "",
@@ -50,6 +51,7 @@ export default function AddProductModal({ isOpen, onClose, onSaved, selectedProd
         brandId: selectedProduct.brandId || "",
         supplierId: selectedProduct.supplierId || "",
         unit: selectedProduct.unit || "",
+        unitValue: selectedProduct.unitValue ?? "",
         unitPrice: selectedProduct.unitPrice ?? "",
         costPrice: selectedProduct.costPrice ?? "",
         reorderLevel: selectedProduct.reorderLevel ?? "",
@@ -86,6 +88,7 @@ export default function AddProductModal({ isOpen, onClose, onSaved, selectedProd
       brandId: String(form.brandId),
       supplierId: String(form.supplierId),
       unit: form.unit,
+      unitValue: form.unitValue.trim(),
       unitPrice: Number(form.unitPrice) || 0,
       costPrice: Number(form.costPrice) || 0,
       reorderLevel: Number(form.reorderLevel) || 0,
@@ -198,6 +201,13 @@ export default function AddProductModal({ isOpen, onClose, onSaved, selectedProd
                 <option value="m">Meter</option>
                 <option value="pcs">Item</option>
               </select>
+            </div>
+          </div>
+
+          <div className="form-row-3">
+            <div className="form-field">
+              <label>Unit Value</label>
+              <input type="text" maxLength={50} placeholder="e.g. 11 kg" value={form.unitValue} onChange={(e) => updateField("unitValue", e.target.value)} />
             </div>
           </div>
 

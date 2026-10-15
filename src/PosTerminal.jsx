@@ -973,6 +973,15 @@ export default function PosTerminal() {
   const [customerType, setCustomerType] = useState("Walk-in");
   const [paymentMethod, setPaymentMethod] = useState("");
   const [showPaymentModal, setShowPaymentModal] = useState(false);
+  const [referenceNo, setReferenceNo] = useState("");
+  const availablePaymentMethods = paymentMethods.filter((method) =>
+    customerType === "Walk-in" ? method !== "Cash on Delivery" :
+    customerType === "Pickup" ? !["Cash", "Cash on Delivery"].includes(method) : method !== "Cash"
+  );
+  useEffect(() => {
+    setPaymentMethod("");
+    setReferenceNo("");
+  }, [customerType]);
   const [isProcessing, setIsProcessing] = useState(false);
   const [posError, setPosError] = useState("");
 
@@ -998,6 +1007,9 @@ export default function PosTerminal() {
       stock: Number(p.stock),
       price: Number(p.unitPrice),
       ImageURL: p.ImageURL ?? p.imageUrl ?? null,
+      brand: p.brand,
+      unit: p.unit,
+      unitValue: p.unitValue,
     }));
 
   const buildProductsQuery = () => {
@@ -1202,11 +1214,16 @@ export default function PosTerminal() {
       setShowDeliveryModal(true);
       return;
     }
+    if (!availablePaymentMethods.includes(paymentMethod)) {
+      setPosError("Please select a valid payment method.");
+      return;
+    }
     setPosError("");
+    setReferenceNo("");
     setShowPaymentModal(true);
   };
 
-  const handleConfirmPayment = async ({ amountCollected, changeDue, printReceipt: shouldPrint }) => {
+  const handleConfirmPayment = async ({ amountCollected, changeDue, returnedCylinders, printReceipt: shouldPrint }) => {
     if (cart.length === 0) return;
     setIsProcessing(true);
     setPosError("");
@@ -1227,12 +1244,15 @@ export default function PosTerminal() {
           paymentMethod: paymentMethod || "Cash",
           warehouseId: selectedWarehouseId || undefined,
           amountCollected,
+          referenceNo: referenceNo.trim(),
+          returnedCylinders,
         }),
       });
 
       if (shouldPrint) {
         printReceipt({
           saleNo: response.saleNo,
+          cashierName: response.cashierName,
           datetime: new Date(),
           orderType: customerType,
           customerName: customerType === "Pickup" ? pickupDetails?.customerName : customerType === "Delivery" ? deliveryDetails?.customerName : customerType,
@@ -1469,10 +1489,13 @@ export default function PosTerminal() {
                     <select
                       className="pos-select"
                       value={paymentMethod}
-                      onChange={(e) => setPaymentMethod(e.target.value)}
+                      onChange={(e) => {
+                        setPaymentMethod(e.target.value);
+                        setReferenceNo("");
+                      }}
                     >
                       <option value="">Select Payment Method</option>
-                      {paymentMethods.map((m) => (
+                      {availablePaymentMethods.map((m) => (
                         <option key={m} value={m}>{m}</option>
                       ))}
                     </select>
@@ -1524,6 +1547,14 @@ export default function PosTerminal() {
       <PaymentModal
         isOpen={showPaymentModal}
         totalAmount={totalAmountDue}
+        paymentMethod={paymentMethod}
+        referenceNo={referenceNo}
+        onReferenceChange={setReferenceNo}
+        isProcessing={isProcessing}
+        allowCylinderReturn={customerType === "Walk-in" && cart.some((item) => ["Cylinder", "Gasul LPG"].includes(item.category))}
+        cylinderProducts={products.filter((product) => product.category === "Cylinder")}
+        warehouseName={warehouses.find((warehouse) => warehouse.id === selectedWarehouseId)?.name || selectedWarehouseId}
+        error={posError}
         onCancel={() => setShowPaymentModal(false)}
         onConfirm={handleConfirmPayment}
       />

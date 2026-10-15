@@ -23,6 +23,7 @@ npm run seed
 npm run seed:products
 npm run seed:reports
 npm run seed:demo:jose
+mysql -u root -p gastrack -e "source db/patch_product_unit_value.sql"
 npm run dev
 ```
 
@@ -43,3 +44,7 @@ python serve.py
 cd LPG_Capstone
 npm run dev
 ```
+For an existing database, apply `Backend/db/patch_product_unit_value.sql` to
+add Product.UnitValue and populate recognizable LPG/cylinder weights. The patch
+can be run again without replacing saved values. Enter or edit Unit Value
+(e.g. `11 kg`) in Products; returned-cylinder Weight uses this saved value.

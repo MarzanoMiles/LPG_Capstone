@@ -48,6 +48,7 @@ function ViewProductModal({ product, onClose }) {
           <div><strong>Brand:</strong> {product.Brand}</div>
           <div><strong>Supplier:</strong> {product.SupplierName}</div>
           <div><strong>Unit:</strong> {product.Unit}</div>
+          <div><strong>Unit Value:</strong> {product.UnitValue || "?"}</div>
           <div><strong>Unit Price:</strong> {pesoFormatter.format(product.UnitPrice)}</div>
           <div><strong>Cost Price:</strong> {pesoFormatter.format(product.CostPrice)}</div>
           <div><strong>Reorder Level:</strong> {product.ReorderLevel}</div>
@@ -132,6 +133,7 @@ export default function Products() {
         brandId: full.BrandID,
         supplierId: full.SupplierID,
         unit: full.Unit,
+        unitValue: full.UnitValue,
         unitPrice: full.UnitPrice,
         costPrice: full.CostPrice,
         reorderLevel: full.ReorderLevel,

@@ -144,6 +144,7 @@ async function seed() {
       BrandID VARCHAR(20) NOT NULL,
       SupplierID VARCHAR(20) NOT NULL,
       Unit VARCHAR(30) NOT NULL,
+      UnitValue VARCHAR(50) NULL,
       UnitPrice DECIMAL(12,2) NOT NULL CHECK (UnitPrice >= 0),
       CostPrice DECIMAL(12,2) NOT NULL CHECK (CostPrice >= 0),
       ReorderLevel INT NOT NULL CHECK (ReorderLevel >= 0),
@@ -526,6 +527,7 @@ async function seed() {
     VALUES ('CUST-001', NULL, 'Residential', 'Walk-in Customer', 'N/A', 'San Juan City, Metro Manila', 'Active', '2023-09-20 09:00:00', '2023-09-20 09:00:00')
   `);
 
+  await pool.query("UPDATE Product SET UnitValue = LOWER(REGEXP_SUBSTR(ProductName, '[0-9]+([.][0-9]+)?[ ]*[kK][gG]')) WHERE UnitValue IS NULL AND ProductName REGEXP '[0-9]+([.][0-9]+)?[ ]*[kK][gG]'");
   console.log("Database schema creation and seeding complete.");
   process.exit(0);
 }
