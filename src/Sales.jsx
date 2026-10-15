@@ -1,27 +1,14 @@
-﻿import React, { useEffect, useMemo, useRef, useState } from "react";
-import { ChevronDown, ChevronLeft, ChevronRight, Download, FileSearch, Printer, Trash2, Upload } from "lucide-react";
+import Pagination from "./Pagination";
+import React, { useEffect, useMemo, useRef, useState } from "react";
+import { ChevronDown, Download, FileSearch, Printer, Trash2, Upload } from "lucide-react";
 import SalesInfoModal from "./SalesInfoModal";
 import { apiRequest } from "./api";
 import { printReceipt } from "./utils/receipt";
 import "./Sales.css";
 
-const PAGE_SIZE = 6;
+const PAGE_SIZE = 5;
 
-function getPaginationGroup(currentPage, totalPages, maxVisible = 6) {
-  let start = Math.max(1, currentPage - Math.floor(maxVisible / 2));
-  let end = start + maxVisible - 1;
 
-  if (end > totalPages) {
-    end = totalPages;
-    start = Math.max(1, end - maxVisible + 1);
-  }
-
-  const pages = [];
-  for (let page = start; page <= end; page += 1) {
-    pages.push(page);
-  }
-  return pages;
-}
 
 function formatPeso(amount) {
   return `₱ ${Number(amount).toLocaleString("en-US", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
@@ -305,118 +292,78 @@ export default function Sales() {
         </div>
 
         <div className="sales-table-wrap">
-          <table className="sales-table">
-            <thead>
-              <tr>
-                <th>Sales ID</th>
-                <th>Date and Time</th>
-                <th>Cashier</th>
-                <th>Order ID</th>
-                <th>Type</th>
-                <th>Amount</th>
-                <th>Actions</th>
-              </tr>
-            </thead>
-            <tbody>
-              {isLoading && (
-                <tr><td colSpan={7} style={{ textAlign: "center", padding: 24 }}>Loading…</td></tr>
-              )}
-              {!isLoading &&
-                paginatedSales.map((sale) => (
-                  <tr key={sale.id}>
-                    <td>{sale.saleNo}</td>
-                    <td>{new Date(sale.datetime).toLocaleString()}</td>
-                    <td>{sale.cashierName || sale.cashier}</td>
-                    <td>{sale.orderId}</td>
-                    <td>{sale.type || "—"}</td>
-                    <td>{formatPeso(sale.amount)}</td>
-                    <td>
-                      <div className="sales-action-icons">
-                        <button
-                          type="button"
-                          className="sales-action-icon view"
-                          aria-label={`View ${sale.saleNo}`}
-                          onClick={() => handleView(sale)}
-                          disabled={isSaleLoading}
-                        >
-                          <FileSearch size={16} />
-                        </button>
-                        <button
-                          type="button"
-                          className="sales-action-icon print"
-                          aria-label={`Print receipt for ${sale.saleNo}`}
-                          onClick={() => handlePrint(sale)}
-                          disabled={printingId === sale.id}
-                        >
-                          <Printer size={16} />
-                        </button>
-                        <button
-                          type="button"
-                          className="sales-action-icon delete"
-                          aria-label={`Void ${sale.saleNo}`}
-                          onClick={() => handleDelete(sale)}
-                          disabled={deletingId === sale.id}
-                        >
-                          <Trash2 size={16} />
-                        </button>
-                      </div>
+          <div className="paginated-table-scroll">
+            <table className="sales-table">
+              <thead>
+                <tr>
+                  <th>Sales ID</th>
+                  <th>Date and Time</th>
+                  <th>Cashier</th>
+                  <th>Order ID</th>
+                  <th>Type</th>
+                  <th>Amount</th>
+                  <th>Actions</th>
+                </tr>
+              </thead>
+              <tbody>
+                {isLoading && (
+                  <tr><td colSpan={7} style={{ textAlign: "center", padding: 24 }}>Loading…</td></tr>
+                )}
+                {!isLoading &&
+                  paginatedSales.map((sale) => (
+                    <tr key={sale.id}>
+                      <td>{sale.saleNo}</td>
+                      <td>{new Date(sale.datetime).toLocaleString()}</td>
+                      <td>{sale.cashierName || sale.cashier}</td>
+                      <td>{sale.orderId}</td>
+                      <td>{sale.type || "—"}</td>
+                      <td>{formatPeso(sale.amount)}</td>
+                      <td>
+                        <div className="sales-action-icons">
+                          <button
+                            type="button"
+                            className="sales-action-icon view"
+                            aria-label={`View ${sale.saleNo}`}
+                            onClick={() => handleView(sale)}
+                            disabled={isSaleLoading}
+                          >
+                            <FileSearch size={16} />
+                          </button>
+                          <button
+                            type="button"
+                            className="sales-action-icon print"
+                            aria-label={`Print receipt for ${sale.saleNo}`}
+                            onClick={() => handlePrint(sale)}
+                            disabled={printingId === sale.id}
+                          >
+                            <Printer size={16} />
+                          </button>
+                          <button
+                            type="button"
+                            className="sales-action-icon delete"
+                            aria-label={`Void ${sale.saleNo}`}
+                            onClick={() => handleDelete(sale)}
+                            disabled={deletingId === sale.id}
+                          >
+                            <Trash2 size={16} />
+                          </button>
+                        </div>
+                      </td>
+                    </tr>
+                  ))}
+                {!isLoading && filteredSales.length === 0 && (
+                  <tr>
+                    <td colSpan={7} className="no-results-cell">
+                      No sales match your filters.
                     </td>
                   </tr>
-                ))}
-              {!isLoading && filteredSales.length === 0 && (
-                <tr>
-                  <td colSpan={7} className="no-results-cell">
-                    No sales match your filters.
-                  </td>
-                </tr>
-              )}
-            </tbody>
-          </table>
+                )}
+              </tbody>
+            </table>
+          </div>
 
           {!isLoading && (
-            <div className="users-pagination" style={{ display: "flex", gap: "6px", alignItems: "center", padding: "16px 20px", borderTop: "1px solid #f3f4f6" }}>
-              <button
-                type="button"
-                className="page-btn"
-                onClick={() => goToPage(validatedCurrentPage - 1)}
-                disabled={validatedCurrentPage === 1}
-                aria-label="Previous page"
-                style={{ borderRadius: "8px", padding: "8px 12px", border: "1px solid #d1d5db", background: "#fff", cursor: "pointer" }}
-              >
-                <ChevronLeft size={16} />
-              </button>
-
-              {getPaginationGroup(validatedCurrentPage, totalPages, 6).map((page) => (
-                <button
-                  key={page}
-                  type="button"
-                  className={`page-btn ${page === validatedCurrentPage ? "active" : ""}`}
-                  onClick={() => goToPage(page)}
-                  style={{
-                    borderRadius: "8px",
-                    padding: "8px 14px",
-                    border: "1px solid #d1d5db",
-                    background: page === validatedCurrentPage ? "#1e3a8a" : "#fff",
-                    color: page === validatedCurrentPage ? "#fff" : "#1f2937",
-                    fontWeight: "600",
-                    cursor: "pointer",
-                  }}
-                >
-                  {page}
-                </button>
-              ))}
-
-              <button
-                type="button"
-                className="page-btn"
-                onClick={() => goToPage(validatedCurrentPage + 1)}
-                disabled={validatedCurrentPage === totalPages}
-                aria-label="Next page"
-                style={{ borderRadius: "8px", padding: "8px 12px", border: "1px solid #d1d5db", background: "#fff", cursor: "pointer" }}
-              >
-                <ChevronRight size={16} />
-              </button>
-            </div>
+            <Pagination currentPage={validatedCurrentPage} totalPages={totalPages} onPageChange={goToPage} />
           )}
         </div>
       </div>

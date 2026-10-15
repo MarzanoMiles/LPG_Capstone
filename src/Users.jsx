@@ -1,4 +1,5 @@
-﻿import React, { useCallback, useEffect, useMemo, useState } from "react";
+import Pagination from "./Pagination";
+import React, { useCallback, useEffect, useMemo, useState } from "react";
 import {
   Search,
   ChevronDown,
@@ -6,8 +7,6 @@ import {
   FileSearch,
   Pencil,
   Trash2,
-  ChevronLeft,
-  ChevronRight,
   X,
 } from "lucide-react";
 import AddUserModal from "./AddUserModal";
@@ -16,24 +15,10 @@ import { apiRequest } from "./api";
 import { formatTimestampManila } from "./utils/datetime";
 import "./Users.css";
 
-const PAGE_SIZE = 10;
-const ACTIVITY_PAGE_SIZE = 7;
+const PAGE_SIZE = 5;
+const ACTIVITY_PAGE_SIZE = 5;
 
-function getPaginationGroup(currentPage, totalPages, maxVisible = 6) {
-  let start = Math.max(1, currentPage - Math.floor(maxVisible / 2));
-  let end = start + maxVisible - 1;
 
-  if (end > totalPages) {
-    end = totalPages;
-    start = Math.max(1, end - maxVisible + 1);
-  }
-
-  const pages = [];
-  for (let i = start; i <= end; i += 1) {
-    pages.push(i);
-  }
-  return pages;
-}
 
 const ROLE_OPTIONS = [
   "Administrator",
@@ -293,103 +278,74 @@ export default function Users() {
 
             {/* Table */}
             <div className="users-table-wrap">
-              <table className="users-table">
-                <thead>
-                  <tr>
-                    <th>User ID</th>
-                    <th>Full Name</th>
-                    <th>Username/Email</th>
-                    <th>Role</th>
-                    <th>Branch / Warehouse</th>
-                    <th>Actions</th>
-                    <th>Status</th>
-                  </tr>
-                </thead>
-                <tbody>
-                  {isLoading && (
-                    <tr><td colSpan={7} className="no-results-cell">Loading...</td></tr>
-                  )}
-                  {!isLoading && paginatedUsers.map((user) => (
-                    <tr key={user.id}>
-                      <td>{user.id}</td>
-                      <td>{user.name}</td>
-                      <td>{user.email}</td>
-                      <td>{user.role}</td>
-                      <td>{user.branch || "—"}</td>
-                      <td>
-                        <div className="action-icons">
-                          <button
-                            type="button"
-                            className="action-icon view"
-                            aria-label={`View ${user.name}`}
-                            onClick={() => handleView(user)}
-                          >
-                            <FileSearch size={16} />
-                          </button>
-                          <button
-                            type="button"
-                            className="action-icon edit"
-                            aria-label={`Edit ${user.name}`}
-                            onClick={() => handleEdit(user)}
-                          >
-                            <Pencil size={16} />
-                          </button>
-                          <button
-                            type="button"
-                            className="action-icon delete"
-                            aria-label={`Deactivate ${user.name}`}
-                            onClick={() => handleDelete(user)}
-                          >
-                            <Trash2 size={16} />
-                          </button>
-                        </div>
-                      </td>
-                      <td><StatusPill status={user.status} /></td>
-                    </tr>
-                  ))}
-                  {!isLoading && paginatedUsers.length === 0 && (
+              <div className="paginated-table-scroll">
+                <table className="users-table">
+                  <thead>
                     <tr>
-                      <td colSpan={7} className="no-results-cell">
-                        No users match your filters.
-                      </td>
+                      <th>User ID</th>
+                      <th>Full Name</th>
+                      <th>Username/Email</th>
+                      <th>Role</th>
+                      <th>Branch / Warehouse</th>
+                      <th>Actions</th>
+                      <th>Status</th>
                     </tr>
-                  )}
-                </tbody>
-              </table>
+                  </thead>
+                  <tbody>
+                    {isLoading && (
+                      <tr><td colSpan={7} className="no-results-cell">Loading...</td></tr>
+                    )}
+                    {!isLoading && paginatedUsers.map((user) => (
+                      <tr key={user.id}>
+                        <td>{user.id}</td>
+                        <td>{user.name}</td>
+                        <td>{user.email}</td>
+                        <td>{user.role}</td>
+                        <td>{user.branch || "—"}</td>
+                        <td>
+                          <div className="action-icons">
+                            <button
+                              type="button"
+                              className="action-icon view"
+                              aria-label={`View ${user.name}`}
+                              onClick={() => handleView(user)}
+                            >
+                              <FileSearch size={16} />
+                            </button>
+                            <button
+                              type="button"
+                              className="action-icon edit"
+                              aria-label={`Edit ${user.name}`}
+                              onClick={() => handleEdit(user)}
+                            >
+                              <Pencil size={16} />
+                            </button>
+                            <button
+                              type="button"
+                              className="action-icon delete"
+                              aria-label={`Deactivate ${user.name}`}
+                              onClick={() => handleDelete(user)}
+                            >
+                              <Trash2 size={16} />
+                            </button>
+                          </div>
+                        </td>
+                        <td><StatusPill status={user.status} /></td>
+                      </tr>
+                    ))}
+                    {!isLoading && paginatedUsers.length === 0 && (
+                      <tr>
+                        <td colSpan={7} className="no-results-cell">
+                          No users match your filters.
+                        </td>
+                      </tr>
+                    )}
+                  </tbody>
+                </table>
+              </div>
 
               {/* Pagination */}
-              <div className="users-pagination" style={{ display: "flex", gap: "6px", alignItems: "center" }}>
-                <button
-                  type="button"
-                  className="page-btn"
-                  onClick={() => goToPage(currentPage - 1)}
-                  disabled={currentPage === 1}
-                  aria-label="Previous page"
-                  style={{ borderRadius: "8px", padding: "8px 12px", border: "1px solid #d1d5db", background: "#fff", cursor: "pointer" }}
-                >
-                  <ChevronLeft size={16} />
-                </button>
-                {Array.from({ length: totalPages }, (_, i) => i + 1).map((p) => (
-                  <button
-                    key={p}
-                    type="button"
-                    className={`page-btn ${p === currentPage ? "active" : ""}`}
-                    onClick={() => goToPage(p)}
-                  >
-                    {p}
-                  </button>
-                ))}
-                <button
-                  type="button"
-                  className="page-btn"
-                  onClick={() => goToPage(currentPage + 1)}
-                  disabled={currentPage === totalPages}
-                  aria-label="Next page"
-                  style={{ borderRadius: "8px", padding: "8px 12px", border: "1px solid #d1d5db", background: "#fff", cursor: "pointer" }}
-                >
-                  <ChevronRight size={16} />
-                </button>
-              </div>
+              <Pagination currentPage={currentPage} totalPages={totalPages} onPageChange={goToPage} />
             </div>
           </>
         ) : (
@@ -410,88 +366,50 @@ export default function Users() {
 
             {/* Table */}
             <div className="users-table-wrap">
-              <table className="users-table activity-log-table">
-                <colgroup>
-                  <col style={{ width: "12%" }} />
-                  <col style={{ width: "18%" }} />
-                  <col style={{ width: "14%" }} />
-                  <col style={{ width: "20%" }} />
-                  <col style={{ width: "22%" }} />
-                  <col style={{ width: "14%" }} />
-                </colgroup>
-                <thead>
-                  <tr>
-                    <th>User ID</th>
-                    <th>Full Name</th>
-                    <th>Role</th>
-                    <th>Module</th>
-                    <th>Action</th>
-                    <th>Date and Time</th>
-                  </tr>
-                </thead>
-                <tbody>
-                  {activityLog.map((entry) => (
-                    <tr key={entry.id}>
-                      <td className="activity-log-cell-id">{entry.userId}</td>
-                      <td className="activity-log-cell-name">{entry.name}</td>
-                      <td className="activity-log-cell-role">{entry.role}</td>
-                      <td className="activity-log-cell-module" title={entry.module}>{entry.module}</td>
-                      <td className="activity-log-cell-action" title={`${entry.action}${entry.description ? ` — ${entry.description}` : ""}`}>{entry.action}{entry.description ? ` — ${entry.description}` : ""}</td>
-                      <td className="activity-log-cell-date">{formatTimestampManila(entry.datetime)}</td>
-                    </tr>
-                  ))}
-                  {activityLog.length === 0 && (
+              <div className="paginated-table-scroll">
+                <table className="users-table activity-log-table">
+                  <colgroup>
+                    <col style={{ width: "12%" }} />
+                    <col style={{ width: "18%" }} />
+                    <col style={{ width: "14%" }} />
+                    <col style={{ width: "20%" }} />
+                    <col style={{ width: "22%" }} />
+                    <col style={{ width: "14%" }} />
+                  </colgroup>
+                  <thead>
                     <tr>
-                      <td colSpan={6} className="no-results-cell">
-                        No activity matches your search.
-                      </td>
+                      <th>User ID</th>
+                      <th>Full Name</th>
+                      <th>Role</th>
+                      <th>Module</th>
+                      <th>Action</th>
+                      <th>Date and Time</th>
                     </tr>
-                  )}
-                </tbody>
-              </table>
+                  </thead>
+                  <tbody>
+                    {activityLog.map((entry) => (
+                      <tr key={entry.id}>
+                        <td className="activity-log-cell-id">{entry.userId}</td>
+                        <td className="activity-log-cell-name">{entry.name}</td>
+                        <td className="activity-log-cell-role">{entry.role}</td>
+                        <td className="activity-log-cell-module" title={entry.module}>{entry.module}</td>
+                        <td className="activity-log-cell-action" title={`${entry.action}${entry.description ? ` — ${entry.description}` : ""}`}>{entry.action}{entry.description ? ` — ${entry.description}` : ""}</td>
+                        <td className="activity-log-cell-date">{formatTimestampManila(entry.datetime)}</td>
+                      </tr>
+                    ))}
+                    {activityLog.length === 0 && (
+                      <tr>
+                        <td colSpan={6} className="no-results-cell">
+                          No activity matches your search.
+                        </td>
+                      </tr>
+                    )}
+                  </tbody>
+                </table>
+              </div>
 
               {/* Pagination */}
-              <div className="users-pagination" style={{ display: "flex", gap: "6px", alignItems: "center" }}>
-                <button
-                  type="button"
-                  className="page-btn"
-                  onClick={() => goToActivityPage(activityCurrentPage - 1)}
-                  disabled={activityCurrentPage === 1}
-                  aria-label="Previous page"
-                  style={{ borderRadius: "8px", padding: "8px 12px", border: "1px solid #d1d5db", background: "#fff", cursor: "pointer" }}
-                >
-                  <ChevronLeft size={16} />
-                </button>
-                {getPaginationGroup(activityCurrentPage, activityTotalPages, 6).map((p) => (
-                  <button
-                    key={p}
-                    type="button"
-                    className={`page-btn ${p === activityCurrentPage ? "active" : ""}`}
-                    onClick={() => goToActivityPage(p)}
-                    style={{
-                      borderRadius: "8px",
-                      padding: "8px 14px",
-                      border: "1px solid #d1d5db",
-                      background: p === activityCurrentPage ? "#1e3a8a" : "#fff",
-                      color: p === activityCurrentPage ? "#fff" : "#1f2937",
-                      fontWeight: "600",
-                      cursor: "pointer",
-                    }}
-                  >
-                    {p}
-                  </button>
-                ))}
-                <button
-                  type="button"
-                  className="page-btn"
-                  onClick={() => goToActivityPage(activityCurrentPage + 1)}
-                  disabled={activityCurrentPage === activityTotalPages}
-                  aria-label="Next page"
-                  style={{ borderRadius: "8px", padding: "8px 12px", border: "1px solid #d1d5db", background: "#fff", cursor: "pointer" }}
-                >
-                  <ChevronRight size={16} />
-                </button>
-              </div>
+              <Pagination currentPage={activityCurrentPage} totalPages={activityTotalPages} onPageChange={goToActivityPage} />
             </div>
           </>
         )}

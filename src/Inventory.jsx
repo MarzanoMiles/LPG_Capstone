@@ -1,4 +1,5 @@
-﻿import React, { useEffect, useMemo, useRef, useState } from "react";
+import Pagination from "./Pagination";
+import React, { useEffect, useMemo, useRef, useState } from "react";
 import {
   Search,
   ChevronDown,
@@ -10,9 +11,7 @@ import {
   Upload,
   X,
   Download,
-  ChevronLeft,
-  ChevronRight,
-} from "lucide-react";
+  } from "lucide-react";
 import AddStockInModal from "./AddStockInModal";
 import AddStockOutModal from "./AddStockOutModal";
 import AddTransferModal from "./AddTransferModal";
@@ -20,7 +19,7 @@ import { apiRequest } from "./api";
 import { isVisibleWarehouseName } from "./utils/warehouseFilters";
 import "./Inventory.css";
 
-const PAGE_SIZE = 7;
+const PAGE_SIZE = 5;
 
 function getStatusClass(status) {
   switch (status) {
@@ -54,21 +53,7 @@ function downloadInventoryCsvTemplate() {
 }
 
 // Helper to compute a sliding window of up to 6 page numbers
-function getPaginationGroup(currentPage, totalPages, maxVisible = 6) {
-  let start = Math.max(1, currentPage - Math.floor(maxVisible / 2));
-  let end = start + maxVisible - 1;
 
-  if (end > totalPages) {
-    end = totalPages;
-    start = Math.max(1, end - maxVisible + 1);
-  }
-
-  const pages = [];
-  for (let i = start; i <= end; i++) {
-    pages.push(i);
-  }
-  return pages;
-}
 
 const overlayStyle = {
   position: "fixed",
@@ -592,188 +577,108 @@ export default function Inventory() {
         <div className="inventory-table-wrap">
           {activeTab === "inventory" ? (
             <>
-              <table className="inventory-table">
-                <thead>
-                  <tr>
-                    <th>Product ID</th>
-                    <th>Product Name</th>
-                    <th>Warehouse</th>
-                    <th>Current Stock</th>
-                    <th>Reorder Limit</th>
-                    <th>Status</th>
-                    <th>Stock Actions</th>
-                  </tr>
-                </thead>
-                <tbody>
-                  {isLoading && (
-                    <tr><td colSpan={7} style={{ textAlign: "center", padding: 24 }}>Loading…</td></tr>
-                  )}
-                  {!isLoading && filteredInventory.length === 0 && (
-                    <tr><td colSpan={7} style={{ textAlign: "center", padding: 24 }}>No inventory records found.</td></tr>
-                  )}
-                  {!isLoading &&
-                    paginatedInventory.map((item) => (
-                      <tr key={item.inventoryId}>
-                        <td>{item.productId}</td>
-                        <td>{item.productName}</td>
-                        <td>{item.warehouse}</td>
-                        <td>{item.currentStock}</td>
-                        <td>{item.reorderLimit}</td>
-                        <td>
-                          <span className={`inventory-status-pill ${getStatusClass(item.status)}`}>
-                            {item.status}
-                          </span>
-                        </td>
-                        <td>
-                          <div className="inventory-action-icons">
-                            <button
-                              className="inventory-action-icon view"
-                              title="View"
-                              onClick={() => setViewItem(item)}
-                            >
-                              <FileText size={16} />
-                            </button>
-                            <button
-                              className="inventory-action-icon delete"
-                              title="Delete"
-                              onClick={() => handleDelete(item)}
-                            >
-                              <Trash2 size={16} />
-                            </button>
-                          </div>
-                        </td>
-                      </tr>
-                    ))}
-                </tbody>
-              </table>
+              <div className="paginated-table-scroll">
+                <table className="inventory-table">
+                  <thead>
+                    <tr>
+                      <th>Product ID</th>
+                      <th>Product Name</th>
+                      <th>Warehouse</th>
+                      <th>Current Stock</th>
+                      <th>Reorder Limit</th>
+                      <th>Status</th>
+                      <th>Stock Actions</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {isLoading && (
+                      <tr><td colSpan={7} style={{ textAlign: "center", padding: 24 }}>Loading…</td></tr>
+                    )}
+                    {!isLoading && filteredInventory.length === 0 && (
+                      <tr><td colSpan={7} style={{ textAlign: "center", padding: 24 }}>No inventory records found.</td></tr>
+                    )}
+                    {!isLoading &&
+                      paginatedInventory.map((item) => (
+                        <tr key={item.inventoryId}>
+                          <td>{item.productId}</td>
+                          <td>{item.productName}</td>
+                          <td>{item.warehouse}</td>
+                          <td>{item.currentStock}</td>
+                          <td>{item.reorderLimit}</td>
+                          <td>
+                            <span className={`inventory-status-pill ${getStatusClass(item.status)}`}>
+                              {item.status}
+                            </span>
+                          </td>
+                          <td>
+                            <div className="inventory-action-icons">
+                              <button
+                                className="inventory-action-icon view"
+                                title="View"
+                                onClick={() => setViewItem(item)}
+                              >
+                                <FileText size={16} />
+                              </button>
+                              <button
+                                className="inventory-action-icon delete"
+                                title="Delete"
+                                onClick={() => handleDelete(item)}
+                              >
+                                <Trash2 size={16} />
+                              </button>
+                            </div>
+                          </td>
+                        </tr>
+                      ))}
+                  </tbody>
+                </table>
+              </div>
 
               {/* Inventory Pagination (Sliding up to 6 pages) */}
-              <div className="users-pagination" style={{ display: "flex", gap: "6px", alignItems: "center" }}>
-                <button
-                  type="button"
-                  className="page-btn"
-                  onClick={() => goToInventoryPage(inventoryCurrentPage - 1)}
-                  disabled={inventoryCurrentPage === 1}
-                  aria-label="Previous page"
-                  style={{ borderRadius: "8px", padding: "8px 12px", border: "1px solid #d1d5db", background: "#fff", cursor: "pointer" }}
-                >
-                  <ChevronLeft size={16} />
-                </button>
-
-                {getPaginationGroup(inventoryCurrentPage, inventoryTotalPages, 6).map((p) => (
-                  <button
-                    key={p}
-                    type="button"
-                    className={`page-btn ${p === inventoryCurrentPage ? "active" : ""}`}
-                    onClick={() => goToInventoryPage(p)}
-                    style={{
-                      borderRadius: "8px",
-                      padding: "8px 14px",
-                      border: "1px solid #d1d5db",
-                      background: p === inventoryCurrentPage ? "#1e3a8a" : "#fff",
-                      color: p === inventoryCurrentPage ? "#fff" : "#1f2937",
-                      fontWeight: "600",
-                      cursor: "pointer",
-                    }}
-                  >
-                    {p}
-                  </button>
-                ))}
-
-                <button
-                  type="button"
-                  className="page-btn"
-                  onClick={() => goToInventoryPage(inventoryCurrentPage + 1)}
-                  disabled={inventoryCurrentPage === inventoryTotalPages}
-                  aria-label="Next page"
-                  style={{ borderRadius: "8px", padding: "8px 12px", border: "1px solid #d1d5db", background: "#fff", cursor: "pointer" }}
-                >
-                  <ChevronRight size={16} />
-                </button>
-              </div>
+              <Pagination currentPage={inventoryCurrentPage} totalPages={inventoryTotalPages} onPageChange={goToInventoryPage} />
             </>
           ) : (
             <>
-              <table className="inventory-table transactions-table">
-                <thead>
-                  <tr>
-                    <th>Transaction ID</th>
-                    <th>Product ID</th>
-                    <th>Product Name</th>
-                    <th>Warehouse</th>
-                    <th>Type</th>
-                    <th>Quantity</th>
-                    <th>Reason</th>
-                    <th>Reference</th>
-                    <th>Date</th>
-                    <th>User</th>
-                  </tr>
-                </thead>
-                <tbody>
-                  {paginatedTransactions.length === 0 && (
-                    <tr><td colSpan={10} style={{ textAlign: "center", padding: 24 }}>No transactions yet.</td></tr>
-                  )}
-                  {paginatedTransactions.map((tx) => (
-                    <tr key={tx.transactionId}>
-                      <td>{tx.transactionId}</td>
-                      <td>{tx.productId}</td>
-                      <td>{tx.productName}</td>
-                      <td>{tx.warehouse}</td>
-                      <td>{String(tx.reason || "").toLowerCase() === "transfer" ? "Transfer" : tx.type}</td>
-                      <td>{tx.quantity}</td>
-                      <td>{tx.reason || "—"}</td>
-                      <td>{tx.reference || "—"}</td>
-                      <td>{new Date(tx.date).toLocaleString()}</td>
-                      <td>{tx.user}</td>
+              <div className="paginated-table-scroll inventory-transactions-scroll" tabIndex={0} role="region" aria-label="Inventory transactions, scroll horizontally to view all columns">
+                <table className="inventory-table transactions-table">
+                  <thead>
+                    <tr>
+                      <th>Transaction ID</th>
+                      <th>Product ID</th>
+                      <th>Product Name</th>
+                      <th>Warehouse</th>
+                      <th>Type</th>
+                      <th>Quantity</th>
+                      <th>Reason</th>
+                      <th>Reference</th>
+                      <th>Date</th>
+                      <th>User</th>
                     </tr>
-                  ))}
-                </tbody>
-              </table>
+                  </thead>
+                  <tbody>
+                    {paginatedTransactions.length === 0 && (
+                      <tr><td colSpan={10} style={{ textAlign: "center", padding: 24 }}>No transactions yet.</td></tr>
+                    )}
+                    {paginatedTransactions.map((tx) => (
+                      <tr key={tx.transactionId}>
+                        <td>{tx.transactionId}</td>
+                        <td>{tx.productId}</td>
+                        <td>{tx.productName}</td>
+                        <td>{tx.warehouse}</td>
+                        <td>{String(tx.reason || "").toLowerCase() === "transfer" ? "Transfer" : tx.type}</td>
+                        <td>{tx.quantity}</td>
+                        <td>{tx.reason || "—"}</td>
+                        <td>{tx.reference || "—"}</td>
+                        <td>{new Date(tx.date).toLocaleString()}</td>
+                        <td>{tx.user}</td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
 
               {/* Transactions Pagination (Sliding up to 6 pages) */}
-              <div className="users-pagination" style={{ display: "flex", gap: "6px", alignItems: "center" }}>
-                <button
-                  type="button"
-                  className="page-btn"
-                  onClick={() => goToTransactionsPage(transactionsCurrentPage - 1)}
-                  disabled={transactionsCurrentPage === 1}
-                  aria-label="Previous page"
-                  style={{ borderRadius: "8px", padding: "8px 12px", border: "1px solid #d1d5db", background: "#fff", cursor: "pointer" }}
-                >
-                  <ChevronLeft size={16} />
-                </button>
-
-                {getPaginationGroup(transactionsCurrentPage, transactionsTotalPages, 6).map((p) => (
-                  <button
-                    key={p}
-                    type="button"
-                    className={`page-btn ${p === transactionsCurrentPage ? "active" : ""}`}
-                    onClick={() => goToTransactionsPage(p)}
-                    style={{
-                      borderRadius: "8px",
-                      padding: "8px 14px",
-                      border: "1px solid #d1d5db",
-                      background: p === transactionsCurrentPage ? "#1e3a8a" : "#fff",
-                      color: p === transactionsCurrentPage ? "#fff" : "#1f2937",
-                      fontWeight: "600",
-                      cursor: "pointer",
-                    }}
-                  >
-                    {p}
-                  </button>
-                ))}
-
-                <button
-                  type="button"
-                  className="page-btn"
-                  onClick={() => goToTransactionsPage(transactionsCurrentPage + 1)}
-                  disabled={transactionsCurrentPage === transactionsTotalPages}
-                  aria-label="Next page"
-                  style={{ borderRadius: "8px", padding: "8px 12px", border: "1px solid #d1d5db", background: "#fff", cursor: "pointer" }}
-                >
-                  <ChevronRight size={16} />
-                </button>
-              </div>
+              <Pagination currentPage={transactionsCurrentPage} totalPages={transactionsTotalPages} onPageChange={goToTransactionsPage} />
             </>
           )}
         </div>

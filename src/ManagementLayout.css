@@ -1,0 +1,176 @@
+/* Shared density for the management pages at normal browser zoom. */
+:is(.inventory-page, .products-page, .sales-page, .restocking-page, .suppliers-page, .users-page) {
+  padding: 20px 18px;
+  min-width: 0;
+}
+
+:is(.inventory-inner, .products-inner, .sales-inner, .restocking-inner, .users-inner) {
+  max-width: none;
+  min-width: 0;
+  gap: 12px;
+}
+
+:is(.inventory-title, .products-title, .sales-title, .restocking-title, .suppliers-title, .users-title) {
+  font-size: 1.75rem;
+  margin-bottom: 4px;
+}
+
+:is(.inventory-cards-grid, .restocking-cards-grid, .sales-stat-grid) {
+  gap: 12px;
+  margin-bottom: 0;
+}
+
+.sales-stat-grid {
+  grid-template-columns: repeat(auto-fit, minmax(min(100%, 160px), 1fr));
+}
+
+:is(.inventory-card, .restocking-card, .sales-stat-card) {
+  min-width: 0;
+  padding: 14px 16px;
+  overflow-wrap: anywhere;
+}
+
+:is(.inventory-card-value, .restocking-card-value, .sales-stat-value) {
+  font-size: 1.4rem;
+}
+
+:is(.inventory-toolbar, .products-toolbar, .sales-toolbar, .restocking-toolbar, .suppliers-toolbar, .users-toolbar) {
+  flex-wrap: wrap;
+  gap: 8px;
+}
+
+:is(.users-toolbar, .users-tabs, .suppliers-toolbar) {
+  margin-bottom: 12px;
+}
+
+:is(.inventory-search, .products-search, .restocking-search, .suppliers-search-wrap, .users-search) {
+  flex: 1 1 200px;
+  min-width: 0;
+}
+
+:is(.inventory-select, .products-select, .restocking-select, .sales-select, .filter-select) {
+  min-width: 140px;
+  max-width: 100%;
+}
+
+.inventory-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  max-width: 100%;
+}
+
+.inventory-actions .action-btn {
+  width: auto;
+  padding: 9px 12px;
+}
+
+:is(.inventory-tabs, .restocking-tabs, .users-tabs) {
+  flex-wrap: wrap;
+  gap: 16px;
+}
+
+:is(.inventory-table, .products-table, .sales-table, .restocking-table, .suppliers-table, .users-table) {
+  min-width: 680px;
+  font-size: 0.8125rem;
+}
+
+:is(.inventory-table, .products-table, .sales-table, .restocking-table, .suppliers-table, .users-table) > :is(thead, tbody) > tr > :is(th, td) {
+  padding: 10px 12px;
+  height: 52px;
+  line-height: 20px;
+  font-size: 0.8125rem;
+  vertical-align: middle;
+  white-space: normal;
+  overflow-wrap: anywhere;
+}
+
+/* Keep badges and action controls from changing the standard row height. */
+:is(.inventory-table, .products-table, .sales-table, .restocking-table, .suppliers-table, .users-table)
+  :is(.inventory-status-pill, .products-status-pill, .status-pill, .restocking-priority-pill, .po-history-status-pill) {
+  padding: 4px 10px;
+  line-height: 16px;
+  font-size: 0.75rem;
+}
+
+:is(.inventory-table, .products-table, .sales-table, .restocking-table, .suppliers-table, .users-table) td button {
+  min-height: 24px;
+  line-height: 16px;
+}
+
+.users-table {
+  min-width: 760px;
+  table-layout: fixed;
+}
+
+.users-table :is(th, td):nth-child(3),
+.users-table :is(th, td):nth-child(6) {
+  min-width: 0;
+}
+
+.activity-log-table {
+  min-width: 800px;
+}
+
+.inventory-table.transactions-table {
+  min-width: 1500px;
+}
+
+.inventory-transactions-scroll {
+  overflow-x: scroll;
+  overscroll-behavior-x: contain;
+}
+
+.inventory-transactions-scroll:focus-visible {
+  outline: 2px solid #1e3a8a;
+  outline-offset: -2px;
+}
+
+.inventory-page .transactions-table > :is(thead, tbody) > tr > :is(th, td) {
+  text-align: left;
+  padding: 10px 12px;
+  white-space: nowrap;
+  overflow-wrap: normal;
+}
+
+.inventory-page .transactions-table > tbody > tr > :is(td:nth-child(3), td:nth-child(7), td:nth-child(8), td:nth-child(10)) {
+  white-space: normal;
+  overflow-wrap: anywhere;
+}
+
+.inventory-status-pill {
+  min-width: 80px;
+  padding: 5px 10px;
+}
+
+
+@media (max-width: 900px) {
+  .inventory-cards-grid {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+
+  .restocking-cards-grid {
+    grid-template-columns: repeat(auto-fit, minmax(min(100%, 160px), 1fr));
+  }
+}
+
+@media (max-width: 600px) {
+  :is(.inventory-page, .products-page, .sales-page, .restocking-page, .suppliers-page, .users-page) {
+    padding: 16px 12px;
+  }
+
+  :is(.inventory-select-wrap, .products-select-wrap, .restocking-select-wrap, .sales-select-wrap, .suppliers-select-wrap, .filter-select-wrap) {
+    flex: 1 1 140px;
+    min-width: 0;
+  }
+
+  :is(.inventory-select, .products-select, .restocking-select, .sales-select, .filter-select) {
+    width: 100%;
+    min-width: 0;
+  }
+
+  .sales-search-input {
+    min-width: 0;
+    flex-basis: 100%;
+  }
+}

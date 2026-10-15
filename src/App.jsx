@@ -20,6 +20,7 @@ import OrderAndDelivery from "./OrderAndDelivery";
 import LogoutModal from "./LogoutModal";
 import { apiRequest } from "./api";
 import { getAllowedNavIdsByRole } from "./rbac";
+import "./ManagementLayout.css";
 
 const pages = {
   dashboard: Dashboard,

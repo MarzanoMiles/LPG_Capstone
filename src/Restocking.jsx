@@ -1,9 +1,8 @@
-﻿import React, { useEffect, useMemo, useState } from "react";
+import Pagination from "./Pagination";
+import React, { useEffect, useMemo, useState } from "react";
 import {
   Search,
   ChevronDown,
-  ChevronLeft,
-  ChevronRight,
   Box,
   Sliders,
   Package,
@@ -18,27 +17,14 @@ import CustomizeSingleItemModal from "./CustomizeSingleItemModal";
 import { apiRequest } from "./api";
 import "./Restocking.css";
 
-const HISTORY_PAGE_SIZE = 6;
+const PAGE_SIZE = 5;
+const HISTORY_PAGE_SIZE = PAGE_SIZE;
 
 function formatPeso(amount) {
   return `₱ ${Number(amount || 0).toLocaleString("en-US", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
 }
 
-function getPaginationGroup(currentPage, totalPages, maxVisible = 6) {
-  let start = Math.max(1, currentPage - Math.floor(maxVisible / 2));
-  let end = start + maxVisible - 1;
 
-  if (end > totalPages) {
-    end = totalPages;
-    start = Math.max(1, end - maxVisible + 1);
-  }
-
-  const pages = [];
-  for (let page = start; page <= end; page += 1) {
-    pages.push(page);
-  }
-  return pages;
-}
 
 function displayPurchaseOrderStatus(status) {
   if (status === "Received") return "Received";
@@ -79,6 +65,7 @@ export default function Restocking() {
   const [isSavingDraft, setIsSavingDraft] = useState(false);
 
   const [historyPage, setHistoryPage] = useState(1);
+  const [restockingPage, setRestockingPage] = useState(1);
   const [viewingPurchaseOrderId, setViewingPurchaseOrderId] = useState(null);
   const [viewPurchaseOrder, setViewPurchaseOrder] = useState(null);
   const [isViewLoading, setIsViewLoading] = useState(false);
@@ -127,6 +114,21 @@ export default function Restocking() {
       return matchesSearch && matchesSupplier && matchesPriority;
     });
   }, [recommendations, searchQuery, selectedSupplier, selectedPriority]);
+
+  const restockingTotalPages = Math.max(1, Math.ceil(filteredData.length / PAGE_SIZE));
+  const restockingCurrentPage = Math.min(restockingPage, restockingTotalPages);
+  const paginatedRecommendations = filteredData.slice(
+    (restockingCurrentPage - 1) * PAGE_SIZE,
+    restockingCurrentPage * PAGE_SIZE
+  );
+
+  useEffect(() => {
+    setRestockingPage(1);
+  }, [searchQuery, selectedSupplier, selectedPriority]);
+
+  useEffect(() => {
+    if (restockingPage > restockingTotalPages) setRestockingPage(restockingTotalPages);
+  }, [restockingPage, restockingTotalPages]);
 
   const historyTotalPages = Math.max(1, Math.ceil(purchaseOrderHistory.length / HISTORY_PAGE_SIZE));
   const historyCurrentPage = Math.min(historyPage, historyTotalPages);
@@ -482,94 +484,99 @@ export default function Restocking() {
 
             {/* Table Structure */}
             <div className="restocking-table-wrap">
-              <table className="restocking-table">
-                <thead>
-                  <tr>
-                    <th>
-                      <input
-                        type="checkbox"
-                        className="restocking-checkbox"
-                        checked={selectedRows.length === filteredData.length && filteredData.length > 0}
-                        onChange={toggleSelectAll}
-                      />
-                    </th>
-                    <th>Restock ID</th>
-                    <th>Product ID</th>
-                    <th>Product Name</th>
-                    <th>Current Stock</th>
-                    <th>Reorder Level</th>
-                    <th>Suggested Qty</th>
-                    <th>Confidence</th>
-                    <th>Priority</th>
-                    <th>Actions</th>
-                  </tr>
-                </thead>
-                <tbody>
-                  {isLoading && (
-                    <tr><td colSpan={10} style={{ textAlign: "center", padding: 24 }}>Loading…</td></tr>
-                  )}
-                  {!isLoading && filteredData.length === 0 && (
+              <div className="paginated-table-scroll">
+                <table className="restocking-table">
+                  <thead>
                     <tr>
-                      <td colSpan={10} style={{ textAlign: "center", padding: 24 }}>
-                        No open recommendations. Click "Generate Recommendations" to scan for low stock.
-                      </td>
+                      <th>
+                        <input
+                          type="checkbox"
+                          className="restocking-checkbox"
+                          checked={selectedRows.length === filteredData.length && filteredData.length > 0}
+                          onChange={toggleSelectAll}
+                        />
+                      </th>
+                      <th>Restock ID</th>
+                      <th>Product ID</th>
+                      <th>Product Name</th>
+                      <th>Current Stock</th>
+                      <th>Reorder Level</th>
+                      <th>Suggested Qty</th>
+                      <th>Confidence</th>
+                      <th>Priority</th>
+                      <th>Actions</th>
                     </tr>
-                  )}
-                  {!isLoading &&
-                    filteredData.map((item) => {
-                      const isSelected = selectedRows.includes(item.restockId);
-                      return (
-                        <tr key={item.restockId} className={isSelected ? "selected-row" : ""} title={`${item.productName} Â· ${item.supplierName}`}>
-                          <td>
-                            <input
-                              type="checkbox"
-                              className="restocking-checkbox"
-                              checked={isSelected}
-                              onChange={() => toggleRowSelect(item.restockId)}
-                            />
-                          </td>
-                          <td>{item.restockId}</td>
-                          <td>{item.productId}</td>
-                          <td>{item.productName || "—"}</td>
-                          <td>{item.currentStock}</td>
-                          <td>{item.reorderLevel}</td>
-                          <td>{item.suggestedQty}</td>
-                          <td>{item.confidence != null ? `${Number(item.confidence).toFixed(0)}%` : "—"}</td>
-                          <td>
-                            <span className={`restocking-priority-pill ${item.priority.toLowerCase()}`}>
-                              {item.priority}
-                            </span>
-                          </td>
-                          <td>
-                            <div className="restocking-action-icons">
-                              <button
-                                className="restocking-action-icon adjust"
-                                title="Customize"
-                                onClick={() => handleOpenSingleCustomize(item)}
-                              >
-                                <Sliders size={16} />
-                              </button>
-                              <button
-                                className="restocking-action-icon package"
-                                title="Build Purchase Order"
-                                onClick={() => handlePackageSingle(item)}
-                              >
-                                <Package size={16} />
-                              </button>
-                              <button
-                                className="restocking-action-icon delete"
-                                title="Delete"
-                                onClick={() => handleDeleteRecommendation(item)}
-                              >
-                                <Trash2 size={16} />
-                              </button>
-                            </div>
-                          </td>
-                        </tr>
-                      );
-                    })}
-                </tbody>
-              </table>
+                  </thead>
+                  <tbody>
+                    {isLoading && (
+                      <tr><td colSpan={10} style={{ textAlign: "center", padding: 24 }}>Loading…</td></tr>
+                    )}
+                    {!isLoading && filteredData.length === 0 && (
+                      <tr>
+                        <td colSpan={10} style={{ textAlign: "center", padding: 24 }}>
+                          No open recommendations. Click "Generate Recommendations" to scan for low stock.
+                        </td>
+                      </tr>
+                    )}
+                    {!isLoading &&
+                      paginatedRecommendations.map((item) => {
+                        const isSelected = selectedRows.includes(item.restockId);
+                        return (
+                          <tr key={item.restockId} className={isSelected ? "selected-row" : ""} title={`${item.productName} Â· ${item.supplierName}`}>
+                            <td>
+                              <input
+                                type="checkbox"
+                                className="restocking-checkbox"
+                                checked={isSelected}
+                                onChange={() => toggleRowSelect(item.restockId)}
+                              />
+                            </td>
+                            <td>{item.restockId}</td>
+                            <td>{item.productId}</td>
+                            <td>{item.productName || "—"}</td>
+                            <td>{item.currentStock}</td>
+                            <td>{item.reorderLevel}</td>
+                            <td>{item.suggestedQty}</td>
+                            <td>{item.confidence != null ? `${Number(item.confidence).toFixed(0)}%` : "—"}</td>
+                            <td>
+                              <span className={`restocking-priority-pill ${item.priority.toLowerCase()}`}>
+                                {item.priority}
+                              </span>
+                            </td>
+                            <td>
+                              <div className="restocking-action-icons">
+                                <button
+                                  className="restocking-action-icon adjust"
+                                  title="Customize"
+                                  onClick={() => handleOpenSingleCustomize(item)}
+                                >
+                                  <Sliders size={16} />
+                                </button>
+                                <button
+                                  className="restocking-action-icon package"
+                                  title="Build Purchase Order"
+                                  onClick={() => handlePackageSingle(item)}
+                                >
+                                  <Package size={16} />
+                                </button>
+                                <button
+                                  className="restocking-action-icon delete"
+                                  title="Delete"
+                                  onClick={() => handleDeleteRecommendation(item)}
+                                >
+                                  <Trash2 size={16} />
+                                </button>
+                              </div>
+                            </td>
+                          </tr>
+                        );
+                      })}
+                  </tbody>
+                </table>
+              </div>
+              {!isLoading && (
+                <Pagination currentPage={restockingCurrentPage} totalPages={restockingTotalPages} onPageChange={setRestockingPage} />
+              )}
             </div>
           </>
         )}
@@ -578,108 +585,67 @@ export default function Restocking() {
         {activeTab === "purchaseOrderHistory" && (
           <>
             <div className="restocking-table-wrap">
-              <table className="restocking-table">
-                <thead>
-                  <tr>
-                    <th>Purchase Order ID</th>
-                    <th>Supplier Name</th>
-                    <th>Date</th>
-                    <th>Product Name</th>
-                    <th>Qty</th>
-                    <th>Total</th>
-                    <th>Status</th>
-                    <th>Action</th>
-                  </tr>
-                </thead>
-                <tbody>
-                  {isHistoryLoading && (
-                    <tr><td colSpan={8} style={{ textAlign: "center", padding: 24 }}>Loading…</td></tr>
-                  )}
-
-                  {!isHistoryLoading && paginatedPurchaseOrderHistory.length === 0 && (
+              <div className="paginated-table-scroll">
+                <table className="restocking-table">
+                  <thead>
                     <tr>
-                      <td colSpan={8} style={{ textAlign: "center", padding: 24 }}>
-                        No purchase order history yet.
-                      </td>
+                      <th>Purchase Order ID</th>
+                      <th>Supplier Name</th>
+                      <th>Date</th>
+                      <th>Product Name</th>
+                      <th>Qty</th>
+                      <th>Total</th>
+                      <th>Status</th>
+                      <th>Action</th>
                     </tr>
-                  )}
+                  </thead>
+                  <tbody>
+                    {isHistoryLoading && (
+                      <tr><td colSpan={8} style={{ textAlign: "center", padding: 24 }}>Loading…</td></tr>
+                    )}
 
-                  {!isHistoryLoading &&
-                    paginatedPurchaseOrderHistory.map((po) => {
-                      const displayStatus = displayPurchaseOrderStatus(po.status);
-                      const statusClass = displayStatus.toLowerCase();
-                      return (
-                        <tr key={po.id}>
-                          <td>{po.poNo || po.id}</td>
-                          <td>{po.supplier || "—"}</td>
-                          <td>{po.orderDate ? new Date(po.orderDate).toLocaleDateString() : "—"}</td>
-                          <td>{po.productNames || "—"}</td>
-                          <td>{Number(po.totalQty || 0)}</td>
-                          <td>{formatPeso(po.totalAmount)}</td>
-                          <td>
-                            <span className={`po-history-status-pill ${statusClass}`}>{displayStatus}</span>
-                          </td>
-                          <td>
-                            <button
-                              type="button"
-                              className="po-history-view-btn"
-                              onClick={() => handleViewPurchaseOrder(po.id)}
-                            >
-                              <Eye size={14} /> View
-                            </button>
-                          </td>
-                        </tr>
-                      );
-                    })}
-                </tbody>
-              </table>
-            </div>
+                    {!isHistoryLoading && paginatedPurchaseOrderHistory.length === 0 && (
+                      <tr>
+                        <td colSpan={8} style={{ textAlign: "center", padding: 24 }}>
+                          No purchase order history yet.
+                        </td>
+                      </tr>
+                    )}
 
-            {!isHistoryLoading && (
-              <div className="users-pagination" style={{ display: "flex", gap: "6px", alignItems: "center" }}>
-                <button
-                  type="button"
-                  className="page-btn"
-                  onClick={() => goToHistoryPage(historyCurrentPage - 1)}
-                  disabled={historyCurrentPage === 1}
-                  aria-label="Previous page"
-                  style={{ borderRadius: "8px", padding: "8px 12px", border: "1px solid #d1d5db", background: "#fff", cursor: "pointer" }}
-                >
-                  <ChevronLeft size={16} />
-                </button>
-
-                {getPaginationGroup(historyCurrentPage, historyTotalPages, 6).map((page) => (
-                  <button
-                    key={page}
-                    type="button"
-                    className={`page-btn ${page === historyCurrentPage ? "active" : ""}`}
-                    onClick={() => goToHistoryPage(page)}
-                    style={{
-                      borderRadius: "8px",
-                      padding: "8px 14px",
-                      border: "1px solid #d1d5db",
-                      background: page === historyCurrentPage ? "#1e3a8a" : "#fff",
-                      color: page === historyCurrentPage ? "#fff" : "#1f2937",
-                      fontWeight: "600",
-                      cursor: "pointer",
-                    }}
-                  >
-                    {page}
-                  </button>
-                ))}
-
-                <button
-                  type="button"
-                  className="page-btn"
-                  onClick={() => goToHistoryPage(historyCurrentPage + 1)}
-                  disabled={historyCurrentPage === historyTotalPages}
-                  aria-label="Next page"
-                  style={{ borderRadius: "8px", padding: "8px 12px", border: "1px solid #d1d5db", background: "#fff", cursor: "pointer" }}
-                >
-                  <ChevronRight size={16} />
-                </button>
+                    {!isHistoryLoading &&
+                      paginatedPurchaseOrderHistory.map((po) => {
+                        const displayStatus = displayPurchaseOrderStatus(po.status);
+                        const statusClass = displayStatus.toLowerCase();
+                        return (
+                          <tr key={po.id}>
+                            <td>{po.poNo || po.id}</td>
+                            <td>{po.supplier || "—"}</td>
+                            <td>{po.orderDate ? new Date(po.orderDate).toLocaleDateString() : "—"}</td>
+                            <td>{po.productNames || "—"}</td>
+                            <td>{Number(po.totalQty || 0)}</td>
+                            <td>{formatPeso(po.totalAmount)}</td>
+                            <td>
+                              <span className={`po-history-status-pill ${statusClass}`}>{displayStatus}</span>
+                            </td>
+                            <td>
+                              <button
+                                type="button"
+                                className="po-history-view-btn"
+                                onClick={() => handleViewPurchaseOrder(po.id)}
+                              >
+                                <Eye size={14} /> View
+                              </button>
+                            </td>
+                          </tr>
+                        );
+                      })}
+                  </tbody>
+                </table>
               </div>
-            )}
+              {!isHistoryLoading && (
+                <Pagination currentPage={historyCurrentPage} totalPages={historyTotalPages} onPageChange={goToHistoryPage} />
+              )}
+            </div>
           </>
         )}
 

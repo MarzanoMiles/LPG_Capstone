@@ -1,9 +1,12 @@
-﻿import React, { useEffect, useMemo, useState } from "react";
+import Pagination from "./Pagination";
+import React, { useEffect, useState } from "react";
 import { Search, ChevronDown, Plus, FileText, Edit, Trash2 } from "lucide-react";
 import AddSupplierModal from "./AddSupplierModal";
 import ViewSupplierModal from "./ViewSupplierModal";
 import { apiRequest } from "./api";
 import "./Suppliers.css";
+
+const PAGE_SIZE = 5;
 
 export default function Suppliers() {
   const [suppliers, setSuppliers] = useState([]);
@@ -38,6 +41,15 @@ export default function Suppliers() {
   useEffect(() => {
     loadSuppliers();
     // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [search, statusFilter]);
+
+  const [page, setPage] = useState(1);
+  const totalPages = Math.max(1, Math.ceil(suppliers.length / PAGE_SIZE));
+  const currentPage = Math.min(page, totalPages);
+  const paginatedRows = suppliers.slice((currentPage - 1) * PAGE_SIZE, currentPage * PAGE_SIZE);
+
+  useEffect(() => {
+    setPage(1);
   }, [search, statusFilter]);
 
   // Open Modal for "Add Supplier"
@@ -115,70 +127,73 @@ export default function Suppliers() {
       <div className="suppliers-section-title">Supplier List</div>
 
       <div className="suppliers-table-wrap">
-        <table className="suppliers-table">
-          <thead>
-            <tr>
-              <th>Supplier ID</th>
-              <th>Supplier Name</th>
-              <th>Contact Person</th>
-              <th>Phone</th>
-              <th>Address</th>
-              <th>Status</th>
-              <th>Actions</th>
-            </tr>
-          </thead>
-          <tbody>
-            {isLoading && (
-              <tr><td colSpan={7} style={{ textAlign: "center", padding: 24 }}>Loading…</td></tr>
-            )}
-            {!isLoading && suppliers.length === 0 && (
-              <tr><td colSpan={7} style={{ textAlign: "center", padding: 24 }}>No suppliers found.</td></tr>
-            )}
-            {!isLoading &&
-              suppliers.map((item) => (
-                <tr key={item.id}>
-                  <td>{item.id}</td>
-                  <td>{item.name}</td>
-                  <td>{item.contactPerson || "—"}</td>
-                  <td>{item.phone || "—"}</td>
-                  <td>{item.address || "—"}</td>
-                  <td>
-                    <span className={`status-pill ${item.status.toLowerCase()}`}>
-                      {item.status}
-                    </span>
-                  </td>
-                  <td>
-                    <div className="suppliers-actions-cell">
-                      <button
-                        type="button"
-                        className="action-icon-btn view"
-                        title="View Details"
-                        onClick={() => handleOpenViewModal(item)}
-                      >
-                        <FileText size={18} />
-                      </button>
-                      <button
-                        type="button"
-                        className="action-icon-btn edit"
-                        title="Edit Supplier"
-                        onClick={() => handleOpenEditModal(item)}
-                      >
-                        <Edit size={18} />
-                      </button>
-                      <button
-                        type="button"
-                        className="action-icon-btn delete"
-                        title="Deactivate Supplier"
-                        onClick={() => handleDelete(item)}
-                      >
-                        <Trash2 size={18} />
-                      </button>
-                    </div>
-                  </td>
-                </tr>
-              ))}
-          </tbody>
-        </table>
+        <div className="paginated-table-scroll">
+          <table className="suppliers-table">
+            <thead>
+              <tr>
+                <th>Supplier ID</th>
+                <th>Supplier Name</th>
+                <th>Contact Person</th>
+                <th>Phone</th>
+                <th>Address</th>
+                <th>Status</th>
+                <th>Actions</th>
+              </tr>
+            </thead>
+            <tbody>
+              {isLoading && (
+                <tr><td colSpan={7} style={{ textAlign: "center", padding: 24 }}>Loading…</td></tr>
+              )}
+              {!isLoading && suppliers.length === 0 && (
+                <tr><td colSpan={7} style={{ textAlign: "center", padding: 24 }}>No suppliers found.</td></tr>
+              )}
+              {!isLoading &&
+                paginatedRows.map((item) => (
+                  <tr key={item.id}>
+                    <td>{item.id}</td>
+                    <td>{item.name}</td>
+                    <td>{item.contactPerson || "—"}</td>
+                    <td>{item.phone || "—"}</td>
+                    <td>{item.address || "—"}</td>
+                    <td>
+                      <span className={`status-pill ${item.status.toLowerCase()}`}>
+                        {item.status}
+                      </span>
+                    </td>
+                    <td>
+                      <div className="suppliers-actions-cell">
+                        <button
+                          type="button"
+                          className="action-icon-btn view"
+                          title="View Details"
+                          onClick={() => handleOpenViewModal(item)}
+                        >
+                          <FileText size={18} />
+                        </button>
+                        <button
+                          type="button"
+                          className="action-icon-btn edit"
+                          title="Edit Supplier"
+                          onClick={() => handleOpenEditModal(item)}
+                        >
+                          <Edit size={18} />
+                        </button>
+                        <button
+                          type="button"
+                          className="action-icon-btn delete"
+                          title="Deactivate Supplier"
+                          onClick={() => handleDelete(item)}
+                        >
+                          <Trash2 size={18} />
+                        </button>
+                      </div>
+                    </td>
+                  </tr>
+                ))}
+            </tbody>
+          </table>
+        </div>
+        <Pagination currentPage={currentPage} totalPages={totalPages} onPageChange={setPage} />
       </div>
 
       {/* Add / Edit Supplier Pop-up Window */}

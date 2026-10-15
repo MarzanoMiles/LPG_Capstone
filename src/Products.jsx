@@ -1,4 +1,5 @@
-﻿import React, { useEffect, useMemo, useState } from "react";
+import Pagination from "./Pagination";
+import React, { useEffect, useMemo, useState } from "react";
 import {
   Search,
   ChevronDown,
@@ -65,6 +66,8 @@ function ViewProductModal({ product, onClose }) {
   );
 }
 
+const PAGE_SIZE = 5;
+
 export default function Products() {
   const [products, setProducts] = useState([]);
   const [loadError, setLoadError] = useState("");
@@ -115,6 +118,15 @@ export default function Products() {
       })),
     [products]
   );
+
+  const [page, setPage] = useState(1);
+  const totalPages = Math.max(1, Math.ceil(productRows.length / PAGE_SIZE));
+  const currentPage = Math.min(page, totalPages);
+  const paginatedRows = productRows.slice((currentPage - 1) * PAGE_SIZE, currentPage * PAGE_SIZE);
+
+  useEffect(() => {
+    setPage(1);
+  }, [searchQuery, selectedCategory, selectedStatus]);
 
   const handleOpenAdd = () => {
     setEditingProduct(null);
@@ -224,67 +236,70 @@ export default function Products() {
         </div>
 
         <div className="products-table-wrap">
-          <table className="products-table">
-            <thead>
-              <tr>
-                <th>Product ID</th>
-                <th>Product Name</th>
-                <th>Category</th>
-                <th>Supplier</th>
-                <th>Cost Price</th>
-                <th>Status</th>
-                <th>Actions</th>
-              </tr>
-            </thead>
-            <tbody>
-              {isLoading && (
-                <tr><td colSpan={7} style={{ textAlign: "center", padding: 24 }}>Loading…</td></tr>
-              )}
-              {!isLoading && productRows.length === 0 && (
-                <tr><td colSpan={7} style={{ textAlign: "center", padding: 24 }}>No products found.</td></tr>
-              )}
-              {!isLoading &&
-                productRows.map((product) => (
-                  <tr key={product.productId}>
-                    <td>{product.productId}</td>
-                    <td>{product.productName}</td>
-                    <td>{product.category}</td>
-                    <td>{product.supplier}</td>
-                    <td>{product.costPrice}</td>
-                    <td>
-                      <span className={`products-status-pill ${product.status.toLowerCase()}`}>
-                        {product.status}
-                      </span>
-                    </td>
-                    <td>
-                      <div className="products-action-icons">
-                        <button
-                          className="products-action-icon view"
-                          title="View"
-                          onClick={() => handleView(product.productId)}
-                        >
-                          <FileText size={16} />
-                        </button>
-                        <button
-                          className="products-action-icon edit"
-                          title="Edit"
-                          onClick={() => handleOpenEdit(product.productId)}
-                        >
-                          <Pencil size={16} />
-                        </button>
-                        <button
-                          className="products-action-icon delete"
-                          title="Deactivate"
-                          onClick={() => handleDelete(product.productId, product.productName)}
-                        >
-                          <Trash2 size={16} />
-                        </button>
-                      </div>
-                    </td>
-                  </tr>
-                ))}
-            </tbody>
-          </table>
+          <div className="paginated-table-scroll">
+            <table className="products-table">
+              <thead>
+                <tr>
+                  <th>Product ID</th>
+                  <th>Product Name</th>
+                  <th>Category</th>
+                  <th>Supplier</th>
+                  <th>Cost Price</th>
+                  <th>Status</th>
+                  <th>Actions</th>
+                </tr>
+              </thead>
+              <tbody>
+                {isLoading && (
+                  <tr><td colSpan={7} style={{ textAlign: "center", padding: 24 }}>Loading…</td></tr>
+                )}
+                {!isLoading && productRows.length === 0 && (
+                  <tr><td colSpan={7} style={{ textAlign: "center", padding: 24 }}>No products found.</td></tr>
+                )}
+                {!isLoading &&
+                  paginatedRows.map((product) => (
+                    <tr key={product.productId}>
+                      <td>{product.productId}</td>
+                      <td>{product.productName}</td>
+                      <td>{product.category}</td>
+                      <td>{product.supplier}</td>
+                      <td>{product.costPrice}</td>
+                      <td>
+                        <span className={`products-status-pill ${product.status.toLowerCase()}`}>
+                          {product.status}
+                        </span>
+                      </td>
+                      <td>
+                        <div className="products-action-icons">
+                          <button
+                            className="products-action-icon view"
+                            title="View"
+                            onClick={() => handleView(product.productId)}
+                          >
+                            <FileText size={16} />
+                          </button>
+                          <button
+                            className="products-action-icon edit"
+                            title="Edit"
+                            onClick={() => handleOpenEdit(product.productId)}
+                          >
+                            <Pencil size={16} />
+                          </button>
+                          <button
+                            className="products-action-icon delete"
+                            title="Deactivate"
+                            onClick={() => handleDelete(product.productId, product.productName)}
+                          >
+                            <Trash2 size={16} />
+                          </button>
+                        </div>
+                      </td>
+                    </tr>
+                  ))}
+              </tbody>
+            </table>
+          </div>
+          <Pagination currentPage={currentPage} totalPages={totalPages} onPageChange={setPage} />
         </div>
       </div>
 

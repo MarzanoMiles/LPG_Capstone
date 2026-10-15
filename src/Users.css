@@ -262,43 +262,7 @@
 /* Pagination                                                             */
 /* ---------------------------------------------------------------------- */
 
-.users-pagination {
-  display: flex;
-  justify-content: flex-end;
-  align-items: center;
-  gap: 8px;
-  padding: 16px 20px;
-  background: #f9fafb;
-}
 
-.page-btn {
-  min-width: 32px;
-  height: 32px;
-  border-radius: 6px;
-  border: 1px solid #e5e7eb;
-  background: #ffffff;
-  color: #374151;
-  font-size: 0.85rem;
-  font-weight: 600;
-  cursor: pointer;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-}
-
-.page-btn:hover:not(:disabled) {
-  background: #f3f4f6;
-}
-
-.page-btn.active {
-  border-color: #1e3a5f;
-  color: #1e3a5f;
-}
-
-.page-btn:disabled {
-  opacity: 0.4;
-  cursor: not-allowed;
-}
 
 /* ---------------------------------------------------------------------- */
 /* Activity log placeholder                                               */
