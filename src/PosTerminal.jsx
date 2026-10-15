@@ -1,4 +1,4 @@
-﻿import React, { useEffect, useMemo, useState } from "react";
+import React, { useEffect, useMemo, useState } from "react";
 import {
   Search,
   ChevronDown,
@@ -366,6 +366,7 @@ function PickupModal({ isOpen, onClose, onSave, initialData }) {
   useEffect(() => {
     if (initialData) {
       setSelectedCustomer({
+        id: initialData.customerId || "",
         customerName: initialData.customerName || "",
         contactNumber: initialData.contactNumber || "",
         address: initialData.address || "",
@@ -425,7 +426,7 @@ function PickupModal({ isOpen, onClose, onSave, initialData }) {
   const handleSaveModal = (e) => {
     e.preventDefault();
 
-    if (!selectedCustomer) {
+    if (!selectedCustomer?.id) {
       setError("Please search and select a customer.");
       return;
     }
@@ -438,6 +439,7 @@ function PickupModal({ isOpen, onClose, onSave, initialData }) {
 
     setError("");
     onSave({
+      customerId: selectedCustomer.id,
       customerCategory: selectedCustomer.customerCategory,
       customerName: selectedCustomer.customerName,
       contactNumber: selectedCustomer.contactNumber,
@@ -1247,6 +1249,7 @@ export default function PosTerminal() {
         method: "POST",
         body: JSON.stringify({
           customerType,
+          customerId: customerType === "Pickup" ? pickupDetails?.customerId : undefined,
           pickupDetails: customerType === "Pickup" ? pickupDetails : undefined,
           deliveryDetails: customerType === "Delivery" ? deliveryDetails : undefined,
           items: cart.map((item) => ({

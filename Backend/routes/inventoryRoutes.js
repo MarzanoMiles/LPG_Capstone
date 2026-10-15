@@ -1,5 +1,6 @@
-﻿const router = require("express").Router();
+const router = require("express").Router();
 const crypto = require("crypto");
+const { recordStockIn } = require("../utils/inventoryMovements");
 const pool = require("../config/db");
 const asyncHandler = require("../utils/asyncHandler");
 const ApiError = require("../utils/apiError");
@@ -328,23 +329,9 @@ router.post(
       for (const item of normalizedItems) {
         const transactionId = await nextId(conn, "InventoryTransaction", "TransactionID", "T");
         const inv = await getOrCreateInventory(conn, warehouseId, item.productId);
-        await conn.query(`UPDATE Inventory SET StockOnHand = StockOnHand + :qty WHERE InventoryID = :id`, {
-          qty: item.quantity,
-          id: inv.InventoryID,
-        });
-        await conn.query(
-          `INSERT INTO InventoryTransaction (TransactionID, InventoryID, UserID, TransactionType, Quantity, Reason, ReferenceNo, Remarks)
-           VALUES (:transactionId, :invId, :userId, 'Stock In', :qty, :reason, :ref, :remarks)`,
-          {
-            transactionId,
-            invId: inv.InventoryID,
-            userId: req.user.userId,
-            qty: item.quantity,
-            reason: normalizedReason,
-            ref: normalizedReferenceNo,
-            remarks: normalizedRemarks,
-          }
-        );
+        await recordStockIn(conn, {inventoryId:inv.InventoryID, quantity:item.quantity,
+          userId:req.user.userId, reason:normalizedReason, referenceNo:normalizedReferenceNo,
+          remarks:normalizedRemarks, transactionId});
       }
       await conn.commit();
       res.status(201).json({ message: "Stock in recorded." });

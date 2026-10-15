@@ -204,3 +204,36 @@
   .return-table .return-row-action { display: flex; justify-content: flex-end; padding-top: 8px; }
   .return-actions .payment-modal-btn { flex: 1; }
 }
+
+.return-warehouse-picker {
+  display: flex;
+  flex-wrap: wrap;
+  width: 100%;
+  box-sizing: border-box;
+  padding: 12px 14px;
+  gap: 10px;
+}
+.return-warehouse-picker > svg { flex-shrink: 0; }
+.return-warehouse-picker label { margin: 0; font-weight: 600; white-space: nowrap; }
+.return-warehouse-select { position: relative; flex: 1 1 220px; min-width: 0; }
+.return-warehouse-select select {
+  appearance: none;
+  display: block;
+  width: 100%;
+  box-sizing: border-box;
+  min-height: 42px;
+  padding: 10px 36px 10px 12px;
+  border: 1px solid #cbd5e1;
+  border-radius: 7px;
+  background: #ffffff;
+  color: #0f172a;
+  font: inherit;
+  cursor: pointer;
+}
+.return-warehouse-select > svg { position: absolute; right: 12px; top: 50%; transform: translateY(-50%); pointer-events: none; color: #64748b; }
+.return-warehouse-select select:hover:not(:disabled) { border-color: #93c5fd; }
+.return-warehouse-select select:focus-visible { outline: 2px solid #93c5fd; outline-offset: 2px; border-color: #2563eb; }
+.return-warehouse-select select:disabled { background: #f8fafc; color: #94a3b8; cursor: not-allowed; }
+@media (max-width: 640px) {
+  .return-warehouse-select { flex-basis: 100%; }
+}

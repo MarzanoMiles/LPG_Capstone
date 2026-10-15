@@ -1,4 +1,4 @@
-﻿/* ─── Page Container ──────────────────────────────────────── */
+/* ─── Page Container ──────────────────────────────────────── */
 .od-page {
   min-height: 100vh;
   background: #f4f6fa;
@@ -155,9 +155,13 @@
 .od-action-btn:hover {
   opacity: 0.7;
 }
-.od-act-view { color: #eab308; }
+.od-act-view { color: #d4a017; }
 .od-act-edit { color: #22c55e; }
-.od-act-print { color: #4b5563; }
+.od-act-print { color: #1f2937; }
+.od-act-cancel { color: #dc2626; }
+.od-action-btn { padding: 2px; }
+.od-action-btn:disabled { opacity: 0.4; cursor: not-allowed; }
+.od-action-btn:focus-visible { outline: 2px solid #2563eb; outline-offset: 3px; border-radius: 3px; }
 .od-act-delete { color: #ef4444; }
 
 .od-empty-state {
@@ -394,3 +398,30 @@
     font-size: 13px;
   }
 }
+
+/* Match the Sales table design while keeping changes within Pickup. */
+.od-pickup-section .od-table-wrap {
+  border-radius: 12px;
+  border: 1px solid #f0f0f0;
+  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.06);
+}
+.od-pickup-section table { min-width: 1080px; font-size: 0.875rem; }
+.od-pickup-section .od-table-wrap th {
+  background: #1e3a5f;
+  font-weight: 700;
+  text-align: left;
+  padding: 14px 20px;
+  white-space: nowrap;
+}
+.od-pickup-section .od-table-wrap td {
+  text-align: left;
+  padding: 14px 20px;
+  border-bottom: 1px solid #f3f4f6;
+  color: #374151;
+  white-space: nowrap;
+}
+.od-pickup-section .od-table-wrap tbody tr:last-child td { border-bottom: none; }
+.od-pickup-section .od-table-wrap tr:hover td { background: #f9fafb; }
+.od-pickup-section .od-actions { justify-content: flex-start; align-items: center; flex-wrap: nowrap; }
+.od-pickup-section td:nth-child(5) { font-variant-numeric: tabular-nums; }
+.od-pickup-section td:nth-child(7) .od-btn { padding: 8px 12px; font-size: 0.8125rem; white-space: nowrap; }

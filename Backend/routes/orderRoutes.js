@@ -1,4 +1,4 @@
-﻿const router = require("express").Router();
+const router = require("express").Router();
 const pool = require("../config/db");
 const asyncHandler = require("../utils/asyncHandler");
 const ApiError = require("../utils/apiError");
@@ -21,6 +21,8 @@ async function nextId(conn, table, column, prefix, pad = 3) {
   return `${prefix}-${String(max + 1).padStart(pad, "0")}`;
 }
 
+const pickup = require("../utils/pickupLifecycle");
+
 const DEFAULT_WAREHOUSE_ID = "WH-001";
 
 router.use(authenticate);
@@ -29,6 +31,7 @@ const LIST_SELECT = `
   SELECT o.OrderID AS orderId, o.OrderNo AS id, o.CustomerID AS customerId,
          c.CustomerName AS customerName, c.ContactNo AS customerPhone, c.Address AS customerAddress,
          o.OrderType AS type, o.OrderStatus AS status, o.OrderDate AS date,
+         o.PickupStatus AS pickupStatus, o.PickupScheduledAt AS pickupScheduledAt, o.PickupSettlementPending AS settlementPending,
          o.TotalAmount AS totalAmount, o.Remarks AS remarks,
          s.SaleID AS saleId, s.SaleNo AS saleNo,
          pay.PaymentID AS paymentId, pay.ReferenceNo AS referenceNo, pay.PaymentMethod AS paymentMethod, pay.AmountPaid AS amountPaid,
@@ -45,12 +48,83 @@ const LIST_SELECT = `
   LEFT JOIN User rider ON rider.UserID = d.DeliveredByUserID
 `;
 
+// All pickup access is scoped through the sale creator's company.
+router.get("/pickup", asyncHandler(async (req, res) => {
+  await pickup.evaluate(pool, req.user.companyId);
+  const pickupSelect = LIST_SELECT.replace("LEFT JOIN Payment pay ON pay.SaleID = s.SaleID", "LEFT JOIN (SELECT SaleID, SUM(AmountPaid) AS AmountPaid, MAX(PaymentID) AS PaymentID, MAX(ReferenceNo) AS ReferenceNo, MAX(PaymentMethod) AS PaymentMethod FROM Payment GROUP BY SaleID) pay ON pay.SaleID = s.SaleID");
+  const [rows] = await pool.query(pickupSelect + ` WHERE o.OrderType='Pickup' AND o.PickupStatus IN ('Preparing','Ready for Pickup','Cancelled','Unclaimed') AND NOT EXISTS (SELECT 1 FROM PickupSettlement settled WHERE settled.OrderID=o.OrderID) AND pay.AmountPaid>=o.TotalAmount AND EXISTS (SELECT 1 FROM User owner WHERE owner.UserID=s.UserID AND owner.CompanyID=:companyId) ORDER BY o.PickupScheduledAt`, {companyId:req.user.companyId});
+  const privileged = ["admin","administrator","manager","operations supervisor"].includes(String(req.user.roleName).toLowerCase());
+  res.json(rows.map(row => ({...row, canSettle: privileged && !!row.settlementPending})));
+}));
+router.put("/:id/pickup-status", authorize("Admin", "Manager", "Assistant Operations Supervisor", "Store Supervisor", "Assistant Store Supervisor", "Cashier", "Staff"), asyncHandler(async (req,res) => {
+  if (req.body.status === "Completed") throw new ApiError(400,"Use Complete Claim and answer Empty Cylinder Returned?.");
+  await pickup.evaluate(pool, req.user.companyId);
+  const conn = await pool.getConnection();
+  try {
+    await conn.beginTransaction();
+    const [rows] = await conn.query("SELECT o.* FROM `Order` o WHERE o.OrderID=:id AND o.OrderType='Pickup' AND EXISTS (SELECT 1 FROM Sales s JOIN User u ON u.UserID=s.UserID WHERE s.OrderID=o.OrderID AND u.CompanyID=:companyId) FOR UPDATE", {id:req.params.id, companyId:req.user.companyId});
+    const order=rows[0];
+    if (!order) throw new ApiError(404,"Pickup order not found.");
+    if (!order.PickupScheduledAt) throw new ApiError(409,"Legacy pickup has no saved schedule; manual review required.");
+    const [settings] = await conn.query("SELECT * FROM CompanySettings WHERE CompanyID=:companyId", {companyId:req.user.companyId});
+    if (!settings[0]) throw new ApiError(409,"Configure pickup policies in Settings.");
+    if (["Preparing","Ready for Pickup"].includes(order.PickupStatus) && new Date() >= pickup.expiration(order.PickupScheduledAt, settings[0])) {
+      await conn.query("UPDATE `Order` SET PickupStatus='Unclaimed', OrderStatus='Unclaimed', PickupSettlementPending=1 WHERE OrderID=:id", {id:req.params.id});
+      await conn.commit();
+      throw new ApiError(409,"Pickup expired. Restock & Settle is required.");
+    }
+    const [paid] = await conn.query("SELECT COALESCE(SUM(p.AmountPaid),0) AS amount FROM Sales s JOIN Payment p ON p.SaleID=s.SaleID WHERE s.OrderID=:id", {id:req.params.id});
+    const changed=pickup.transition(order.PickupStatus,req.body.status,Number(paid[0].amount)>=Number(order.TotalAmount));
+    if (changed) await conn.query("UPDATE `Order` SET PickupStatus=:status, OrderStatus=:status, PickupSettlementPending=:pending WHERE OrderID=:id", {id:req.params.id,status:req.body.status,pending:req.body.status==="Cancelled"?1:0});
+    await conn.commit();
+    res.json({message:changed?"Pickup updated.":"Pickup action already applied.",status:req.body.status});
+  } catch(err) {await conn.rollback();throw err;} finally {conn.release();}
+}));
+
+const claim = require("../utils/pickupClaim");
+const pickupOperators = ["Admin","Manager","Assistant Operations Supervisor","Store Supervisor","Assistant Store Supervisor","Cashier","Staff"];
+router.get("/:id/pickup-claim-options", authorize(...pickupOperators), asyncHandler(async(req,res)=>{
+  const [orders]=await pool.query("SELECT o.OrderID FROM `Order` o WHERE o.OrderID=:id AND o.OrderType='Pickup' AND EXISTS (SELECT 1 FROM Sales s JOIN User u ON u.UserID=s.UserID WHERE s.OrderID=o.OrderID AND u.CompanyID=:companyId)",{id:req.params.id,companyId:req.user.companyId});
+  if(!orders.length)throw new ApiError(404,"Pickup order not found.");
+  const [warehouses]=await pool.query("SELECT WarehouseID AS id,WarehouseName AS name FROM Warehouse WHERE CompanyID=:companyId AND Status='Active' ORDER BY WarehouseName",{companyId:req.user.companyId});
+  const [products]=await pool.query("SELECT p.ProductID AS id,p.ProductName AS name,b.Brand AS brand,p.UnitValue AS unitValue FROM Product p JOIN Category c ON c.CategoryID=p.CategoryID JOIN Brand b ON b.BrandID=p.BrandID WHERE c.Category='Cylinder' AND p.Status='Active' ORDER BY p.ProductName");
+  res.json({warehouses,products});
+}));
+router.post("/:id/pickup-claim", authorize(...pickupOperators), asyncHandler(async(req,res)=>{
+  res.json(await claim.complete(pool,req.user,req.params.id,req.body));
+}));
+
+const settlement = require("../utils/pickupSettlement");
+router.get("/:id/pickup-settlement", authorize("Admin","Manager"), asyncHandler(async(req,res)=>{
+  res.json(await settlement.quote(pool,req.user,req.params.id));
+}));
+router.post("/:id/pickup-settlement", authorize("Admin","Manager"), asyncHandler(async(req,res)=>{
+  const result=await settlement.settle(pool,req.user,req.params.id,req.body);
+  res.status(201).json({message:"Pickup settled and inventory restored.",...result});
+}));
+
+// Historical orders remain linked to their customer after claim or settlement.
+router.get("/customer/:customerId/history", asyncHandler(async(req,res)=>{
+  const [rows]=await pool.query(`SELECT o.OrderID AS orderId,o.OrderNo AS id,o.OrderType AS type,
+    COALESCE(o.PickupStatus,o.OrderStatus) AS status,o.OrderDate AS date,
+    o.PickupScheduledAt AS pickupScheduledAt,o.TotalAmount AS totalAmount,
+    CASE WHEN paid.amount>=o.TotalAmount THEN 'Paid' ELSE 'Unpaid' END AS paymentStatus,
+    ps.CreatedAt AS settledAt,ps.CancellationFee AS settlementFee,ps.NetRefundAmount AS netRefundAmount
+    FROM \`Order\` o JOIN Sales s ON s.OrderID=o.OrderID JOIN User owner ON owner.UserID=s.UserID
+    LEFT JOIN (SELECT SaleID,SUM(AmountPaid) AS amount FROM Payment WHERE PaymentType='Sale' GROUP BY SaleID) paid ON paid.SaleID=s.SaleID
+    LEFT JOIN PickupSettlement ps ON ps.OrderID=o.OrderID AND ps.CompanyID=:companyId
+    WHERE o.CustomerID=:customerId AND owner.CompanyID=:companyId ORDER BY o.OrderDate DESC,o.OrderID DESC`,
+    {customerId:req.params.customerId,companyId:req.user.companyId});
+  res.json(rows);
+}));
+
 // GET /orders?search=&status=&type=
 router.get(
   "/",
   asyncHandler(async (req, res) => {
+    await pickup.evaluate(pool, req.user.companyId);
     const { search, status, type } = req.query;
-    let sql = LIST_SELECT + ` WHERE 1=1`;
+    let sql = LIST_SELECT + ` WHERE o.OrderType IN ('Pickup', 'Delivery')`;
     const params = {};
     if (search) {
       sql += ` AND (o.OrderNo LIKE :s OR c.CustomerName LIKE :s)`;
@@ -77,8 +151,13 @@ router.get(
 router.get(
   "/:id",
   asyncHandler(async (req, res) => {
+    await pickup.evaluate(pool, req.user.companyId);
     const [rows] = await pool.query(LIST_SELECT + ` WHERE o.OrderID = :id`, { id: req.params.id });
     if (!rows[0]) throw new ApiError(404, "Order not found.");
+    if (rows[0].type === "Pickup") {
+      const [owner] = await pool.query("SELECT s.SaleID FROM Sales s JOIN User u ON u.UserID=s.UserID WHERE s.OrderID=:id AND u.CompanyID=:companyId", {id:req.params.id,companyId:req.user.companyId});
+      if (!owner[0]) throw new ApiError(404,"Order not found.");
+    }
     const [items] = await pool.query(
       `SELECT od.ProductID AS productId, p.ProductName AS name, od.Quantity AS qty,
               od.UnitPrice AS unitPrice, od.Subtotal AS subtotal
@@ -118,6 +197,7 @@ router.post(
     } = req.body;
     let { customerId } = req.body;
 
+    if (orderType === "Walk-in") throw new ApiError(400, "Walk-in orders must be completed through POS checkout (/sales).");
     if (!orderType || !Array.isArray(items) || !items.length) {
       throw new ApiError(400, "orderType and at least one item are required.");
     }
@@ -156,6 +236,12 @@ router.post(
         customerId = await resolveWalkInCustomer(conn);
       }
 
+      let pickupScheduledAt = null;
+      if (orderType === "Pickup") {
+        const [settings] = await conn.query("SELECT * FROM CompanySettings WHERE CompanyID=:companyId", {companyId:req.user.companyId});
+        if (!settings[0]) throw new ApiError(409,"Configure pickup policies in Settings.");
+        pickupScheduledAt = pickup.validateSchedule(req.body.pickupDetails, settings[0]);
+      }
       const orderNo = await nextSequence(pool, "`Order`", "OrderNo", "ORD");
       const orderId = await nextId(conn, "`Order`", "OrderID", "ORD");
       await conn.query(
@@ -163,6 +249,8 @@ router.post(
          VALUES (:orderId, :customerId, :orderNo, :orderType, 'Preparing', :totalAmount, :remarks)`,
         { orderId, customerId, orderNo, orderType, totalAmount, remarks: remarks || null }
       );
+
+      if (orderType === "Pickup") await conn.query("UPDATE `Order` SET PickupStatus='Preparing', PickupScheduledAt=:schedule WHERE OrderID=:id", {id:orderId,schedule:pickupScheduledAt});
 
       for (const item of items) {
         const [productRows] = await conn.query(`SELECT ProductID FROM Product WHERE ProductID = :pid`, {
@@ -264,10 +352,12 @@ router.put(
     try {
       await conn.beginTransaction();
 
-      const [existingRows] = await conn.query(`SELECT OrderID FROM \`Order\` WHERE OrderID = :id FOR UPDATE`, {
+      const [existingRows] = await conn.query(`SELECT OrderID, OrderType FROM \`Order\` WHERE OrderID = :id FOR UPDATE`, {
         id: req.params.id,
       });
       if (!existingRows[0]) throw new ApiError(404, "Order not found.");
+      if (existingRows[0].OrderType === "Walk-in" || orderType === "Walk-in") throw new ApiError(409, "Walk-in orders belong to completed Sales, not fulfillment queues.");
+      if (existingRows[0].OrderType === "Pickup" || orderType === "Pickup") throw new ApiError(409, "Use pickup status actions; pickup type and schedule are locked after creation.");
 
       if (orderStatus === "Cancelled") await settleCancellation(conn, req.user, req.params.id);
 
@@ -331,6 +421,8 @@ router.post("/:id/refund", authorize("Admin", "Manager"), asyncHandler(async (re
  try {
   await conn.beginTransaction();
   const [orders] = await conn.query("SELECT OrderStatus FROM `Order` WHERE OrderID = :id FOR UPDATE", {id: req.params.id});
+  const [pickupRows] = await conn.query("SELECT OrderType FROM `Order` WHERE OrderID=:id", {id:req.params.id});
+  if (pickupRows[0]?.OrderType === "Pickup") throw new ApiError(409,"Pickup refunds require Restock & Settle (Stage 2).");
   const result = await issueRefund(conn, req.user, req.params.id, orders[0]?.OrderStatus === "Cancelled" ? "Cancellation" : "Refund");
   await conn.commit();
   res.json({message: "Refund recorded.", refund: result});
@@ -422,11 +514,12 @@ router.delete(
     try {
       await conn.beginTransaction();
 
-      const [orderRows] = await conn.query(`SELECT OrderID FROM \`Order\` WHERE OrderID = :id FOR UPDATE`, {
+      const [orderRows] = await conn.query(`SELECT OrderID, OrderType FROM \`Order\` WHERE OrderID = :id FOR UPDATE`, {
         id: req.params.id,
       });
       if (!orderRows[0]) throw new ApiError(404, "Order not found.");
 
+      if (orderRows[0].OrderType === "Pickup") throw new ApiError(409, "Use the pickup cancellation action; settlement is deferred.");
       await settleCancellation(conn, req.user, req.params.id);
 
       const [items] = await conn.query(`SELECT ProductID, Quantity FROM OrderDetails WHERE OrderID = :id`, {

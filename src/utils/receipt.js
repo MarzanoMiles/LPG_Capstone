@@ -1,4 +1,4 @@
-﻿import { apiRequest } from "../api";
+import { apiRequest } from "../api";
 
 let cachedSettings = null;
 let cacheTime = 0;
@@ -73,7 +73,7 @@ export function buildReceiptHtml(sale, settings = {}) {
   ${slip ? `${delivery ? row("Delivery No :", sale.deliveryNo || sale.drNo || "?", "meta") : ""}${row("Order Ref No. :", sale.saleNo || sale.orderNo || "?", "meta")}` : row("Sales No :", sale.saleNo || "?", "meta")}
   ${row("Date & Time :", dateText, "meta")}${row("Transaction :", type, "meta")}${row("Cashier :", sale.cashierName || "?", "meta")}
   ${delivery ? `${row("Driver :", sale.driverName || details.riderName || "?", "meta")}${!slip ? row("Delivery No :", sale.deliveryNo || sale.drNo || "?", "meta") : ""}` : ""}
-  ${type === "Walk-in" ? blankRow("Customer Name :") : row("Customer Name :", sale.customerName || details.customerName || "?", "meta")}
+  ${type === "Walk-in" ? (sale.customerId == null ? row("Customer Name :", " \u2014 ", "meta") : blankRow("Customer Name :")) : row("Customer Name :", sale.customerName || details.customerName || "?", "meta")}
   ${type !== "Walk-in" ? row("Contact No :", sale.customerPhone || details.contactNumber || "?", "meta") : ""}
   ${type === "Walk-in" ? blankRow("Address :") : row(delivery ? "Delivery Address:" : "Address :", sale.deliveryAddress || sale.customerAddress || details.address || "?", "meta")}
   ${delivery ? row("Delivery Notes :", sale.deliveryNotes || details.notes || "", "meta") : ""}<hr class="customer-divider">

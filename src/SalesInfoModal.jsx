@@ -1,4 +1,4 @@
-﻿import React from "react";
+import React from "react";
 import "./SalesInfoModal.css";
 
 function formatPeso(amount) {
@@ -46,6 +46,10 @@ export default function SalesInfoModal({ isOpen, sale, storeName = "Store Name",
           <div className="sales-info-meta-row">
             <span className="meta-label">Cashier:</span>
             <span className="meta-value">{sale.cashierName || sale.cashier}</span>
+          </div>
+          <div className="sales-info-meta-row">
+            <span className="meta-label">Customer:</span>
+            <span className="meta-value">{sale.customerId == null ? " \u2014 " : (sale.customerName || " \u2014 ")}</span>
           </div>
           <div className="sales-info-meta-row">
             <span className="meta-label">Order ID:</span>

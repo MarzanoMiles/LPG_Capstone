@@ -57,11 +57,13 @@ router.get(
     let sql = `
       SELECT s.SaleID AS id, s.SaleNo AS saleNo, s.SaleDate AS datetime, s.UserID AS cashier,
              CONCAT(u.FirstName,' ',u.LastName) AS cashierName, s.OrderID AS orderId,
-             o.OrderType AS type, o.OrderStatus AS status,
+             o.OrderType AS type, o.OrderStatus AS status, s.CustomerID AS customerId,
+             CASE WHEN s.CustomerID IS NULL THEN ' \u2014 ' ELSE c.CustomerName END AS customerName,
              s.TotalAmount AS amount, s.SalesDiscount AS discount
       FROM Sales s
       JOIN User u ON u.UserID = s.UserID
       LEFT JOIN \`Order\` o ON o.OrderID = s.OrderID
+      LEFT JOIN Customer c ON c.CustomerID = s.CustomerID
       WHERE 1=1`;
     const params = {};
     if (search) {
@@ -93,11 +95,13 @@ router.get(
     const [saleRows] = await pool.query(
       `SELECT s.SaleID AS id, s.SaleNo AS saleNo, s.SaleDate AS datetime, s.UserID AS cashier,
               CONCAT(u.FirstName,' ',u.LastName) AS cashierName, s.OrderID AS orderId,
-              o.OrderType AS type, o.OrderStatus AS status,
+              o.OrderType AS type, o.OrderStatus AS status, s.CustomerID AS customerId,
+             CASE WHEN s.CustomerID IS NULL THEN ' \u2014 ' ELSE c.CustomerName END AS customerName,
               s.TotalAmount AS amount, s.SalesDiscount AS discount, s.Remarks AS remarks
        FROM Sales s
        JOIN User u ON u.UserID = s.UserID
        LEFT JOIN \`Order\` o ON o.OrderID = s.OrderID
+      LEFT JOIN Customer c ON c.CustomerID = s.CustomerID
        WHERE s.SaleID = :id`,
       { id: req.params.id }
     );
@@ -112,7 +116,7 @@ router.get(
       { id: req.params.id }
     );
     const [details] = await pool.query(
-      `SELECT c.CustomerName AS customerName, c.ContactNo AS customerPhone,
+      `SELECT CASE WHEN s.CustomerID IS NULL THEN ' \u2014 ' ELSE c.CustomerName END AS customerName, c.ContactNo AS customerPhone,
               c.Address AS customerAddress, o.OrderNo AS orderNo,
               d.DRNo AS deliveryNo, d.DeliveryCharge AS deliveryFee,
               d.DeliveryAddress AS deliveryAddress, d.Remarks AS deliveryNotes,
@@ -121,7 +125,7 @@ router.get(
               pay.AmountPaid AS amountCollected
        FROM Sales s
        LEFT JOIN \`Order\` o ON o.OrderID = s.OrderID
-       LEFT JOIN Customer c ON c.CustomerID = o.CustomerID
+       LEFT JOIN Customer c ON c.CustomerID = s.CustomerID
        LEFT JOIN Delivery d ON d.SaleID = s.SaleID
        LEFT JOIN User r ON r.UserID = d.DeliveredByUserID
        LEFT JOIN Payment pay ON pay.SaleID = s.SaleID
@@ -150,7 +154,6 @@ router.post(
       const [hours, minutes] = pickupTime.split(":").map(Number);
       if (!Number.isFinite(schedule.getTime()) || hours > 23 || minutes > 59) throw new ApiError(400, "Please select a valid pickup schedule.");
       if (schedule.getTime() <= Date.now()) throw new ApiError(400, "Pickup schedule must be in the future. Please select a later date or time.");
-      if (hours * 60 + minutes < 8 * 60 || hours * 60 + minutes > 18 * 60) throw new ApiError(400, "Pickup time must be between 8:00 AM and 6:00 PM.");
     }
     const methods = orderType === "Walk-in" ? ["Cash", "GCash", "Card", "Bank Transfer"] : orderType === "Pickup" ? ["GCash", "Card", "Bank Transfer"] : orderType === "Delivery" ? ["GCash", "Card", "Bank Transfer", "Cash on Delivery"] : [];
     if (!methods.includes(paymentMethod)) throw new ApiError(400, "Invalid payment method for this order type.");
@@ -185,6 +188,8 @@ router.post(
         if (!warehouses.length) throw new ApiError(400, "The warehouse does not belong to your company.");
       }
 
+
+      if (orderType === "Pickup") customerId = await require("../utils/pickupCustomer").resolvePickupCustomer(conn, req.body);
 
       if (!customerId) {
         const [existing] = await conn.query(
@@ -221,6 +226,13 @@ router.post(
          VALUES (:orderId, :customerId, :orderNo, :orderType, 'Completed', :totalAmount, :remarks)`,
         { orderId, customerId, orderNo, orderType, totalAmount, remarks: remarks || null }
       );
+
+      if (orderType === "Pickup") {
+        const [settings] = await conn.query("SELECT * FROM CompanySettings WHERE CompanyID=:companyId", {companyId:req.user.companyId});
+        if (!settings[0]) throw new ApiError(409,"Configure pickup policies in Settings.");
+        const schedule = require("../utils/pickupLifecycle").validateSchedule(req.body.pickupDetails, settings[0]);
+        await conn.query("UPDATE `Order` SET OrderStatus='Preparing', PickupStatus='Preparing', PickupScheduledAt=:schedule WHERE OrderID=:id", {id:orderId,schedule});
+      }
 
       for (const item of items) {
         const [productRows] = await conn.query(
@@ -343,22 +355,9 @@ router.post(
       if (returnedCylinders.length) {
         const [eligible] = await conn.query("SELECT p.ProductID FROM Product p JOIN Category c ON c.CategoryID=p.CategoryID WHERE p.ProductID IN (?) AND c.Category IN ('Cylinder', 'Gasul LPG')", [items.map((item) => item.productId)]);
         if (!eligible.length) throw new ApiError(400, "Cylinder returns require a Gasul LPG or Cylinder purchase.");
-        // Lock the company row so ECR references are allocated serially across its warehouses.
-        await conn.query("SELECT CompanyID FROM Company WHERE CompanyID=? FOR UPDATE", [req.user.companyId]);
-        emptyCylinderReference = await nextSequence(conn, "InventoryTransaction", "ReferenceNo", "ECR");
-        for (const item of returnedCylinders) {
-          const [products] = await conn.query("SELECT p.ProductID FROM Product p JOIN Category c ON c.CategoryID=p.CategoryID WHERE p.ProductID=? AND c.Category='Cylinder' AND p.Status='Active'", [item.productId]);
-          if (!products.length) throw new ApiError(400, "Only active Cylinder products can be returned.");
-          const [inventory] = await conn.query("SELECT InventoryID FROM Inventory WHERE WarehouseID=? AND ProductID=? FOR UPDATE", [warehouseId, item.productId]);
-          let inventoryId = inventory[0]?.InventoryID;
-          if (!inventoryId) {
-            inventoryId = await nextId(conn, "Inventory", "InventoryID", "INT");
-            await conn.query("INSERT INTO Inventory (InventoryID,WarehouseID,ProductID,StockOnHand) VALUES (?,?,?,0)", [inventoryId,warehouseId,item.productId]);
-          }
-          await conn.query("UPDATE Inventory SET StockOnHand=StockOnHand+? WHERE InventoryID=?", [item.qty,inventoryId]);
-          const transactionId = await nextId(conn, "InventoryTransaction", "TransactionID", "T");
-          await conn.query("INSERT INTO InventoryTransaction (TransactionID,InventoryID,UserID,TransactionType,Quantity,Reason,ReferenceNo) VALUES (?,?,?,'Stock In',?,'Empty Cylinder Returned',?)", [transactionId,inventoryId,req.user.userId,item.qty,emptyCylinderReference]);
-        }
+        emptyCylinderReference = await require("../utils/inventoryMovements").receiveEmptyCylinders(conn, {
+          companyId:req.user.companyId,userId:req.user.userId,warehouseId,items:returnedCylinders
+        });
       }
       const [[cashier]] = await conn.query("SELECT CONCAT(FirstName,' ',LastName) AS name FROM User WHERE UserID=?", [req.user.userId]);
       await conn.commit();
@@ -590,6 +589,8 @@ router.delete(
       );
       if (!saleRows[0]) throw new ApiError(404, "Sale not found.");
       const { OrderID: orderId } = saleRows[0];
+      const [pickupRows] = await conn.query("SELECT OrderType FROM `Order` WHERE OrderID=:id FOR UPDATE", {id:orderId});
+      if (pickupRows[0]?.OrderType === "Pickup") throw new ApiError(409,"Use pickup status actions; pickup settlement is deferred to Stage 2.");
 
       const [deliveryRows] = await conn.query(
         `SELECT DeliveryID FROM Delivery WHERE SaleID = :id`,

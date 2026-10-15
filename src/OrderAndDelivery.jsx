@@ -1,6 +1,8 @@
-﻿import { useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useState } from "react";
+import { FileSearch, Printer, Ban } from "lucide-react";
 import { apiRequest } from "./api";
 import { printReceipt } from "./utils/receipt";
+import ReturnedCylindersModal from "./ReturnedCylindersModal";
 import "./OrderAndDelivery.css";
 
 const peso = (n) =>
@@ -9,6 +11,8 @@ const peso = (n) =>
 const orderStatusClass = {
   Preparing: "od-badge-yellow",
   Ready: "od-badge-blue",
+  "Ready for Pickup": "od-badge-blue",
+  "Expired (Unclaimed)": "od-badge-red",
   Completed: "od-badge-green",
   Cancelled: "od-badge-red",
 };
@@ -25,27 +29,14 @@ const deliveryStatusClass = {
   Failed: "od-badge-red",
 };
 
-const IconView = () => (
-  <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-    <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"></path>
-    <polyline points="14 2 14 8 20 8"></polyline>
-    <circle cx="10" cy="13" r="2"></circle>
-    <line x1="11.4" y1="14.4" x2="14" y2="17"></line>
-  </svg>
-);
+const IconView = () => <FileSearch size={16} />;
 const IconEdit = () => (
   <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
     <path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7"></path>
     <path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z"></path>
   </svg>
 );
-const IconPrint = () => (
-  <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-    <polyline points="6 9 6 2 18 2 18 9"></polyline>
-    <path d="M6 18H4a2 2 0 0 1-2-2v-5a2 2 0 0 1 2-2h16a2 2 0 0 1 2 2v5a2 2 0 0 1-2 2h-2"></path>
-    <rect x="6" y="14" width="12" height="8"></rect>
-  </svg>
-);
+const IconPrint = () => <Printer size={16} />;
 const IconDelete = () => (
   <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
     <polyline points="3 6 5 6 21 6"></polyline>
@@ -109,189 +100,110 @@ function printOrderReceipt(order) {
   });
 }
 
-function NewOrderModal({ isOpen, onClose, onCreated, customers }) {
-  const [products, setProducts] = useState([]);
-  const [customerId, setCustomerId] = useState("");
-  const [orderType, setOrderType] = useState("Walk-in");
-  const [deliveryAddress, setDeliveryAddress] = useState("");
-  const [items, setItems] = useState([{ productId: "", qty: "" }]);
-  const [markPaid, setMarkPaid] = useState(false);
-  const [paymentMethod, setPaymentMethod] = useState("Cash");
-  const [isSubmitting, setIsSubmitting] = useState(false);
-  const [error, setError] = useState("");
-
-  useEffect(() => {
-    if (!isOpen) return;
-    apiRequest("/products?status=Active")
-      .then(setProducts)
-      .catch((err) => setError(err.message || "Failed to load products."));
-  }, [isOpen]);
-
-  if (!isOpen) return null;
-
-  const productMap = Object.fromEntries(products.map((p) => [p.productId, p]));
-  const updateItem = (i, field, value) =>
-    setItems((prev) => prev.map((it, idx) => (idx === i ? { ...it, [field]: value } : it)));
-  const addRow = () => setItems((prev) => [...prev, { productId: "", qty: "" }]);
-  const removeRow = (i) => setItems((prev) => prev.filter((_, idx) => idx !== i));
-
-  const validItems = items.filter((it) => it.productId && Number(it.qty) > 0);
-  const subtotal = validItems.reduce((sum, it) => {
-    const p = productMap[it.productId];
-    return sum + (p ? p.unitPrice * Number(it.qty) : 0);
-  }, 0);
-
-  const reset = () => {
-    setCustomerId("");
-    setOrderType("Walk-in");
-    setDeliveryAddress("");
-    setItems([{ productId: "", qty: "" }]);
-    setMarkPaid(false);
-    setError("");
-  };
-
-  const handleSubmit = async () => {
-    if (orderType !== "Walk-in" && !customerId) {
-      return setError("Please select a customer for Pickup or Delivery orders.");
-    }
-    if (!validItems.length) return setError("Add at least one item.");
-    if (orderType === "Delivery" && !deliveryAddress) return setError("Delivery address is required.");
-
-    setIsSubmitting(true);
-    setError("");
+function PickupClaimModal({order,onClose,onCompleted}) {
+  const [answer,setAnswer]=useState("");
+  const [items,setItems]=useState([]);
+  const [warehouseId,setWarehouseId]=useState("");
+  const [options,setOptions]=useState({warehouses:[],products:[]});
+  const [showReturns,setShowReturns]=useState(false);
+  const [loading,setLoading]=useState(true);
+  const [busy,setBusy]=useState(false);
+  const [error,setError]=useState("");
+  useEffect(()=>{
+    let active=true;
+    apiRequest(`/orders/${order.orderId}/pickup-claim-options`).then(data=>{if(active){setOptions(data);if(data.warehouses.length===1)setWarehouseId(data.warehouses[0].id);}}).catch(err=>{if(active)setError(err.message);}).finally(()=>{if(active)setLoading(false);});
+    return()=>{active=false;};
+  },[order.orderId]);
+  const submit=async()=>{
+    if(busy || !answer)return;
+    setBusy(true);setError("");
     try {
-      await apiRequest("/orders", {
-        method: "POST",
-        body: JSON.stringify({
-          customerId: customerId || undefined,
-          orderType,
-          items: validItems.map((it) => ({
-            productId: String(it.productId),
-            qty: Number(it.qty),
-            unitPrice: productMap[it.productId].unitPrice,
-          })),
-          deliveryAddress: orderType === "Delivery" ? deliveryAddress : undefined,
-          markPaid,
-          paymentMethod,
-        }),
-      });
-      onCreated();
-      reset();
-      onClose();
-    } catch (err) {
-      setError(err.message || "Failed to create order.");
-    } finally {
-      setIsSubmitting(false);
-    }
+      await apiRequest(`/orders/${order.orderId}/pickup-claim`,{method:"POST",body:JSON.stringify({emptyCylinderReturned:answer==="yes",warehouseId:answer==="yes"?warehouseId:undefined,returnedCylinders:answer==="yes"?items:[]})});
+      onCompleted();
+    }catch(err){setError(err.message);}finally{setBusy(false);}
   };
+  if(showReturns)return <ReturnedCylindersModal items={items} cylinderProducts={options.products} warehouseOptions={options.warehouses} warehouseId={warehouseId} onWarehouseChange={setWarehouseId} loading={loading} warehouseName={options.warehouses.find(w=>w.id===warehouseId)?.name}
+    confirmationNote="Stock will be updated in the warehouse shown above when the pickup claim is completed."
+    onCancel={()=>{setShowReturns(false);if(!items.length)setAnswer("");}} onConfirm={value=>{setItems(value);setShowReturns(false);}} />;
+  return <div className="payment-modal-overlay"><div className="payment-modal" role="dialog" aria-modal="true" aria-label="Complete Claim">
+    <div className="payment-modal-accent" />
+    <h2 className="payment-modal-title">Complete Claim</h2><p className="return-description">{order.id}</p>
+    <div className="cylinder-return-section"><div className="cylinder-return-question" role="group" aria-label="Empty Cylinder Returned?">
+      <span>Empty Cylinder Returned?</span>
+      <label><input type="radio" name="claim-returned" disabled={busy} checked={answer==="yes"} onChange={()=>{setAnswer("yes");setShowReturns(true);}} /> Yes</label>
+      <label><input type="radio" name="claim-returned" disabled={busy} checked={answer==="no"} onChange={()=>{setAnswer("no");setItems([]);}} /> No</label>
+    </div></div>
+    {answer==="yes" && <>
+      <button type="button" className="return-edit-btn" disabled={busy} onClick={()=>setShowReturns(true)}>{items.length ? "Edit returned cylinders" : "Select returned cylinders"}</button>
+      <div className="return-summary"><span>Total Items</span><strong>{items.reduce((sum,item)=>sum+Number(item.qty),0)}</strong></div>
+    </>}
+    {error && <p role="alert" style={{color:"#dc2626"}}>{error}</p>}
+    <div className="payment-modal-actions return-actions"><button type="button" className="payment-modal-btn cancel" disabled={busy} onClick={onClose}>Cancel</button><button type="button" className="payment-modal-btn confirm" disabled={busy||!answer||(answer==="yes"&&(loading||!warehouseId||!items.length))} onClick={submit}>{busy?"Completing?":"Confirm Claim"}</button></div>
+  </div></div>;
+}
 
-  return (
-    <div className="od-modal-overlay open" onClick={(e) => e.target === e.currentTarget && onClose()}>
-      <div className="od-modal">
-        <h3>New Order</h3>
-        {error && <p style={{ color: "#dc2626", fontWeight: 600 }}>{error}</p>}
-
-        <Field label="Order Type">
-          <select value={orderType} onChange={(e) => setOrderType(e.target.value)}>
-            <option>Walk-in</option>
-            <option>Pickup</option>
-            <option>Delivery</option>
-          </select>
-        </Field>
-
-        <Field label={orderType === "Walk-in" ? "Customer (optional)" : "Customer"}>
-          <select value={customerId} onChange={(e) => setCustomerId(e.target.value)}>
-            <option value="">
-              {orderType === "Walk-in" ? "Walk-in Customer (no account)" : "Select customer"}
-            </option>
-            {customers.map((c) => (
-              <option key={c.id} value={c.id}>{c.name} ({c.phone})</option>
-            ))}
-          </select>
-        </Field>
-
-        {orderType === "Delivery" && (
-          <Field label="Delivery Address">
-            <input value={deliveryAddress} onChange={(e) => setDeliveryAddress(e.target.value)} />
-          </Field>
-        )}
-
-        <div className="od-items-header">
-          <span>Product</span><span>Qty</span><span>Price</span><span></span>
-        </div>
-        {items.map((it, idx) => {
-          const p = productMap[it.productId];
-          return (
-            <div key={idx} className="od-item-row">
-              <select value={it.productId} onChange={(e) => updateItem(idx, "productId", e.target.value)}>
-                <option value="">Select product</option>
-                {products.map((prod) => (
-                  <option key={prod.productId} value={prod.productId}>{prod.name}</option>
-                ))}
-              </select>
-              <input
-                type="number"
-                min="1"
-                value={it.qty}
-                onChange={(e) => updateItem(idx, "qty", e.target.value)}
-                style={{ width: 60 }}
-              />
-              <span>{p ? peso(p.unitPrice) : "—"}</span>
-              <button type="button" className="od-btn od-btn-outline" onClick={() => removeRow(idx)}>×</button>
-            </div>
-          );
-        })}
-        <button type="button" className="od-btn od-btn-outline" onClick={addRow} style={{ marginTop: 8 }}>
-          + Add Item
-        </button>
-
-        <div className="od-totals">
-          <Row label="Subtotal:" value={peso(subtotal)} bold />
-        </div>
-
-        <hr />
-        <Field label="Mark as Paid">
-          <input type="checkbox" checked={markPaid} onChange={(e) => setMarkPaid(e.target.checked)} />
-        </Field>
-        {markPaid && (
-          <Field label="Payment Method">
-            <select value={paymentMethod} onChange={(e) => setPaymentMethod(e.target.value)}>
-              <option>Cash</option>
-              <option>GCash</option>
-              <option>Card</option>
-              <option>Bank Transfer</option>
-            </select>
-          </Field>
-        )}
-
-        <div className="od-modal-actions">
-          <button className="od-btn od-btn-outline" onClick={onClose}>Cancel</button>
-          <button className="od-btn od-btn-primary" onClick={handleSubmit} disabled={isSubmitting}>
-            {isSubmitting ? "Creating…" : "Create Order"}
-          </button>
-        </div>
-      </div>
+function PickupSettlementModal({order,onClose,onSettled}) {
+  const [quote,setQuote]=useState(null);
+  const [form,setForm]=useState({refundMethod:"GCash",accountName:"",accountNumber:"",payoutReferenceNo:""});
+  const [error,setError]=useState("");
+  const [busy,setBusy]=useState(false);
+  const [loading,setLoading]=useState(true);
+  const money=value => "\u20b1"+Number(value||0).toLocaleString("en-PH",{minimumFractionDigits:2,maximumFractionDigits:2});
+  const loadQuote=useCallback(async()=>{
+    setLoading(true);setError("");
+    try {
+      const data=await apiRequest(`/orders/${order.orderId}/pickup-settlement`);
+      setQuote(data);setForm(previous=>({...previous,accountName:previous.accountName || data.accountName || ""}));
+    } catch(err) {setQuote(null);setError(err.message);}
+    finally {setLoading(false);}
+  },[order.orderId]);
+  useEffect(()=>{loadQuote();},[loadQuote]);
+  const submit=async(event)=>{
+    event.preventDefault();if(busy || !quote)return;
+    setBusy(true);setError("");
+    try {
+      await apiRequest(`/orders/${order.orderId}/pickup-settlement`,{method:"POST",body:JSON.stringify({...form,quote:{eligibleAmount:quote.eligibleAmount,cancellationFee:quote.cancellationFee,refundAmount:quote.refundAmount}})});
+      onSettled();
+    } catch(err) {setError(err.message);}
+    finally {setBusy(false);}
+  };
+  const update=key=>event=>setForm(previous=>({...previous,[key]:event.target.value}));
+  return <div className="od-modal-overlay open"><form className="od-modal od-modal-sm" onSubmit={submit}>
+    <h3>Restock &amp; Settle Order</h3><p>{order.id}</p>
+    <p>Inventory Update: Upon confirmation, the item(s) from this order will be automatically added back to your active inventory count.</p>
+    {loading && <p>Loading settlement amounts?</p>}
+    {error && <p role="alert" style={{color:"#dc2626"}}>{error}</p>}
+    {quote && <>
+      <div className="od-totals"><Row label="Original Paid Amount" value={money(quote.eligibleAmount)} /><Row label="Cancellation/Unclaimed Fee" value={money(quote.cancellationFee)} /><Row label="Net Refund Amount" value={money(quote.refundAmount)} bold /></div>
+      <Field label="Refund Method"><select value={form.refundMethod} onChange={update("refundMethod")} disabled={busy}><option>GCash</option><option>Card</option><option>Bank Transfer</option></select></Field>
+      <Field label="Account Name"><input value={form.accountName} onChange={update("accountName")} required maxLength={150} autoComplete="off" disabled={busy} /></Field>
+      <Field label="Account/Mobile Number"><input type="text" inputMode={form.refundMethod === "GCash" ? "tel" : "numeric"} value={form.accountNumber} onChange={update("accountNumber")} required maxLength={34} autoComplete="off" pattern={form.refundMethod === "GCash" ? "(09[0-9]{9}|[+]639[0-9]{9})" : form.refundMethod === "Card" ? "[0-9]{12,19}" : "[0-9]{6,34}"} title={form.refundMethod === "GCash" ? "09 followed by 9 digits, or +639 followed by 9 digits" : form.refundMethod === "Card" ? "12 to 19 digits" : "6 to 34 digits"} disabled={busy} /></Field>
+      <Field label="Payout Reference No. (optional)"><input value={form.payoutReferenceNo} onChange={update("payoutReferenceNo")} maxLength={50} autoComplete="off" disabled={busy} /></Field>
+    </>}
+    <div className="od-modal-actions"><button type="button" className="od-btn od-btn-outline" onClick={onClose} disabled={busy}>Close</button>
+      {error && <button type="button" className="od-btn od-btn-outline" onClick={loadQuote} disabled={busy||loading}>Reload Quote</button>}
+      <button type="submit" className="od-btn od-btn-primary" disabled={busy||loading||!quote}>{busy ? "Settling?" : "Confirm Settlement"}</button>
     </div>
-  );
+  </form></div>;
 }
 
 export default function OrderAndDelivery() {
+  const [pickups, setPickups] = useState([]);
+  const [pickupModal, setPickupModal] = useState(null);
+  const [pickupBusy, setPickupBusy] = useState(false);
+  const [customerHistory,setCustomerHistory]=useState(null);
   const [customers, setCustomers] = useState([]);
   const [orders, setOrders] = useState([]);
   const [drivers, setDrivers] = useState([]);
-  const [tab, setTab] = useState("orders");
+  const [tab, setTab] = useState("pickup");
   const [isLoading, setIsLoading] = useState(true);
   const [loadError, setLoadError] = useState("");
 
-  const [ordersSearch, setOrdersSearch] = useState("");
-  const [ordersStatusFilter, setOrdersStatusFilter] = useState("");
-  const [ordersFulfillmentFilter, setOrdersFulfillmentFilter] = useState("");
   const [deliverySearch, setDeliverySearch] = useState("");
   const [deliveryStatusFilter, setDeliveryStatusFilter] = useState("");
   const [customersSearch, setCustomersSearch] = useState("");
 
   const [orderModal, setOrderModal] = useState(null);
-  const [isNewOrderOpen, setIsNewOrderOpen] = useState(false);
   const [customerModal, setCustomerModal] = useState(null);
   const [confirmDelete, setConfirmDelete] = useState(null);
   const [toastMsg, setToastMsg] = useState("");
@@ -309,10 +221,12 @@ export default function OrderAndDelivery() {
     setIsLoading(true);
     Promise.all([
       apiRequest("/customers"),
-      apiRequest("/orders"),
+      apiRequest("/orders?type=Delivery"),
       apiRequest("/users?role=Driver"),
+      apiRequest("/orders/pickup"),
     ])
-      .then(([customerData, orderData, driverData]) => {
+      .then(([customerData, orderData, driverData, pickupData]) => {
+        setPickups(pickupData);
         setCustomers(customerData);
         setOrders(orderData);
         setDrivers(driverData);
@@ -326,18 +240,22 @@ export default function OrderAndDelivery() {
     loadAll();
   }, []);
 
-  const filteredOrders = orders.filter((o) => {
-    const q = ordersSearch.trim().toLowerCase();
-    const matchesSearch = !q || o.id.toLowerCase().includes(q) || (o.customerName || "").toLowerCase().includes(q);
-    const matchesStatus = !ordersStatusFilter || o.status === ordersStatusFilter;
-    const matchesFulfillment = !ordersFulfillmentFilter || o.type === ordersFulfillmentFilter;
-    return matchesSearch && matchesStatus && matchesFulfillment;
-  });
+  const pickupAction = async (order, status) => {
+    setPickupBusy(true);
+    try {
+      await apiRequest(`/orders/${order.orderId}/pickup-status`, {method:"PUT", body:JSON.stringify({status})});
+      setPickupModal(null);
+      showToast("Pickup updated.");
+      loadAll();
+    } catch (err) { showToast(err.message); loadAll(); }
+    finally { setPickupBusy(false); }
+  };
 
   const openOrder = async (order) => {
     try {
       const full = await apiRequest(`/orders/${order.orderId}`);
-      setOrderModal(full);
+      if (full.type === "Pickup") setPickupModal({kind:"view",order:full});
+      else setOrderModal(full);
     } catch (err) {
       showToast(err.message || "Failed to load order details.");
     }
@@ -407,7 +325,7 @@ export default function OrderAndDelivery() {
     }
   };
 
-  const deliveryRows = orders.filter((o) => o.type === "Delivery");
+  const deliveryRows = orders.filter((o) => o.type === "Delivery" && o.status !== "Cancelled" && o.deliveryStatus !== "Delivered");
 
   const filteredDelivery = deliveryRows.filter((d) => {
     const q = deliverySearch.trim().toLowerCase();
@@ -421,6 +339,12 @@ export default function OrderAndDelivery() {
     return !q || String(c.id).includes(q) || c.name.toLowerCase().includes(q);
   });
 
+  const viewCustomerHistory=async(customer)=>{
+    try {
+      const rows=await apiRequest(`/orders/customer/${encodeURIComponent(customer.id)}/history`);
+      setCustomerHistory({customer,rows});
+    }catch(err){showToast(err.message || "Failed to load order history.");}
+  };
   function openAddCustomer() {
     setCustomerModal({ name: "", phone: "", address: "", customerType: "Residential", isNew: true });
   }
@@ -480,11 +404,6 @@ export default function OrderAndDelivery() {
 
       <div className="od-panel">
         <div className="od-panel-header">
-          {tab === "orders" && (
-            <button className="od-btn od-btn-primary" onClick={() => setIsNewOrderOpen(true)}>
-              + New Order
-            </button>
-          )}
           {tab === "customers" && (
             <button className="od-btn od-btn-primary" onClick={openAddCustomer}>
               + Add Customer
@@ -494,98 +413,35 @@ export default function OrderAndDelivery() {
 
         <div className="od-tabs">
           {[
-            { id: "orders", label: "Orders" },
+            { id: "pickup", label: "Pickup" },
             { id: "delivery", label: "Delivery" },
             { id: "customers", label: "Customers" },
           ].map((t) => (
             <button key={t.id} className={`od-tab ${tab === t.id ? "active" : ""}`} onClick={() => setTab(t.id)}>
-              {t.label}
+              {t.label}{t.id !== "customers" && <span className="od-badge od-badge-blue" style={{marginLeft:8}}>{t.id === "pickup" ? pickups.length : deliveryRows.length}</span>}
             </button>
           ))}
         </div>
 
-        {tab === "orders" && (
-          <section>
-            <div className="od-filters">
-              <div className="od-search-box">
-                <input value={ordersSearch} onChange={(e) => setOrdersSearch(e.target.value)} placeholder="Search Orders" />
-              </div>
-              <select value={ordersStatusFilter} onChange={(e) => setOrdersStatusFilter(e.target.value)}>
-                <option value="">Order Status</option>
-                <option>Preparing</option>
-                <option>Ready</option>
-                <option>Completed</option>
-                <option>Cancelled</option>
-              </select>
-              <select value={ordersFulfillmentFilter} onChange={(e) => setOrdersFulfillmentFilter(e.target.value)}>
-                <option value="">Fulfillment Type</option>
-                <option>Delivery</option>
-                <option>Walk-in</option>
-                <option>Pickup</option>
-              </select>
-            </div>
-
-            <div className="od-table-wrap">
-              <table>
-                <thead>
-                  <tr>
-                    <th>Order ID</th><th>Customer</th><th>Order Type</th>
-                    <th>Order Status</th><th>Payment Status</th>
-                    <th>Total Amount</th><th>Date</th><th>Actions</th>
-                  </tr>
-                </thead>
-                <tbody>
-                  {isLoading && (
-                    <tr><td colSpan={8} className="od-empty-state">Loading…</td></tr>
-                  )}
-                  {!isLoading && filteredOrders.map((o) => (
-                    <tr key={o.orderId}>
-                      <td>{o.id}</td>
-                      <td>{o.customerName || "—"}</td>
-                      <td>{o.type}</td>
-                      <td><Badge text={o.status} map={orderStatusClass} /></td>
-                      <td><Badge text={o.paymentStatus} map={paymentStatusClass} /></td>
-                      <td>{peso(o.totalAmount)}</td>
-                      <td>{new Date(o.date).toLocaleDateString()}</td>
-                      <td>
-                        <div className="od-actions">
-                          <button className="od-action-btn od-act-view" onClick={() => openOrder(o)} title="View/Edit">
-                            <IconView />
-                          </button>
-                          <button className="od-action-btn od-act-edit" onClick={() => openOrder(o)} title="Edit">
-                            <IconEdit />
-                          </button>
-                          <button
-                            className="od-action-btn od-act-print"
-                            onClick={async () => {
-                              try {
-                                const full = await apiRequest(`/orders/${o.orderId}`);
-                                printOrderReceipt(full);
-                              } catch (err) {
-                                showToast(err.message || "Failed to load order for printing.");
-                              }
-                            }}
-                            title="Print"
-                          >
-                            <IconPrint />
-                          </button>
-                          <button
-                            className="od-action-btn od-act-delete"
-                            onClick={() => setConfirmDelete({ kind: "order", order: o })}
-                            title="Cancel"
-                          >
-                            <IconDelete />
-                          </button>
-                        </div>
-                      </td>
-                    </tr>
-                  ))}
-                </tbody>
-              </table>
-              {!isLoading && filteredOrders.length === 0 && <p className="od-empty-state">No orders match your search.</p>}
-            </div>
-          </section>
-        )}
+        {tab === "pickup" && <section className="od-pickup-section">
+          <div className="od-filters"><button type="button" className="od-btn od-btn-outline" onClick={loadAll} disabled={isLoading}>Refresh</button></div>
+          <div className="od-table-wrap"><table>
+            <thead><tr>{["Order ID","Customer Name","Pickup Status","Payment Status","Total Amount","Date","Change Status","Actions"].map(label => <th key={label}>{label}</th>)}</tr></thead>
+            <tbody>{pickups.map(o => <tr key={o.orderId}>
+              <td>{o.id}</td><td>{o.customerName || "Customer unavailable"}</td>
+              <td><Badge text={o.pickupStatus === "Unclaimed" ? "Expired (Unclaimed)" : o.pickupStatus} map={orderStatusClass} /></td>
+              <td><Badge text={o.paymentStatus} map={paymentStatusClass} /></td>
+              <td>{peso(o.totalAmount).replace("? ","?")}</td>
+              <td>{o.pickupScheduledAt ? new Date(o.pickupScheduledAt.replace(" ","T") + "+08:00").toLocaleString("en-PH", {timeZone:"Asia/Manila"}) : "Schedule unavailable (legacy)"}</td>
+              <td>{o.pickupStatus === "Preparing" ? <button className="od-btn od-btn-primary" disabled={pickupBusy} onClick={() => pickupAction(o,"Ready for Pickup")}>Mark Ready</button> : o.pickupStatus === "Ready for Pickup" ? <button className="od-btn od-btn-primary" onClick={() => setPickupModal({order:o,kind:"complete"})}>Complete Claim</button> : o.canSettle ? <button className="od-btn od-btn-outline" onClick={() => setPickupModal({order:o,kind:"settle"})}>Restock &amp; Settle</button> : "?"}</td>
+              <td><div className="od-actions">
+                <button type="button" className="od-action-btn od-act-view" title="View" aria-label={`View ${o.id}`} onClick={async () => {try {setPickupModal({kind:"view",order:await apiRequest(`/orders/${o.orderId}`)});} catch(err) {showToast(err.message);}}}><IconView /></button>
+                <button type="button" className="od-action-btn od-act-print" title="Print" aria-label={`Print ${o.id}`} onClick={async () => {try {printOrderReceipt(await apiRequest(`/orders/${o.orderId}`));} catch(err) {showToast(err.message);}}}><IconPrint /></button>
+                <button type="button" className="od-action-btn od-act-cancel" title="Cancel" aria-label={`Cancel ${o.id}`} disabled={!["Preparing","Ready for Pickup"].includes(o.pickupStatus) || pickupBusy} onClick={() => setPickupModal({order:o,kind:"cancel"})}><Ban size={16} /></button>
+              </div></td>
+            </tr>)}</tbody>
+          </table>{!pickups.length && <p className="od-empty-state">{isLoading ? "Loading?" : "No active paid pickup orders."}</p>}</div>
+        </section>}
 
         {tab === "delivery" && (
           <section>
@@ -668,6 +524,7 @@ export default function OrderAndDelivery() {
                       <td>{new Date(c.created).toLocaleDateString()}</td>
                       <td>
                         <div className="od-actions">
+                          <button type="button" className="od-action-btn od-act-view" title="View Order History" aria-label={`View order history for ${c.name}`} onClick={()=>viewCustomerHistory(c)}><IconView /></button>
                           <button className="od-action-btn od-act-edit" onClick={() => openEditCustomer(c)} title="Edit">
                             <IconEdit />
                           </button>
@@ -690,15 +547,13 @@ export default function OrderAndDelivery() {
         )}
       </div>
 
-      <NewOrderModal
-        isOpen={isNewOrderOpen}
-        onClose={() => setIsNewOrderOpen(false)}
-        onCreated={() => {
-          showToast("Order created.");
-          loadAll();
-        }}
-        customers={customers}
-      />
+      {customerHistory && <div className="od-modal-overlay open"><div className="od-modal" role="dialog" aria-modal="true" aria-label="Customer Order History">
+        <h3>Order History</h3><p>Customer Name: {customerHistory.customer.name}</p>
+        <div className="od-table-wrap"><table><thead><tr><th>Order ID</th><th>Type</th><th>Status</th><th>Date</th><th>Total</th><th>Settlement</th><th>Net Refund</th><th>Actions</th></tr></thead>
+          <tbody>{customerHistory.rows.map(order=><tr key={order.orderId}><td>{order.id}</td><td>{order.type}</td><td>{order.status}</td><td>{new Date(order.date).toLocaleDateString("en-PH")}</td><td>{peso(order.totalAmount)}</td><td>{order.settledAt ? "Settled" : "N/A"}</td><td>{order.settledAt ? peso(order.netRefundAmount) : "N/A"}</td><td><button type="button" className="od-action-btn od-act-view" title="View Order" aria-label={`View ${order.id}`} onClick={async()=>{try{const full=await apiRequest(`/orders/${order.orderId}`);setCustomerHistory(null);setPickupModal({kind:"view",order:full});}catch(err){showToast(err.message);}}}><IconView /></button></td></tr>)}</tbody>
+        </table>{!customerHistory.rows.length && <p className="od-empty-state">No orders recorded for this customer.</p>}</div>
+        <div className="od-modal-actions"><button type="button" className="od-btn od-btn-outline" onClick={()=>setCustomerHistory(null)}>Close</button></div>
+      </div></div>}
 
       {orderModal && (
         <div className="od-modal-overlay open" onClick={(e) => e.target === e.currentTarget && setOrderModal(null)}>
@@ -709,7 +564,7 @@ export default function OrderAndDelivery() {
                 value={orderModal.type}
                 onChange={(e) => setOrderModal({ ...orderModal, type: e.target.value })}
               >
-                <option>Delivery</option><option>Walk-in</option><option>Pickup</option>
+                <option>Delivery</option>
               </select>
             </Field>
             <Field label="Date"><input disabled value={new Date(orderModal.date).toLocaleString()} /></Field>
@@ -805,6 +660,21 @@ export default function OrderAndDelivery() {
           </div>
         </div>
       )}
+
+      {pickupModal?.kind === "complete" && <PickupClaimModal key={pickupModal.order.orderId} order={pickupModal.order} onClose={()=>setPickupModal(null)} onCompleted={()=>{setPickupModal(null);showToast("Pickup claim completed.");loadAll();}} />}
+
+      {pickupModal?.kind === "settle" && <PickupSettlementModal key={pickupModal.order.orderId} order={pickupModal.order} onClose={()=>setPickupModal(null)} onSettled={()=>{setPickupModal(null);showToast("Pickup settled and inventory restored.");loadAll();}} />}
+
+      {pickupModal && !["settle","complete"].includes(pickupModal.kind) && <div className="od-modal-overlay open"><div className="od-modal od-modal-sm">
+        <h3>{pickupModal.kind === "complete" ? "Complete Claim" : pickupModal.kind === "cancel" ? "Cancel Pickup" : pickupModal.kind === "settle" ? "Restock & Settle" : "Pickup Details"}</h3>
+        <p>{pickupModal.order.id}</p>
+        <p><span>Customer Name:</span>{" "}<span>{pickupModal.order.customerName || "Customer unavailable"}</span></p>
+        {pickupModal.kind === "view" && <><p>Status: {pickupModal.order.pickupStatus}</p><p>Scheduled pickup (locked): {pickupModal.order.pickupScheduledAt || "Unavailable (legacy)"}</p>{pickupModal.order.items?.map((item,i) => <div key={i}><p>Product: {item.name}</p><p>Qty: {item.qty}</p></div>)}<p>Total Items: {(pickupModal.order.items || []).reduce((sum,item) => sum + Number(item.qty || 0), 0)}</p><p>Total: {peso(pickupModal.order.totalAmount)}</p></>}
+        {pickupModal.kind === "cancel" && <p>Cancel this pickup within its expiration threshold. Stock and payment will remain pending settlement.</p>}
+        <div className="od-modal-actions"><button className="od-btn od-btn-outline" disabled={pickupBusy} onClick={() => setPickupModal(null)}>Close</button>
+          {pickupModal.kind === "cancel" && <button className="od-btn od-btn-primary" disabled={pickupBusy} onClick={() => pickupAction(pickupModal.order,"Cancelled")}>{pickupBusy ? "Saving?" : "Confirm"}</button>}
+        </div>
+      </div></div>}
 
       {showDeliveredConfirm && (
         <div className="od-modal-overlay open" onClick={(e) => e.target === e.currentTarget && setShowDeliveredConfirm(false)}>

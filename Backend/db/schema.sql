@@ -1,7 +1,7 @@
-﻿
+
 SET FOREIGN_KEY_CHECKS = 0;
 
-DROP TABLE IF EXISTS UserActivity, DataActivityLog, Delivery, Payment, Sales,
+DROP TABLE IF EXISTS PickupClaim, PickupSettlement, UserActivity, DataActivityLog, Delivery, Payment, Sales,
   OrderDetails, `Order`, Customer, TransferDetail, Transfer, InventoryTransaction,
   RefundLedger, Inventory, PurchaseOrderItem, PurchaseOrder, RestockRecommendation, CompanySettings,
   User, Warehouse, Branch, Product, Supplier, Brand, Category, Role, Company;
@@ -166,6 +166,9 @@ CREATE TABLE `Order` (
   OrderDate    DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
   OrderType    VARCHAR(20) NOT NULL,                    -- Walk-in, Pickup, Delivery
   OrderStatus  VARCHAR(30) NOT NULL,
+  PickupStatus VARCHAR(30) NULL,
+  PickupScheduledAt DATETIME NULL,
+  PickupSettlementPending TINYINT(1) NOT NULL DEFAULT 0,
   TotalAmount  DECIMAL(12,2) NOT NULL CHECK (TotalAmount >= 0),   -- items + delivery charge
   Remarks      VARCHAR(255) NULL,
   FOREIGN KEY (CustomerID) REFERENCES Customer(CustomerID)
@@ -349,6 +352,47 @@ CREATE TABLE IF NOT EXISTS RefundLedger (
  FOREIGN KEY (UserID) REFERENCES User(UserID),
  CHECK (EligibleAmount > 0 AND CancellationFee >= 0 AND CancellationFee <= EligibleAmount),
  CHECK (RefundAmount = EligibleAmount - CancellationFee)
+);
+
+CREATE TABLE IF NOT EXISTS PickupSettlement (
+  OrderID VARCHAR(20) PRIMARY KEY,
+  CompanyID VARCHAR(20) NOT NULL,
+  OrderNo VARCHAR(50) NOT NULL,
+  UserID VARCHAR(20) NOT NULL,
+  ResolvedStatus VARCHAR(30) NOT NULL,
+  OriginalPaidAmount DECIMAL(12,2) NOT NULL,
+  CancellationFee DECIMAL(12,2) NOT NULL,
+  NetRefundAmount DECIMAL(12,2) NOT NULL,
+  FeeEnabled TINYINT(1) NOT NULL,
+  FeeType VARCHAR(10) NOT NULL,
+  FeeValue DECIMAL(12,2) NOT NULL,
+  RefundMethod VARCHAR(20) NOT NULL,
+  AccountName VARCHAR(150) NOT NULL,
+  AccountNumber VARCHAR(34) NOT NULL,
+  PayoutReferenceNo VARCHAR(50) NULL,
+  CreatedAt DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  FOREIGN KEY (OrderID) REFERENCES `Order`(OrderID),
+  FOREIGN KEY (CompanyID) REFERENCES Company(CompanyID),
+  FOREIGN KEY (UserID) REFERENCES User(UserID),
+  CHECK (ResolvedStatus IN ('Unclaimed','Cancelled')),
+  CHECK (OriginalPaidAmount > 0 AND CancellationFee >= 0 AND CancellationFee <= OriginalPaidAmount),
+  CHECK (NetRefundAmount = OriginalPaidAmount - CancellationFee),
+  CHECK (RefundMethod IN ('GCash','Card','Bank Transfer'))
+);
+
+CREATE TABLE IF NOT EXISTS PickupClaim (
+  OrderID VARCHAR(20) PRIMARY KEY,
+  SaleID VARCHAR(20) NOT NULL UNIQUE,
+  UserID VARCHAR(20) NOT NULL,
+  WarehouseID VARCHAR(20) NULL,
+  EmptyCylinderReturned TINYINT(1) NOT NULL,
+  ReturnReferenceNo VARCHAR(50) NULL,
+  RequestHash CHAR(64) NOT NULL,
+  CreatedAt DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  FOREIGN KEY (OrderID) REFERENCES `Order`(OrderID),
+  FOREIGN KEY (SaleID) REFERENCES Sales(SaleID),
+  FOREIGN KEY (UserID) REFERENCES User(UserID),
+  FOREIGN KEY (WarehouseID) REFERENCES Warehouse(WarehouseID)
 );
 
 SET FOREIGN_KEY_CHECKS = 1;

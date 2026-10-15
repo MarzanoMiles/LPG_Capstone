@@ -1,0 +1,15 @@
+Pickup settlement (Stage 2)
+
+Deployment: from Backend run `node db/migrate_pickup_settlement.js` before deploying the API. This repeatable migration first ensures Stage 1 fields, then creates PickupSettlement. It does not fabricate legacy schedules, alter POS, or change Stage 3 claim/empty-cylinder processing.
+
+GET /orders/:id/pickup-settlement provides the authorized quote: eligibleAmount (original Sale payments, in cents rounded), cancellationFee, refundAmount, and available customer name for prefill. POST on the same path accepts refundMethod, accountName, accountNumber (STRING), optional payoutReferenceNo, and quote {eligibleAmount,cancellationFee,refundAmount}. Client-provided financial values only detect a stale quote; the server always recalculates from locked payments/settings. Both endpoints require Admin/Administrator or Manager/Operations Supervisor and scope ownership to the sale creator's company.
+
+Eligibility: PickupStatus Unclaimed or Cancelled, PickupSettlementPending=1, fully prepaid, and no existing settlement/refund. A second or concurrent submission returns HTTP 409. The UI disables confirmation while submitting. Settings AllowIssueRefund must be enabled; EnableCancellationFee controls whether a fee applies. Fixed/percentage fees use the existing financialRules calculation, round to cents, and cap at the original paid amount. Zero fee and zero net refund are supported.
+
+Payout formats: GCash requires 09 plus nine digits or +639 plus nine digits; Card requires 12?19 digits; Bank Transfer requires 6?34 digits. Account numbers are never converted to numbers. Names are required (up to 150 characters), payout references are optional (up to 50). No manual reason is accepted; status resolves the reason internally.
+
+The order row serializes settlement. InventoryTransaction Stock Out / Sale movements with ReferenceNo equal to OrderNo identify exact original inventories. Ordered product totals must match those movements exactly and every warehouse must belong to the authenticated company. No fallback warehouse is guessed. Missing or inconsistent history blocks the transaction for review. The shared inventoryMovements.recordStockIn service (also used by ordinary stock-in) restores quantities and records Stock In audit movements with SETTLE-OrderID references.
+
+In one transaction the server restores inventory, inserts PickupSettlement and the existing RefundLedger entry, and clears PickupSettlementPending. PickupSettlement has a unique order primary key and persists order ref, company, user, resolved status, amounts, fee settings snapshot, payout details, and database timestamp. RefundLedger's unique order key also prevents duplicate refunds. Any failure rolls back all writes. Resolved Cancelled/Unclaimed status remains visible; the Restock & Settle action disappears once pending is cleared.
+
+These APIs record payout details and refund bookkeeping; no payment gateway transfer is performed. Automated tests use transactional database doubles; live MySQL migration/integration checks must run in the deployment environment.

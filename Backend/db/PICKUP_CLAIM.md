@@ -1,0 +1,13 @@
+Stage 3 ? Complete Claim
+
+Migration: from Backend run node db/migrate_pickup_claim.js. It runs the repeatable Stage 1/2 migrations first (including the missing PickupScheduledAt field), creates PickupClaim, and verifies pickup columns with a real query. Existing legacy NULL schedules remain subject to manual review; no dates or completed states are invented.
+
+GET /orders/:id/pickup-claim-options returns active warehouses for the authenticated company and active Cylinder products for the shared return editor. POST /orders/:id/pickup-claim requires emptyCylinderReturned (boolean), returnedCylinders (array of {productId,qty}), and warehouseId when Yes. No rejects nonempty returns. Yes requires at least one valid active Cylinder product, positive integer quantities and an active company-owned warehouse. The ordinary pickup-status endpoint rejects Completed, so the required question cannot be bypassed.
+
+Claim completion uses the existing prepaid Sales row rather than inserting another sale/payment or adjusting order amounts/payment references. That existing sale's status is joined from Order by the Sales workflow. Exactly one matching sale with adequate original payment is required. An inconsistent, refunded, expired or non-ready pickup is rejected. Expired ready pickups become Unclaimed and require settlement.
+
+One transaction locks the owned order, validates the sale/payment/expiry, writes any empty-cylinder Stock In movements through inventoryMovements.receiveEmptyCylinders/recordStockIn, inserts PickupClaim and changes both pickup/order status to Completed. The existing active pickup query then excludes it. PickupClaim links the unique order and sale with user, designated warehouse, return answer/reference, request hash and timestamp. Identical retries return the original result; conflicting retries return 409. Order locking and unique keys guard concurrent submissions. Every claim/stock write rolls back on failure.
+
+The POS Returned Empty Cylinders editor is extracted as ReturnedCylindersModal and used by PaymentModal and OrderAndDelivery. Both POS and claims use the same backend cylinder stock-in service and ECR references. PosTerminal.jsx is unchanged; claim completion does not collect payment again.
+
+Verification: node --test tests/pickupClaim.test.js (transactional doubles). Live MySQL check: set RUN_PICKUP_DB_TESTS=1 and run node --test tests/pickupClaim.database.test.js from Backend. It uses rollback-only fixtures to check Yes/No, original sale and payment preservation, stock delta and repeated submissions; it requires seeded user/customer/settings/Cylinder/warehouse. No test fixture or stock update is committed.
