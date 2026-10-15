@@ -16,7 +16,7 @@ function formatPeso(amount) {
 // - onConfirm: ({ amountCollected, changeDue, printReceipt }) => void
 // ---------------------------------------------------------------------------
 
-export default function PaymentModal({ isOpen, totalAmount, onCancel, onConfirm, paymentMethod, referenceNo = "", onReferenceChange, allowCylinderReturn = false, cylinderProducts = [], warehouseName, isProcessing = false, error }) {
+export default function PaymentModal({ isOpen, totalAmount, onCancel, onConfirm, paymentMethod, orderType = "Walk-in", referenceNo = "", onReferenceChange, allowCylinderReturn = false, cylinderProducts = [], warehouseName, isProcessing = false, error }) {
   const requiresReference = ["GCash", "Card", "Bank Transfer"].includes(paymentMethod);
   const [returned, setReturned] = useState("");
   const [showReturns, setShowReturns] = useState(false);
@@ -106,7 +106,7 @@ export default function PaymentModal({ isOpen, totalAmount, onCancel, onConfirm,
         </div>
 
         <div className="payment-modal-row">
-          <span className="payment-modal-label">Amount Collected:</span>
+          <span className="payment-modal-label">{orderType === "Pickup" ? "Amount Collected:" : "Amount to Collect:"}</span>
           <input
             type="number"
             inputMode="decimal"
@@ -127,12 +127,12 @@ export default function PaymentModal({ isOpen, totalAmount, onCancel, onConfirm,
           </div>
         )}
 
-        <div className="payment-modal-row">
+        {!["Pickup", "Delivery"].includes(orderType) && <div className="payment-modal-row">
           <span className="payment-modal-label payment-modal-label-danger">Change Due:</span>
           <span className="payment-modal-value payment-modal-value-danger">
             {formatPeso(Math.max(changeDue, 0))}
           </span>
-        </div>
+        </div>}
 
         {allowCylinderReturn && <div className="cylinder-return-section">
           <div className="cylinder-return-question" role="group" aria-label="Empty Cylinder Returned?">

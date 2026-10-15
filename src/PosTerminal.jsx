@@ -12,6 +12,7 @@ import {
   Truck,
 } from "lucide-react";
 import PaymentModal from "./PaymentModal";
+import { validatePickupSchedule } from "./utils/pickupSchedule";
 import { apiRequest } from "./api";
 import { printReceipt } from "./utils/receipt";
 import { filterVisibleWarehouses } from "./utils/warehouseFilters";
@@ -429,15 +430,9 @@ function PickupModal({ isOpen, onClose, onSave, initialData }) {
       return;
     }
 
-    if (!pickupDate || !pickupTime) {
-      setError("Please select both Pickup Date and Pickup Time.");
-      return;
-    }
-
-    const [hours, minutes] = pickupTime.split(":").map(Number);
-    const totalMinutes = hours * 60 + minutes;
-    if (totalMinutes < 8 * 60 || totalMinutes > 18 * 60) {
-      setError("Pickup time must be between 8:00 AM and 6:00 PM.");
+    const scheduleError = validatePickupSchedule({ pickupDate, pickupTime });
+    if (scheduleError) {
+      setError(scheduleError);
       return;
     }
 
@@ -572,7 +567,7 @@ function PickupModal({ isOpen, onClose, onSave, initialData }) {
                   <label style={{ fontSize: "0.75rem", color: "#6b7280", display: "block", marginBottom: 2 }}>Date</label>
                   <input
                     type="date"
-                    min={new Date().toISOString().split("T")[0]}
+                    min={new Intl.DateTimeFormat("en-CA", { timeZone: "Asia/Manila", year: "numeric", month: "2-digit", day: "2-digit" }).format(new Date())}
                     value={pickupDate}
                     onChange={(e) => setPickupDate(e.target.value)}
                     style={{ width: "100%", padding: "7px 8px", borderRadius: 6, border: "1px solid #d1d5db", fontSize: "0.82rem" }}
@@ -582,6 +577,8 @@ function PickupModal({ isOpen, onClose, onSave, initialData }) {
                   <label style={{ fontSize: "0.75rem", color: "#6b7280", display: "block", marginBottom: 2 }}>Time (8 AM – 6 PM)</label>
                   <input
                     type="time"
+                    min="08:00"
+                    max="18:00"
                     value={pickupTime}
                     onChange={(e) => setPickupTime(e.target.value)}
                     style={{ width: "100%", padding: "7px 8px", borderRadius: 6, border: "1px solid #d1d5db", fontSize: "0.82rem" }}
@@ -1214,6 +1211,14 @@ export default function PosTerminal() {
       setShowDeliveryModal(true);
       return;
     }
+    if (customerType === "Pickup") {
+      const scheduleError = validatePickupSchedule(pickupDetails);
+      if (scheduleError) {
+        setPosError(scheduleError);
+        setShowPickupModal(true);
+        return;
+      }
+    }
     if (!availablePaymentMethods.includes(paymentMethod)) {
       setPosError("Please select a valid payment method.");
       return;
@@ -1225,6 +1230,15 @@ export default function PosTerminal() {
 
   const handleConfirmPayment = async ({ amountCollected, changeDue, returnedCylinders, printReceipt: shouldPrint }) => {
     if (cart.length === 0) return;
+    if (customerType === "Pickup") {
+      const scheduleError = validatePickupSchedule(pickupDetails);
+      if (scheduleError) {
+        setPosError(scheduleError);
+        setShowPaymentModal(false);
+        setShowPickupModal(true);
+        return;
+      }
+    }
     setIsProcessing(true);
     setPosError("");
 
@@ -1252,6 +1266,8 @@ export default function PosTerminal() {
       if (shouldPrint) {
         printReceipt({
           saleNo: response.saleNo,
+          paymentMethod,
+          referenceNo: referenceNo.trim(),
           cashierName: response.cashierName,
           datetime: new Date(),
           orderType: customerType,
@@ -1547,6 +1563,7 @@ export default function PosTerminal() {
       <PaymentModal
         isOpen={showPaymentModal}
         totalAmount={totalAmountDue}
+        orderType={customerType}
         paymentMethod={paymentMethod}
         referenceNo={referenceNo}
         onReferenceChange={setReferenceNo}

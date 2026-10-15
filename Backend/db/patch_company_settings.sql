@@ -25,7 +25,7 @@
   RoundDown TINYINT(1) NOT NULL DEFAULT 0,
   TwoDecimalStandard TINYINT(1) NOT NULL DEFAULT 1,
 
-  ReceiptHeader VARCHAR(150) NULL,
+  ReceiptHeader TEXT NULL,
   ShowLogoOnReceipt TINYINT(1) NOT NULL DEFAULT 1,
   ShowTaxBreakdown TINYINT(1) NOT NULL DEFAULT 1,
   FooterMessage VARCHAR(255) NULL,

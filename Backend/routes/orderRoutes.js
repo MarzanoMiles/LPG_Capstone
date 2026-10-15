@@ -31,10 +31,10 @@ const LIST_SELECT = `
          o.OrderType AS type, o.OrderStatus AS status, o.OrderDate AS date,
          o.TotalAmount AS totalAmount, o.Remarks AS remarks,
          s.SaleID AS saleId, s.SaleNo AS saleNo,
-         pay.PaymentID AS paymentId, pay.PaymentMethod AS paymentMethod, pay.AmountPaid AS amountPaid,
+         pay.PaymentID AS paymentId, pay.ReferenceNo AS referenceNo, pay.PaymentMethod AS paymentMethod, pay.AmountPaid AS amountPaid,
          CASE WHEN pay.AmountPaid >= o.TotalAmount THEN 'Paid' ELSE 'Unpaid' END AS paymentStatus,
          d.DeliveryID AS deliveryId, d.DRNo AS drNo, d.DeliveryStatus AS deliveryStatus,
-         d.DeliveryDate AS deliveredAt, d.DeliveryCharge AS deliveryFee, d.DeliveryAddress AS deliveryAddress,
+         d.Remarks AS deliveryNotes, d.DeliveryDate AS deliveredAt, d.DeliveryCharge AS deliveryFee, d.DeliveryAddress AS deliveryAddress,
          d.DeliveredByUserID AS deliveryRiderId,
          CASE WHEN rider.UserID IS NOT NULL THEN CONCAT(rider.FirstName,' ',rider.LastName) ELSE NULL END AS deliveryRiderName
   FROM \`Order\` o

@@ -1,6 +1,6 @@
 ﻿import React, { useEffect, useRef, useState } from "react";
 import { apiRequest } from "./api";
-import { clearReceiptSettingsCache } from "./utils/receipt";
+import { clearReceiptSettingsCache, DEFAULT_RECEIPT_HEADER } from "./utils/receipt";
 import "./Settings.css";
 import SettingsOperations from "./SettingsOperations";
 import SettingsFinancial from "./SettingsFinancial";
@@ -237,8 +237,9 @@ export default function Settings() {
           <div className="input-column">
             <div className="form-group">
               <label>Receipt header text</label>
-              <input
-                type="text"
+              <textarea
+                rows={5}
+                placeholder={DEFAULT_RECEIPT_HEADER}
                 className="form-control"
                 value={settings.receiptHeader}
                 onChange={(e) => updateField("receiptHeader", e.target.value)}

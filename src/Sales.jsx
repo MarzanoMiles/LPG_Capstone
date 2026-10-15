@@ -208,17 +208,13 @@ export default function Sales() {
       const subtotal = items.reduce((s, it) => s + it.subtotal, 0);
       const discount = Number(full.discount || 0);
       const totalAmount = Number(full.amount || 0);
-      const vat = totalAmount - subtotal + discount; // back-calculated since GET /sales/:id doesn't store vat separately
-
-      printReceipt({
-        saleNo: full.saleNo,
-        datetime: full.datetime,
-        cashierName: full.cashierName,
+      await printReceipt({
+        ...full,
         orderType: full.type,
+        completed: true,
         items,
         subtotal,
         discount,
-        vat: vat > 0 ? vat : 0,
         totalAmount,
       });
     } catch (err) {

@@ -85,14 +85,25 @@ function printOrderReceipt(order) {
   const subtotal = items.reduce((s, it) => s + it.subtotal, 0);
 
   printReceipt({
-    saleNo: order.id,
+    saleNo: order.saleNo,
+    orderNo: order.id,
+    deliveryNo: order.drNo,
+    driverName: order.deliveryRiderName,
+    customerPhone: order.customerPhone,
+    customerAddress: order.customerAddress,
+    deliveryAddress: order.deliveryAddress,
+    deliveryNotes: order.deliveryNotes || order.remarks,
+    paymentMethod: order.paymentMethod || (order.type === "Delivery" ? "Cash on Delivery" : "Cash"),
+    referenceNo: order.referenceNo,
+    amountPaid: order.amountPaid,
+    completed: order.status === "Completed",
+    documentType: order.status !== "Completed" && (order.paymentStatus !== "Paid" || !order.saleNo) ? "slip" : undefined,
     datetime: order.date,
     customerName: order.customerName,
     orderType: order.type,
     items,
     subtotal,
     discount: 0,
-    vat: 0,
     deliveryFee: Number(order.deliveryFee || 0),
     totalAmount: Number(order.totalAmount || subtotal + Number(order.deliveryFee || 0)),
   });

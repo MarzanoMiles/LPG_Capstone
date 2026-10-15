@@ -111,7 +111,25 @@ router.get(
        WHERE s.SaleID = :id`,
       { id: req.params.id }
     );
-    res.json({ ...saleRows[0], items });
+    const [details] = await pool.query(
+      `SELECT c.CustomerName AS customerName, c.ContactNo AS customerPhone,
+              c.Address AS customerAddress, o.OrderNo AS orderNo,
+              d.DRNo AS deliveryNo, d.DeliveryCharge AS deliveryFee,
+              d.DeliveryAddress AS deliveryAddress, d.Remarks AS deliveryNotes,
+              CONCAT(r.FirstName,' ',r.LastName) AS driverName,
+              pay.PaymentMethod AS paymentMethod, pay.ReferenceNo AS referenceNo,
+              pay.AmountPaid AS amountCollected
+       FROM Sales s
+       LEFT JOIN \`Order\` o ON o.OrderID = s.OrderID
+       LEFT JOIN Customer c ON c.CustomerID = o.CustomerID
+       LEFT JOIN Delivery d ON d.SaleID = s.SaleID
+       LEFT JOIN User r ON r.UserID = d.DeliveredByUserID
+       LEFT JOIN Payment pay ON pay.SaleID = s.SaleID
+       WHERE s.SaleID = :id
+       ORDER BY pay.PaymentDate DESC LIMIT 1`,
+      { id: req.params.id }
+    );
+    res.json({ ...saleRows[0], ...details[0], items });
   })
 );
 
@@ -122,6 +140,18 @@ router.post(
     const { customerType, items, discount, paymentMethod, amountCollected, warehouseId, remarks, referenceNo, returnedCylinders = [] } = req.body;
     let { customerId } = req.body;
     const orderType = customerType || "Walk-in";
+    if (orderType === "Pickup") {
+      const { pickupDate, pickupTime } = req.body.pickupDetails || {};
+      if (!/^\d{4}-\d{2}-\d{2}$/.test(pickupDate || "") || !/^\d{2}:\d{2}$/.test(pickupTime || "")) {
+        throw new ApiError(400, "Please select both Pickup Date and Pickup Time.");
+      }
+      // Pickup schedules use Philippine time regardless of the server timezone.
+      const schedule = new Date(`${pickupDate}T${pickupTime}:00+08:00`);
+      const [hours, minutes] = pickupTime.split(":").map(Number);
+      if (!Number.isFinite(schedule.getTime()) || hours > 23 || minutes > 59) throw new ApiError(400, "Please select a valid pickup schedule.");
+      if (schedule.getTime() <= Date.now()) throw new ApiError(400, "Pickup schedule must be in the future. Please select a later date or time.");
+      if (hours * 60 + minutes < 8 * 60 || hours * 60 + minutes > 18 * 60) throw new ApiError(400, "Pickup time must be between 8:00 AM and 6:00 PM.");
+    }
     const methods = orderType === "Walk-in" ? ["Cash", "GCash", "Card", "Bank Transfer"] : orderType === "Pickup" ? ["GCash", "Card", "Bank Transfer"] : orderType === "Delivery" ? ["GCash", "Card", "Bank Transfer", "Cash on Delivery"] : [];
     if (!methods.includes(paymentMethod)) throw new ApiError(400, "Invalid payment method for this order type.");
     if (["GCash", "Card", "Bank Transfer"].includes(paymentMethod) && (typeof referenceNo !== "string" || !referenceNo.trim() || referenceNo.length > 50)) throw new ApiError(400, "A reference number (up to 50 characters) is required.");
