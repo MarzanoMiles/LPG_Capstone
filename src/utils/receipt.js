@@ -55,7 +55,7 @@ export function buildReceiptHtml(sale, settings = {}) {
   const paid = sale.amountCollected ?? sale.amountPaid;
   const date = new Date(sale.datetime || sale.date || Date.now());
   const dateText = `${date.toLocaleDateString("en-US", { month: "long", day: "numeric", year: "numeric", timeZone: "Asia/Manila" })} | ${date.toLocaleTimeString("en-US", { hour: "2-digit", minute: "2-digit", hour12: true, timeZone: "Asia/Manila" })}`;
-  const blank = "____________________________________________________";
+  const blankRow = (label) => `<div class="row meta"><span>${esc(label)}</span><span class="blank-line"></span></div>`;
   const header = settings.receiptHeader?.trim() || DEFAULT_RECEIPT_HEADER;
   const width = settings.printSize === "58mm" ? 58 : 80;
   return `<!doctype html><html><head><meta charset="utf-8"><title>${esc(title)} ${esc(sale.saleNo || sale.orderNo || "")}</title>
@@ -64,6 +64,8 @@ export function buildReceiptHtml(sale, settings = {}) {
   * { box-sizing: border-box; } body { width: ${width}mm; margin: 0 auto; padding: 4mm 3mm; color: #000; font: ${width === 58 ? 9 : 11}px 'Courier New', monospace; }
   header, footer, h1 { text-align: center; } header { white-space: pre-wrap; overflow-wrap: anywhere; } h1 { font-size: 1.15em; margin: 16px 0 8px; }
   hr { border: 0; border-top: 3px double #000; margin: 8px 0; }
+  hr.customer-divider { border-top: 1px solid #000; }
+  .meta .blank-line { border-bottom: 1px solid #000; align-self: end; min-height: 1em; }
   .row { display: flex; justify-content: space-between; gap: 8px; margin: 4px 0; } .row span:last-child { text-align: right; overflow-wrap: anywhere; min-width: 0; }
   .meta { display: grid; grid-template-columns: 17ch minmax(0, 1fr); gap: 2px; margin: 4px 0; } .meta span:last-child { text-align: left; }
   table { width: 100%; border-collapse: collapse; table-layout: fixed; } th, td { padding: 4px 1px; text-align: right; vertical-align: top; overflow-wrap: anywhere; } th:first-child, td:first-child { width: 40%; text-align: left; } th:nth-child(2) { width: 10%; } th { border-bottom: 1px dashed; } .strong { font-weight: bold; } footer { margin-top: 16px; white-space: pre-wrap; }
@@ -71,10 +73,10 @@ export function buildReceiptHtml(sale, settings = {}) {
   ${slip ? `${delivery ? row("Delivery No :", sale.deliveryNo || sale.drNo || "?", "meta") : ""}${row("Order Ref No. :", sale.saleNo || sale.orderNo || "?", "meta")}` : row("Sales No :", sale.saleNo || "?", "meta")}
   ${row("Date & Time :", dateText, "meta")}${row("Transaction :", type, "meta")}${row("Cashier :", sale.cashierName || "?", "meta")}
   ${delivery ? `${row("Driver :", sale.driverName || details.riderName || "?", "meta")}${!slip ? row("Delivery No :", sale.deliveryNo || sale.drNo || "?", "meta") : ""}` : ""}
-  ${row("Customer Name :", type === "Walk-in" ? blank : sale.customerName || details.customerName || "?", "meta")}
+  ${type === "Walk-in" ? blankRow("Customer Name :") : row("Customer Name :", sale.customerName || details.customerName || "?", "meta")}
   ${type !== "Walk-in" ? row("Contact No :", sale.customerPhone || details.contactNumber || "?", "meta") : ""}
-  ${row(delivery ? "Delivery Address:" : "Address :", type === "Walk-in" ? blank : sale.deliveryAddress || sale.customerAddress || details.address || "?", "meta")}
-  ${delivery ? row("Delivery Notes :", sale.deliveryNotes || details.notes || "?", "meta") : ""}<hr>
+  ${type === "Walk-in" ? blankRow("Address :") : row(delivery ? "Delivery Address:" : "Address :", sale.deliveryAddress || sale.customerAddress || details.address || "?", "meta")}
+  ${delivery ? row("Delivery Notes :", sale.deliveryNotes || details.notes || "", "meta") : ""}<hr class="customer-divider">
   <table><thead><tr><th>Item</th><th>Qty</th><th>Unit Price</th><th>Total</th></tr></thead><tbody>${items.map(it => `<tr><td>${esc(it.name)}</td><td>${esc(it.qty)}</td><td>${money(it.unitPrice ?? it.costPrice)}</td><td>${money(it.subtotal ?? it.qty * (it.unitPrice ?? it.costPrice))}</td></tr>`).join("")}</tbody></table>
   <hr>${row("Items Purchased:", items.reduce((sum, it) => sum + Number(it.qty || 0), 0))}<hr>
   ${amount("Subtotal (VAT Inclusive)", subtotal)}${amount("Less: Discount", discount)}${amount("Total Sales (VAT Inclusive)", totalSales)}
