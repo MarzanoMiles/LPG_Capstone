@@ -8,9 +8,6 @@ const emptySettings = {
   address: "",
   contactEmail: "",
   phone: "",
-  branch: "",
-  warehouse: "",
-  brand: "",
   logoDataUrl: null,
 
   taxRate: 12,
@@ -182,33 +179,6 @@ export default function Settings() {
                 onChange={(e) => updateField("phone", e.target.value)}
               />
             </div>
-            <div className="form-group">
-              <label>Branch</label>
-              <input
-                type="text"
-                className="form-control"
-                value={settings.branch}
-                onChange={(e) => updateField("branch", e.target.value)}
-              />
-            </div>
-            <div className="form-group">
-              <label>Warehouse</label>
-              <input
-                type="text"
-                className="form-control"
-                value={settings.warehouse}
-                onChange={(e) => updateField("warehouse", e.target.value)}
-              />
-            </div>
-            <div className="form-group">
-              <label>Brand</label>
-              <input
-                type="text"
-                className="form-control"
-                value={settings.brand}
-                onChange={(e) => updateField("brand", e.target.value)}
-              />
-            </div>
           </div>
 
           <div className="logo-upload-wrapper">
@@ -245,9 +215,6 @@ export default function Settings() {
                 address: settings.address,
                 contactEmail: settings.contactEmail,
                 phone: settings.phone,
-                branch: settings.branch,
-                warehouse: settings.warehouse,
-                brand: settings.brand,
               })
             }
             disabled={savingSection === "profile"}
