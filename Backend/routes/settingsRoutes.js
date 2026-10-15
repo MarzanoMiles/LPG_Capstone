@@ -18,6 +18,12 @@ function mapRow(row) {
     phone: row.Phone || "",
     logoDataUrl: row.LogoDataUrl || null,
 
+    businessDays: row.BusinessDays.split(","),
+    openingTime: row.OpeningTime.slice(0, 5),
+    closingTime: row.ClosingTime.slice(0, 5),
+    pickupExpirationDays: row.PickupExpirationDays,
+    maxDeliveryAttempts: row.MaxDeliveryAttempts,
+
     taxRate: Number(row.TaxRate),
     taxEnabled: toBool(row.TaxEnabled),
     currency: row.Currency,
@@ -55,6 +61,39 @@ router.get(
   asyncHandler(async (req, res) => {
     const row = await ensureRow(req.user.companyId);
     res.json(mapRow(row));
+  })
+);
+
+// PUT /settings/operations
+router.put(
+  "/operations",
+  authorize("Admin", "Manager"),
+  asyncHandler(async (req, res) => {
+    const { businessDays, openingTime, closingTime, pickupExpirationDays, maxDeliveryAttempts } = req.body;
+    const days = ["Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday", "Sunday"];
+    if (!Array.isArray(businessDays) || !businessDays.length ||
+        businessDays.some((day) => !days.includes(day)) || new Set(businessDays).size !== businessDays.length) {
+      throw new ApiError(400, "Select at least one valid business day without duplicates.");
+    }
+    const timePattern = /^([01]\d|2[0-3]):[0-5]\d$/;
+    if (typeof openingTime !== "string" || typeof closingTime !== "string" ||
+        !timePattern.test(openingTime) || !timePattern.test(closingTime) || openingTime >= closingTime) {
+      throw new ApiError(400, "Opening time must be earlier than closing time on the same day.");
+    }
+    if (![pickupExpirationDays, maxDeliveryAttempts].every((value) =>
+      Number.isInteger(value) && value > 0 && value <= 4294967295)) {
+      throw new ApiError(400, "Pickup expiration and maximum delivery attempts must be positive integers (maximum 4294967295).");
+    }
+    await ensureRow(req.user.companyId);
+    await pool.query(
+      `UPDATE CompanySettings SET BusinessDays = :businessDays, OpeningTime = :openingTime,
+       ClosingTime = :closingTime, PickupExpirationDays = :pickupExpirationDays,
+       MaxDeliveryAttempts = :maxDeliveryAttempts WHERE CompanyID = :companyId`,
+      { companyId: req.user.companyId, businessDays: days.filter((day) => businessDays.includes(day)).join(","),
+        openingTime, closingTime, pickupExpirationDays, maxDeliveryAttempts }
+    );
+    const row = await ensureRow(req.user.companyId);
+    res.json({ message: "Business operations & order policies saved.", settings: mapRow(row) });
   })
 );
 

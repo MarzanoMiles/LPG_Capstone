@@ -2,6 +2,7 @@
 import { apiRequest } from "./api";
 import { clearReceiptSettingsCache } from "./utils/receipt";
 import "./Settings.css";
+import SettingsOperations from "./SettingsOperations";
 
 const emptySettings = {
   fullName: "",
@@ -225,6 +226,7 @@ export default function Settings() {
       </div>
 
    {/* ─── FINANCIAL & TAX RULES ─── */}
+      <SettingsOperations settings={settings} disabled={!!loadError} onSaved={flashSaved} />
       <div className="settings-card">
         <h2 className="card-title">Financial & Tax Rules</h2>
         <div className="grid-2-col">

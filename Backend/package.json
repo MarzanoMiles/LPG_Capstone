@@ -4,6 +4,7 @@
     "type":  "commonjs",
     "main":  "server.js",
     "scripts":  {
+                    "migrate:business-operations": "node db/migrate_business_operations_settings.js",
                     "migrate:product-history": "node db/migrate_product_history.js",
     "start":  "node server.js",
                     "dev":  "nodemon server.js",
