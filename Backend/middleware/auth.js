@@ -104,6 +104,9 @@ function authenticate(req, res, next) {
   try {
     const payload = jwt.verify(token, process.env.JWT_SECRET);
     req.user = payload; // { userId, companyId, roleId, roleName, email }
+    if (["driver", "drivers"].includes(String(payload.roleName).trim().toLowerCase()) && req.baseUrl !== "/deliveries" && req.baseUrl !== "/auth") {
+      return next(new ApiError(403, "Drivers may only access their assigned delivery queue."));
+    }
 
     const pathname = String(req.path || "");
     const method = String(req.method || "GET").toUpperCase();

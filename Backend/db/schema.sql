@@ -1,7 +1,7 @@
 
 SET FOREIGN_KEY_CHECKS = 0;
 
-DROP TABLE IF EXISTS PickupClaim, PickupSettlement, UserActivity, DataActivityLog, Delivery, Payment, Sales,
+DROP TABLE IF EXISTS DeliveryAction, PickupClaim, PickupSettlement, UserActivity, DataActivityLog, Delivery, Payment, Sales,
   OrderDetails, `Order`, Customer, TransferDetail, Transfer, InventoryTransaction,
   RefundLedger, Inventory, PurchaseOrderItem, PurchaseOrder, RestockRecommendation, CompanySettings,
   User, Warehouse, Branch, Product, Supplier, Brand, Category, Role, Company;
@@ -266,9 +266,26 @@ CREATE TABLE Delivery (
   DeliveryCharge     DECIMAL(12,2) NOT NULL DEFAULT 0 CHECK (DeliveryCharge >= 0),
   DeliveryAddress    VARCHAR(255) NOT NULL,
   DeliveryStatus     VARCHAR(30) NOT NULL,
+  PaymentMethod      VARCHAR(30) NULL,
+  AttemptCount       INT UNSIGNED NOT NULL DEFAULT 0,
+  NextAttemptAt      DATETIME NULL,
+  RestockedAt        DATETIME NULL,
+  SettledAt          DATETIME NULL,
   Remarks            VARCHAR(255) NULL,
   FOREIGN KEY (SaleID)            REFERENCES Sales(SaleID),
   FOREIGN KEY (DeliveredByUserID) REFERENCES User(UserID)
+);
+
+CREATE TABLE DeliveryAction (
+  DeliveryID VARCHAR(20) NOT NULL,
+  RequestID VARCHAR(64) NOT NULL,
+  RequestHash CHAR(64) NOT NULL,
+  UserID VARCHAR(20) NOT NULL,
+  Action VARCHAR(30) NOT NULL,
+  Details JSON NOT NULL,
+  CreatedAt DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  PRIMARY KEY (DeliveryID, RequestID),
+  FOREIGN KEY (DeliveryID) REFERENCES Delivery(DeliveryID)
 );
 
 CREATE TABLE DataActivityLog (

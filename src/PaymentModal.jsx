@@ -17,6 +17,7 @@ function formatPeso(amount) {
 // ---------------------------------------------------------------------------
 
 export default function PaymentModal({ isOpen, totalAmount, onCancel, onConfirm, paymentMethod, orderType = "Walk-in", referenceNo = "", onReferenceChange, allowCylinderReturn = false, cylinderProducts = [], warehouseName, isProcessing = false, error }) {
+  const isCod = orderType === "Delivery" && paymentMethod === "Cash on Delivery";
   const requiresReference = ["GCash", "Card", "Bank Transfer"].includes(paymentMethod);
   const [returned, setReturned] = useState("");
   const [showReturns, setShowReturns] = useState(false);
@@ -52,7 +53,7 @@ export default function PaymentModal({ isOpen, totalAmount, onCancel, onConfirm,
     });
   };
 
-  const canConfirm = collected >= totalAmount && totalAmount > 0 && (!requiresReference || referenceNo.trim().length > 0) && !isProcessing && (!allowCylinderReturn || returned === "no" || (returned === "yes" && returnItems.length > 0));
+  const canConfirm = (isCod || collected >= totalAmount) && totalAmount > 0 && (!requiresReference || referenceNo.trim().length > 0) && !isProcessing && (!allowCylinderReturn || returned === "no" || (returned === "yes" && returnItems.length > 0));
 
   if (showReturns) return <ReturnedCylindersModal items={returnItems} cylinderProducts={cylinderProducts} warehouseName={warehouseName}
     onCancel={()=>{setShowReturns(false);if(!returnItems.length)setReturned("");}}
@@ -65,11 +66,11 @@ export default function PaymentModal({ isOpen, totalAmount, onCancel, onConfirm,
         <h2 className="payment-modal-title">Payment</h2>
 
         <div className="payment-modal-row">
-          <span className="payment-modal-label">Total Amount:</span>
+          <span className="payment-modal-label">{isCod ? "Amount to Collect:" : "Total Amount:"}</span>
           <span className="payment-modal-value">{formatPeso(totalAmount)}</span>
         </div>
 
-        <div className="payment-modal-row">
+        {!isCod && <div className="payment-modal-row">
           <span className="payment-modal-label">{orderType === "Pickup" ? "Amount Collected:" : "Amount to Collect:"}</span>
           <input
             type="number"
@@ -80,7 +81,7 @@ export default function PaymentModal({ isOpen, totalAmount, onCancel, onConfirm,
             onChange={(e) => setAmountCollected(e.target.value)}
             autoFocus
           />
-        </div>
+        </div>}
 
         {requiresReference && (
           <div className="payment-modal-row">

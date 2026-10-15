@@ -425,3 +425,57 @@
 .od-pickup-section .od-actions { justify-content: flex-start; align-items: center; flex-wrap: nowrap; }
 .od-pickup-section td:nth-child(5) { font-variant-numeric: tabular-nums; }
 .od-pickup-section td:nth-child(7) .od-btn { padding: 8px 12px; font-size: 0.8125rem; white-space: nowrap; }
+
+.od-delivery-actions { display:flex; flex-wrap:nowrap; white-space:nowrap; gap:6px; }
+.od-workflow-actions { display:flex; flex-direction:column; align-items:flex-start; gap:6px; }
+.od-retry-date { display:block; white-space:nowrap; margin-top:4px; }
+
+.od-delivery-card { border: 1px solid #e5e7eb; border-radius: 12px; overflow: hidden; background: #fff; }
+.od-delivery-section .od-table-wrap { border-radius: 0; box-shadow: none; }
+.od-delivery-section table { min-width: 1380px; font-size: 0.875rem; }
+.od-delivery-section .od-table-wrap th { background: #1e3a5f; text-align: left; padding: 14px 18px; white-space: nowrap; font-weight: 700; }
+.od-delivery-section .od-table-wrap td { text-align: left; padding: 14px 18px; color: #374151; }
+.od-delivery-reference, .od-delivery-section .od-badge { white-space: nowrap; }
+.od-delivery-reference { font-weight: 600; }
+.od-delivery-address { min-width: 200px; max-width: 280px; overflow-wrap: anywhere; }
+.od-delivery-section .od-actions { justify-content: flex-start; gap: 12px; }
+.od-delivery-section .od-workflow-actions .od-btn { padding: 8px 12px; font-size: 0.8125rem; white-space: nowrap; }
+.od-driver-hint, .od-retry-date { color: #64748b; font-size: 12px; }
+.od-action-error { background: #fef2f2; border: 1px solid #fecaca; padding: 12px; border-radius: 6px; color: #b91c1c; }
+
+.od-claim-modal { box-sizing: border-box; max-height: calc(100dvh - 32px); overflow-y: auto; }
+.od-collected-row { display: flex; align-items: center; gap: 12px; margin-bottom: 20px; }
+.od-collected-row label, .od-collected-row .od-collect-label { flex-shrink: 0; font-size: 14px; font-weight: 600; color: #475569; }
+.od-collected-row input { flex: 1; width: 100%; min-width: 0; box-sizing: border-box; padding: 8px 12px; border: 1px solid #dce1eb; border-radius: 6px; font: inherit; }
+.od-claim-modal .od-claim-actions {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 12px;
+  margin-top: 24px;
+  padding-top: 20px;
+  align-items: stretch;
+}
+.od-claim-modal .od-claim-actions .payment-modal-btn {
+  width: 100%;
+  min-width: 0;
+  min-height: 46px;
+  padding: 12px 10px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 0.875rem;
+  line-height: 1.4;
+  white-space: nowrap;
+  box-sizing: border-box;
+}
+.od-claim-modal .payment-modal-btn:disabled { cursor: not-allowed; }
+.od-confirm-delivery-modal .payment-modal-label { white-space: nowrap; }
+.od-confirm-delivery-modal .payment-modal-value { text-align: right; }
+.od-confirm-delivery-modal .payment-modal-input { min-width: 0; max-width: 160px; width: 45%; box-sizing: border-box; }
+.od-confirm-delivery-modal .od-claim-actions { border-top: 0; padding-top: 0; gap: 16px; }
+.od-confirm-delivery-modal .od-claim-actions .payment-modal-btn { padding: 13px; font-size: 1rem; }
+@media (max-width: 480px) {
+  .od-claim-modal { padding: 24px 16px; }
+  .od-claim-modal .cylinder-return-question { flex-wrap: wrap; gap: 12px; }
+  .od-claim-modal .cylinder-return-question > span { flex-basis: 100%; }
+}

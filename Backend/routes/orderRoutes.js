@@ -26,6 +26,11 @@ const pickup = require("../utils/pickupLifecycle");
 const DEFAULT_WAREHOUSE_ID = "WH-001";
 
 router.use(authenticate);
+// Drivers use only the authenticated delivery queue and its two lifecycle actions.
+router.use((req,res,next)=> {
+  if(require('../utils/deliveryLifecycle').driver(req.user)) return next(new ApiError(403,'Use your assigned delivery queue.'));
+  next();
+});
 
 const LIST_SELECT = `
   SELECT o.OrderID AS orderId, o.OrderNo AS id, o.CustomerID AS customerId,
@@ -34,7 +39,7 @@ const LIST_SELECT = `
          o.PickupStatus AS pickupStatus, o.PickupScheduledAt AS pickupScheduledAt, o.PickupSettlementPending AS settlementPending,
          o.TotalAmount AS totalAmount, o.Remarks AS remarks,
          s.SaleID AS saleId, s.SaleNo AS saleNo,
-         pay.PaymentID AS paymentId, pay.ReferenceNo AS referenceNo, pay.PaymentMethod AS paymentMethod, pay.AmountPaid AS amountPaid,
+         pay.PaymentID AS paymentId, pay.ReferenceNo AS referenceNo, COALESCE(d.PaymentMethod,pay.PaymentMethod) AS paymentMethod, pay.AmountPaid AS amountPaid,
          CASE WHEN pay.AmountPaid >= o.TotalAmount THEN 'Paid' ELSE 'Unpaid' END AS paymentStatus,
          d.DeliveryID AS deliveryId, d.DRNo AS drNo, d.DeliveryStatus AS deliveryStatus,
          d.Remarks AS deliveryNotes, d.DeliveryDate AS deliveredAt, d.DeliveryCharge AS deliveryFee, d.DeliveryAddress AS deliveryAddress,
@@ -43,7 +48,7 @@ const LIST_SELECT = `
   FROM \`Order\` o
   JOIN Customer c ON c.CustomerID = o.CustomerID
   LEFT JOIN Sales s ON s.OrderID = o.OrderID
-  LEFT JOIN Payment pay ON pay.SaleID = s.SaleID
+  LEFT JOIN (SELECT SaleID,SUM(AmountPaid) AS AmountPaid,MAX(PaymentID) AS PaymentID,MAX(ReferenceNo) AS ReferenceNo,MAX(PaymentMethod) AS PaymentMethod FROM Payment WHERE PaymentType='Sale' GROUP BY SaleID) pay ON pay.SaleID = s.SaleID
   LEFT JOIN Delivery d ON d.SaleID = s.SaleID
   LEFT JOIN User rider ON rider.UserID = d.DeliveredByUserID
 `;
@@ -88,7 +93,8 @@ router.get("/:id/pickup-claim-options", authorize(...pickupOperators), asyncHand
   if(!orders.length)throw new ApiError(404,"Pickup order not found.");
   const [warehouses]=await pool.query("SELECT WarehouseID AS id,WarehouseName AS name FROM Warehouse WHERE CompanyID=:companyId AND Status='Active' ORDER BY WarehouseName",{companyId:req.user.companyId});
   const [products]=await pool.query("SELECT p.ProductID AS id,p.ProductName AS name,b.Brand AS brand,p.UnitValue AS unitValue FROM Product p JOIN Category c ON c.CategoryID=p.CategoryID JOIN Brand b ON b.BrandID=p.BrandID WHERE c.Category='Cylinder' AND p.Status='Active' ORDER BY p.ProductName");
-  res.json({warehouses,products});
+  const [inventoryStocks]=await pool.query("SELECT i.WarehouseID AS warehouseId,i.ProductID AS productId,SUM(i.StockOnHand) AS stock FROM Inventory i JOIN Warehouse w ON w.WarehouseID=i.WarehouseID JOIN Product p ON p.ProductID=i.ProductID JOIN Category c ON c.CategoryID=p.CategoryID WHERE w.CompanyID=:companyId AND w.Status='Active' AND c.Category='Cylinder' GROUP BY i.WarehouseID,i.ProductID",{companyId:req.user.companyId});
+  res.json({warehouses,products,inventoryStocks});
 }));
 router.post("/:id/pickup-claim", authorize(...pickupOperators), asyncHandler(async(req,res)=>{
   res.json(await claim.complete(pool,req.user,req.params.id,req.body));
@@ -106,13 +112,18 @@ router.post("/:id/pickup-settlement", authorize("Admin","Manager"), asyncHandler
 // Historical orders remain linked to their customer after claim or settlement.
 router.get("/customer/:customerId/history", asyncHandler(async(req,res)=>{
   const [rows]=await pool.query(`SELECT o.OrderID AS orderId,o.OrderNo AS id,o.OrderType AS type,
-    COALESCE(o.PickupStatus,o.OrderStatus) AS status,o.OrderDate AS date,
+    CASE WHEN o.OrderType='Delivery' THEN COALESCE(d.DeliveryStatus,o.OrderStatus) ELSE COALESCE(o.PickupStatus,o.OrderStatus) END AS status,o.OrderDate AS date,
     o.PickupScheduledAt AS pickupScheduledAt,o.TotalAmount AS totalAmount,
     CASE WHEN paid.amount>=o.TotalAmount THEN 'Paid' ELSE 'Unpaid' END AS paymentStatus,
-    ps.CreatedAt AS settledAt,ps.CancellationFee AS settlementFee,ps.NetRefundAmount AS netRefundAmount
+    CASE WHEN o.OrderType='Delivery' THEN d.SettledAt ELSE ps.CreatedAt END AS settledAt,
+    CASE WHEN o.OrderType='Delivery' THEN COALESCE(deliveryRefund.settlementFee,0) ELSE ps.CancellationFee END AS settlementFee,
+    CASE WHEN o.OrderType='Delivery' THEN COALESCE(deliveryRefund.netRefundAmount,0) ELSE ps.NetRefundAmount END AS netRefundAmount
     FROM \`Order\` o JOIN Sales s ON s.OrderID=o.OrderID JOIN User owner ON owner.UserID=s.UserID
+    LEFT JOIN Delivery d ON d.SaleID=s.SaleID
     LEFT JOIN (SELECT SaleID,SUM(AmountPaid) AS amount FROM Payment WHERE PaymentType='Sale' GROUP BY SaleID) paid ON paid.SaleID=s.SaleID
     LEFT JOIN PickupSettlement ps ON ps.OrderID=o.OrderID AND ps.CompanyID=:companyId
+    LEFT JOIN (SELECT OrderID,SUM(CancellationFee) AS settlementFee,SUM(RefundAmount) AS netRefundAmount
+      FROM RefundLedger WHERE CompanyID=:companyId AND Reason='Delivery Failed' GROUP BY OrderID) deliveryRefund ON deliveryRefund.OrderID=o.OrderID
     WHERE o.CustomerID=:customerId AND owner.CompanyID=:companyId ORDER BY o.OrderDate DESC,o.OrderID DESC`,
     {customerId:req.params.customerId,companyId:req.user.companyId});
   res.json(rows);
@@ -125,7 +136,8 @@ router.get(
     await pickup.evaluate(pool, req.user.companyId);
     const { search, status, type } = req.query;
     let sql = LIST_SELECT + ` WHERE o.OrderType IN ('Pickup', 'Delivery')`;
-    const params = {};
+    const params = {companyId:req.user.companyId};
+    sql += ` AND EXISTS (SELECT 1 FROM User owner WHERE owner.UserID=s.UserID AND owner.CompanyID=:companyId)`;
     if (search) {
       sql += ` AND (o.OrderNo LIKE :s OR c.CustomerName LIKE :s)`;
       params.s = `%${search}%`;
@@ -152,7 +164,7 @@ router.get(
   "/:id",
   asyncHandler(async (req, res) => {
     await pickup.evaluate(pool, req.user.companyId);
-    const [rows] = await pool.query(LIST_SELECT + ` WHERE o.OrderID = :id`, { id: req.params.id });
+    const [rows] = await pool.query(LIST_SELECT + ` WHERE o.OrderID = :id AND EXISTS (SELECT 1 FROM User owner WHERE owner.UserID=s.UserID AND owner.CompanyID=:companyId)`, { id: req.params.id, companyId:req.user.companyId });
     if (!rows[0]) throw new ApiError(404, "Order not found.");
     if (rows[0].type === "Pickup") {
       const [owner] = await pool.query("SELECT s.SaleID FROM Sales s JOIN User u ON u.UserID=s.UserID WHERE s.OrderID=:id AND u.CompanyID=:companyId", {id:req.params.id,companyId:req.user.companyId});
@@ -321,11 +333,11 @@ router.post(
       // address is known at creation time.
       if (orderType === "Delivery") {
         const deliveryId = await nextId(conn, "Delivery", "DeliveryID", "D");
-        const drNo = await nextSequence(pool, "Delivery", "DRNo", "DR");
+        const drNo = await nextSequence(pool, "Delivery", "DRNo", "DEL");
         await conn.query(
-          `INSERT INTO Delivery (DeliveryID, SaleID, DRNo, DeliveryCharge, DeliveryAddress, DeliveryStatus)
-           VALUES (:deliveryId, :saleId, :drNo, :fee, :address, 'Pending')`,
-          { deliveryId, saleId, drNo, fee, address: deliveryAddress }
+          `INSERT INTO Delivery (DeliveryID, SaleID, DRNo, DeliveryCharge, DeliveryAddress, DeliveryStatus, PaymentMethod)
+           VALUES (:deliveryId, :saleId, :drNo, :fee, :address, 'Preparing', :paymentMethod)`,
+          { deliveryId, saleId, drNo, fee, address: deliveryAddress, paymentMethod:paymentMethod || (markPaid ? "Cash" : "Cash on Delivery") }
         );
       }
 
@@ -356,6 +368,7 @@ router.put(
         id: req.params.id,
       });
       if (!existingRows[0]) throw new ApiError(404, "Order not found.");
+      if (existingRows[0].OrderType === "Delivery") throw new ApiError(409,"Use delivery assignment and lifecycle actions.");
       if (existingRows[0].OrderType === "Walk-in" || orderType === "Walk-in") throw new ApiError(409, "Walk-in orders belong to completed Sales, not fulfillment queues.");
       if (existingRows[0].OrderType === "Pickup" || orderType === "Pickup") throw new ApiError(409, "Use pickup status actions; pickup type and schedule are locked after creation.");
 
@@ -394,11 +407,11 @@ router.put(
               );
             }
             const deliveryId = await nextId(conn, "Delivery", "DeliveryID", "D");
-            const drNo = await nextSequence(pool, "Delivery", "DRNo", "DR");
+            const drNo = await nextSequence(pool, "Delivery", "DRNo", "DEL");
             await conn.query(
-              `INSERT INTO Delivery (DeliveryID, SaleID, DRNo, DeliveryCharge, DeliveryAddress, DeliveryStatus)
-               VALUES (:deliveryId, :saleId, :drNo, :fee, :address, 'Pending')`,
-              { deliveryId, saleId: saleRows[0].SaleID, drNo, fee: Number(deliveryFee) || 0, address }
+              `INSERT INTO Delivery (DeliveryID, SaleID, DRNo, DeliveryCharge, DeliveryAddress, DeliveryStatus, PaymentMethod)
+               VALUES (:deliveryId, :saleId, :drNo, :fee, :address, 'Preparing', :paymentMethod)`,
+              { deliveryId, saleId: saleRows[0].SaleID, drNo, fee: Number(deliveryFee) || 0, address, paymentMethod:req.body.paymentMethod || null }
             );
           }
         }
@@ -422,6 +435,7 @@ router.post("/:id/refund", authorize("Admin", "Manager"), asyncHandler(async (re
   await conn.beginTransaction();
   const [orders] = await conn.query("SELECT OrderStatus FROM `Order` WHERE OrderID = :id FOR UPDATE", {id: req.params.id});
   const [pickupRows] = await conn.query("SELECT OrderType FROM `Order` WHERE OrderID=:id", {id:req.params.id});
+  if (pickupRows[0]?.OrderType === "Delivery") throw new ApiError(409,"Delivery refunds require final-failure settlement.");
   if (pickupRows[0]?.OrderType === "Pickup") throw new ApiError(409,"Pickup refunds require Restock & Settle (Stage 2).");
   const result = await issueRefund(conn, req.user, req.params.id, orders[0]?.OrderStatus === "Cancelled" ? "Cancellation" : "Refund");
   await conn.commit();
@@ -439,6 +453,7 @@ router.get("/:id/refund", authorize("Admin", "Manager"), asyncHandler(async (req
 // PUT /orders/:id/payment
 router.put(
   "/:id/payment",
+  authorize("Admin","Manager","Store Supervisor","Assistant Store Supervisor","Cashier"),
   asyncHandler(async (req, res) => {
     const { paymentMethod, amountPaid } = req.body;
 
@@ -473,38 +488,8 @@ router.put(
   })
 );
 
-// PUT /orders/:id/delivery — update delivery status / assign a rider
-router.put(
-  "/:id/delivery",
-  asyncHandler(async (req, res) => {
-    const { deliveryStatus, deliveryRiderId, deliveryDate } = req.body;
-
-    const [orderRows] = await pool.query(
-      `SELECT d.DeliveryID FROM \`Order\` o
-       JOIN Sales s ON s.OrderID = o.OrderID
-       JOIN Delivery d ON d.SaleID = s.SaleID
-       WHERE o.OrderID = :id`,
-      { id: req.params.id }
-    );
-    if (!orderRows[0]) throw new ApiError(404, "This order has no delivery record (is it a Delivery-type order?).");
-
-    await pool.query(
-      `UPDATE Delivery SET
-         DeliveryStatus = COALESCE(:status, DeliveryStatus),
-         DeliveredByUserID = COALESCE(:riderId, DeliveredByUserID),
-         DeliveryDate = COALESCE(:deliveryDate, DeliveryDate)
-       WHERE DeliveryID = :id`,
-      {
-        id: orderRows[0].DeliveryID,
-        status: deliveryStatus || null,
-        riderId: deliveryRiderId || null,
-        deliveryDate: deliveryDate || (deliveryStatus === "Delivered" ? new Date() : null),
-      }
-    );
-
-    res.json({ message: "Delivery updated." });
-  })
-);
+// Legacy status edits bypassed lifecycle guards; callers must use /deliveries actions.
+router.put('/:id/delivery', (req,res,next)=>next(new ApiError(409,'Use delivery assignment and lifecycle actions.')));
 
 // DELETE /orders/:id — cancels the order: restores stock, removes Payment/Delivery/Sales/OrderDetails
 router.delete(
@@ -519,6 +504,7 @@ router.delete(
       });
       if (!orderRows[0]) throw new ApiError(404, "Order not found.");
 
+      if (orderRows[0].OrderType === "Delivery") throw new ApiError(409,"Delivery history cannot be deleted; use lifecycle resolution.");
       if (orderRows[0].OrderType === "Pickup") throw new ApiError(409, "Use the pickup cancellation action; settlement is deferred.");
       await settleCancellation(conn, req.user, req.params.id);
 

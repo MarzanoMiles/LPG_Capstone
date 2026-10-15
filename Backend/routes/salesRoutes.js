@@ -190,6 +190,16 @@ router.post(
 
 
       if (orderType === "Pickup") customerId = await require("../utils/pickupCustomer").resolvePickupCustomer(conn, req.body);
+      if (orderType === "Delivery") {
+        customerId=await require("../utils/pickupCustomer").resolvePickupCustomer(conn,{customerId:req.body.customerId,pickupDetails:req.body.deliveryDetails});
+        const details=req.body.deliveryDetails;
+        if(typeof details?.address!=="string" || !details.address.trim() || details.address.length>255) throw new ApiError(400,"Enter a delivery address (maximum 255 characters).");
+        if(details.instructions && (typeof details.instructions!=="string" || details.instructions.length>255)) throw new ApiError(400,"Delivery notes must be at most 255 characters.");
+        if(details.riderId) {
+          const [drivers]=await conn.query("SELECT u.UserID FROM User u JOIN Role r ON r.RoleID=u.RoleID WHERE u.UserID=:id AND u.CompanyID=:companyId AND u.Status='Active' AND LOWER(r.RoleName) IN ('driver','drivers') FOR UPDATE",{id:details.riderId,companyId:req.user.companyId});
+          if(!drivers.length)throw new ApiError(400,"Select an active delivery driver in your company.");
+        }
+      }
 
       if (!customerId) {
         const [existing] = await conn.query(
@@ -215,7 +225,8 @@ router.post(
       const discountAmount = discount || 0;
       const vat = taxEnabled ? (subtotal - discountAmount) * taxRate / (1 + taxRate) : 0;
       const totalAmount = subtotal - discountAmount;
-      if (!Number.isFinite(Number(amountCollected)) || Number(amountCollected) < totalAmount || totalAmount <= 0) throw new ApiError(400, "Amount collected must cover the total due.");
+      const cod=orderType==='Delivery' && paymentMethod==='Cash on Delivery';
+      if ((!cod && (!Number.isFinite(Number(amountCollected)) || Number(amountCollected) < totalAmount)) || totalAmount <= 0) throw new ApiError(400, "Amount collected must cover the total due.");
       const hasExplicitWarehouse = !!warehouseId;
       const wid = hasExplicitWarehouse ? warehouseId : DEFAULT_WAREHOUSE_ID;
 
@@ -341,7 +352,15 @@ router.post(
         }
       );
 
-      if (paymentMethod && amountCollected) {
+      if(orderType==='Delivery') {
+        const details=req.body.deliveryDetails;
+        const deliveryId=await nextId(conn,'Delivery','DeliveryID','D');
+        const drNo=await nextSequence(conn,'Delivery','DRNo','DEL');
+        await conn.query(`INSERT INTO Delivery(DeliveryID,SaleID,DRNo,DeliveredByUserID,DeliveryAddress,DeliveryStatus,Remarks,PaymentMethod)
+          VALUES(:deliveryId,:saleId,:drNo,:riderId,:address,'Preparing',:notes,:paymentMethod)`,{deliveryId,saleId,drNo,riderId:details.riderId||null,address:details.address.trim(),notes:details.instructions||null,paymentMethod});
+        await conn.query("UPDATE `Order` SET OrderStatus='Preparing' WHERE OrderID=:orderId",{orderId});
+      }
+      if (paymentMethod && amountCollected && !cod) {
         const paymentId = await nextId(conn, "Payment", "PaymentID", "PAY");
         await conn.query(
           `INSERT INTO Payment (PaymentID, PaymentType, SaleID, PaymentMethod, AmountPaid, ReferenceNo)

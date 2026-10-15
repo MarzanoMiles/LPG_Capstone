@@ -642,7 +642,7 @@ function DeliveryModal({ isOpen, onClose, onSave, initialData }) {
     const fetchRiders = async () => {
       setIsLoadingRiders(true);
       try {
-        const data = await apiRequest("/riders");
+        const data = await apiRequest("/deliveries/drivers");
         setRiders(Array.isArray(data) ? data : []);
       } catch (err) {
         setRiders([]);
@@ -901,7 +901,7 @@ function DeliveryModal({ isOpen, onClose, onSave, initialData }) {
 
               <div style={{ flex: 1 }}>
                 <label style={{ fontSize: "0.8rem", fontWeight: 700, color: "#374151", display: "block", marginBottom: 4 }}>
-                  Assign Rider
+                  Assign Driver
                 </label>
                 <select
                   value={assignedRiderId}
@@ -909,7 +909,7 @@ function DeliveryModal({ isOpen, onClose, onSave, initialData }) {
                   style={{ width: "100%", padding: "8px 10px", borderRadius: 6, border: "1px solid #d1d5db", fontSize: "0.85rem" }}
                 >
                   <option value="">Unassigned</option>
-                  {isLoadingRiders && <option disabled>Loading riders...</option>}
+                  {isLoadingRiders && <option disabled>Loading drivers...</option>}
                   {riders.map((r) => (
                     <option key={r.id || r.UserID} value={r.id || r.UserID}>
                       {r.name || r.FullName || r.username}
@@ -1482,7 +1482,7 @@ export default function PosTerminal() {
                       <>
                         <div>Customer: {deliveryDetails.customerName} ({deliveryDetails.contactNumber})</div>
                         <div>Address: {deliveryDetails.address}</div>
-                        <div>Vehicle: {deliveryDetails.vehicleType} | Rider: {deliveryDetails.riderName}</div>
+                        <div>Vehicle: {deliveryDetails.vehicleType} | Driver: {deliveryDetails.riderName}</div>
                       </>
                     ) : (
                       <span style={{ color: "#dc2626", fontWeight: 600 }}>Details pending</span>

@@ -16,6 +16,7 @@ async function seed() {
       PurchaseOrderItem, 
       PurchaseOrder,
       RestockRecommendation, 
+      DeliveryAction,
       Delivery, 
       Payment, 
       Sales, 
@@ -365,6 +366,8 @@ async function seed() {
       FOREIGN KEY (DeliveredByUserID) REFERENCES \`User\`(UserID)
     )
   `);
+
+  await require("./migrate_delivery_lifecycle")();
 
   // 23. DataActivityLog Table
   await pool.query(`
