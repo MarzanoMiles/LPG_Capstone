@@ -4,6 +4,7 @@ import React, { useEffect, useState } from "react";
 import { Search, ChevronDown, Plus, FileText, Edit, Trash2 } from "lucide-react";
 import AddSupplierModal from "./AddSupplierModal";
 import ViewSupplierModal from "./ViewSupplierModal";
+import DeleteSupplierModal from "./DeleteSupplierModal";
 import { apiRequest } from "./api";
 import "./Suppliers.css";
 
@@ -13,7 +14,7 @@ export default function Suppliers() {
   const [suppliers, setSuppliers] = useState([]);
   const [isLoading, setIsLoading] = useState(true);
   const [loadError, setLoadError] = useState("");
-  const [actionError, setActionError] = useState("");
+  const [supplierToDelete, setSupplierToDelete] = useState(null);
 
   const [search, setSearch] = useState("");
   const [statusFilter, setStatusFilter] = useState("All Status");
@@ -72,18 +73,9 @@ export default function Suppliers() {
   };
 
   const handleDelete = async (supplier) => {
-    const confirmed = window.confirm(
-      `Deactivate "${supplier.name}"? Their product and purchase order history will be kept, and they'll stop appearing as an option when adding new products.`
-    );
-    if (!confirmed) return;
-
-    setActionError("");
-    try {
-      await apiRequest(`/suppliers/${supplier.id}`, { method: "DELETE" });
-      loadSuppliers();
-    } catch (err) {
-      setActionError(err.message || "Failed to deactivate supplier.");
-    }
+    await apiRequest(`/suppliers/${supplier.id}`, { method: "DELETE" });
+    setSuppliers((rows) => rows.filter((row) => row.id !== supplier.id));
+    loadSuppliers();
   };
 
   return (
@@ -91,7 +83,6 @@ export default function Suppliers() {
       <PageHeader title="Suppliers" />
 
       {loadError && <p style={{ color: "#dc2626", fontWeight: 600 }}>{loadError}</p>}
-      {actionError && <p style={{ color: "#dc2626", fontWeight: 600 }}>{actionError}</p>}
 
       {/* Toolbar Controls */}
       <div className="suppliers-toolbar">
@@ -135,9 +126,9 @@ export default function Suppliers() {
                 <th>Supplier ID</th>
                 <th>Supplier Name</th>
                 <th>Contact Person</th>
-                <th>Phone</th>
+                <th>Email</th>
                 <th>Address</th>
-                <th>Status</th>
+                <th>Contact</th>
                 <th>Actions</th>
               </tr>
             </thead>
@@ -154,13 +145,9 @@ export default function Suppliers() {
                     <td>{item.id}</td>
                     <td>{item.name}</td>
                     <td>{item.contactPerson || "—"}</td>
-                    <td>{item.phone || "—"}</td>
+                    <td>{item.email || "—"}</td>
                     <td>{item.address || "—"}</td>
-                    <td>
-                      <span className={`status-pill ${item.status.toLowerCase()}`}>
-                        {item.status}
-                      </span>
-                    </td>
+                    <td>{item.phone || "\u2014"}</td>
                     <td>
                       <div className="suppliers-actions-cell">
                         <button
@@ -182,8 +169,9 @@ export default function Suppliers() {
                         <button
                           type="button"
                           className="action-icon-btn delete"
-                          title="Deactivate Supplier"
-                          onClick={() => handleDelete(item)}
+                          title="Delete Supplier"
+                          aria-label={`Delete supplier ${item.name}`}
+                          onClick={() => setSupplierToDelete(item)}
                         >
                           <Trash2 size={18} />
                         </button>
@@ -197,6 +185,10 @@ export default function Suppliers() {
         <Pagination currentPage={currentPage} totalPages={totalPages} onPageChange={setPage} />
       </div>
 
+      {supplierToDelete && (
+        <DeleteSupplierModal supplier={supplierToDelete} onClose={() => setSupplierToDelete(null)} onConfirm={handleDelete} />
+      )}
+
       {/* Add / Edit Supplier Pop-up Window */}
       <AddSupplierModal
         isOpen={isModalOpen}
@@ -207,6 +199,7 @@ export default function Suppliers() {
 
       {/* View Supplier Details Pop-up Window */}
       <ViewSupplierModal
+        key={`${selectedSupplier?.id}-${isViewModalOpen}`}
         isOpen={isViewModalOpen}
         onClose={() => setIsViewModalOpen(false)}
         supplier={selectedSupplier}

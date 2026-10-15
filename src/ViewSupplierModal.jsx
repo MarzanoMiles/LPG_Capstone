@@ -1,79 +1,100 @@
 ﻿import React, { useEffect, useState } from "react";
 import "./ViewSupplierModal.css";
+import { X } from "lucide-react";
 import { apiRequest } from "./api";
 
 function formatPeso(amount) {
-  return `₱ ${Number(amount).toLocaleString("en-US", { minimumFractionDigits: 2 })}`;
+  return `₱ ${Number(amount).toLocaleString("en-US", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
 }
 
 export default function ViewSupplierModal({ isOpen, onClose, supplier }) {
-  const [activeTab, setActiveTab] = useState("Supplier Products");
+  const [activeTab, setActiveTab] = useState("Supplier Profile");
   const [products, setProducts] = useState([]);
   const [purchaseOrders, setPurchaseOrders] = useState([]);
-  const [deliveries, setDeliveries] = useState([]);
-  const [isLoading, setIsLoading] = useState(false);
+  const [isLoading, setIsLoading] = useState(true);
   const [error, setError] = useState("");
 
   useEffect(() => {
     if (!isOpen || !supplier) return;
+    let cancelled = false;
+    setActiveTab("Supplier Profile");
+    setProducts([]);
+    setPurchaseOrders([]);
     setIsLoading(true);
     setError("");
     Promise.all([
       apiRequest(`/suppliers/${supplier.id}/products`),
       apiRequest(`/suppliers/${supplier.id}/purchase-orders`),
-      apiRequest(`/suppliers/${supplier.id}/deliveries`),
     ])
-      .then(([productData, poData, deliveryData]) => {
+      .then(([productData, poData]) => {
+        if (cancelled) return;
         setProducts(productData);
         setPurchaseOrders(poData);
-        setDeliveries(deliveryData);
       })
-      .catch((err) => setError(err.message || "Failed to load supplier history."))
-      .finally(() => setIsLoading(false));
+      .catch((err) => {
+        if (!cancelled) setError(err.message || "Failed to load supplier history.");
+      })
+      .finally(() => { if (!cancelled) setIsLoading(false); });
+    return () => { cancelled = true; };
   }, [isOpen, supplier]);
 
   if (!isOpen || !supplier) return null;
 
   return (
-    <div className="view-supplier-modal-overlay">
-      <div className="view-supplier-modal-card">
-        <h2 style={{ margin: 0, fontSize: "1.25rem", fontWeight: 800 }}>{supplier.name}</h2>
-        <p style={{ margin: "4px 0 0 0", color: "#6b7280", fontSize: "0.9rem" }}>
-          {supplier.contactPerson} Â· {supplier.phone} Â· {supplier.email}
-        </p>
+    <div className="view-supplier-modal-overlay" onClick={(event) => { if (event.target === event.currentTarget) onClose(); }} onKeyDown={(event) => { if (event.key === "Escape") onClose(); }}>
+      <div className="view-supplier-modal-card" role="dialog" aria-modal="true" aria-labelledby="supplier-detail-title">
+        <div className="supplier-view-header">
+          <div>
+            <h2 id="supplier-detail-title">View Supplier</h2>
+            <p>{supplier.name}</p>
+          </div>
+          <button type="button" className="supplier-view-close" aria-label="Close View Supplier" title="Close" onClick={onClose}><X size={20} aria-hidden="true" /></button>
+        </div>
 
-        {error && <p style={{ color: "#dc2626", fontWeight: 600 }}>{error}</p>}
 
-        {/* Navigation Tabs */}
-        <div className="supplier-modal-tabs">
-          <button
-            type="button"
-            className={`tab-btn ${activeTab === "Supplier Products" ? "active" : ""}`}
-            onClick={() => setActiveTab("Supplier Products")}
-          >
-            Supplier Products
-          </button>
-          <button
-            type="button"
-            className={`tab-btn ${activeTab === "Purchase Order" ? "active" : ""}`}
-            onClick={() => setActiveTab("Purchase Order")}
-          >
-            Purchase Order
-          </button>
-          <button
-            type="button"
-            className={`tab-btn ${activeTab === "Delivery History" ? "active" : ""}`}
-            onClick={() => setActiveTab("Delivery History")}
-          >
-            Delivery History
-          </button>
+        <div className="supplier-modal-tabs" role="tablist" aria-label="Supplier details">
+          {["Supplier Profile", "Products", "Purchase Order History"].map((tab, index, tabs) => (
+            <button key={tab} type="button" role="tab" id={`supplier-tab-${index}`}
+              aria-selected={activeTab === tab} aria-controls="supplier-tab-panel"
+              tabIndex={activeTab === tab ? 0 : -1} className={activeTab === tab ? "active" : ""}
+              onClick={() => setActiveTab(tab)}
+              onKeyDown={(event) => {
+                if (!["ArrowLeft", "ArrowRight", "Home", "End"].includes(event.key)) return;
+                event.preventDefault();
+                const next = event.key === "Home" ? 0 : event.key === "End" ? tabs.length - 1 : (index + (event.key === "ArrowRight" ? 1 : -1) + tabs.length) % tabs.length;
+                setActiveTab(tabs[next]);
+                document.getElementById(`supplier-tab-${next}`)?.focus();
+              }}>
+              {tab}{tab !== "Supplier Profile" && !isLoading && !error && <span>{tab === "Products" ? products.length : purchaseOrders.length}</span>}
+            </button>
+          ))}
         </div>
 
         {/* Tab Content Display */}
-        <div className="tab-content">
-          {isLoading && <p className="placeholder-text">Loading…</p>}
+        <div className="tab-content" role="tabpanel" id="supplier-tab-panel" aria-labelledby={`supplier-tab-${["Supplier Profile", "Products", "Purchase Order History"].indexOf(activeTab)}`} tabIndex={0}>
+          {activeTab === "Supplier Profile" && (
+        <dl className="supplier-detail-grid">
+          {[
+            ["Supplier ID", supplier.id],
+            ["Supplier Name", supplier.name],
+            ["Contact Person", supplier.contactPerson],
+            ["Email", supplier.email],
+            ["Address", supplier.address],
+            ["Contact Number", supplier.phone],
+            ["Lead Time (Days)", supplier.leadTime],
+            ["Status", supplier.status],
+          ].map(([label, value]) => (
+            <div key={label} className="supplier-detail-field">
+              <dt>{label}</dt>
+              <dd>{value ?? "\u2014"}</dd>
+            </div>
+          ))}
+        </dl>
+          )}
+          {activeTab !== "Supplier Profile" && error && <p className="supplier-view-error" role="alert">{error}</p>}
+          {activeTab !== "Supplier Profile" && isLoading && <p className="placeholder-text">Loading…</p>}
 
-          {!isLoading && activeTab === "Supplier Products" && (
+          {!isLoading && !error && activeTab === "Products" && (
             <div className="view-supplier-table-wrap">
               <table className="view-supplier-table">
                 <thead>
@@ -82,13 +103,14 @@ export default function ViewSupplierModal({ isOpen, onClose, supplier }) {
                     <th>Product Name</th>
                     <th>Cost Price</th>
                     <th>Unit</th>
+                    <th>Unit Value</th>
                     <th>Reorder Level</th>
                     <th>Status</th>
                   </tr>
                 </thead>
                 <tbody>
                   {products.length === 0 && (
-                    <tr><td colSpan={6} className="placeholder-text">No products from this supplier yet.</td></tr>
+                    <tr><td colSpan={7} className="placeholder-text">No products associated with this supplier.</td></tr>
                   )}
                   {products.map((prod) => (
                     <tr key={prod.id}>
@@ -96,6 +118,7 @@ export default function ViewSupplierModal({ isOpen, onClose, supplier }) {
                       <td>{prod.name}</td>
                       <td>{formatPeso(prod.costPrice)}</td>
                       <td>{prod.unit}</td>
+                      <td>{prod.unitValue ?? "\u2014"}</td>
                       <td>{prod.reorderLevel}</td>
                       <td>{prod.status}</td>
                     </tr>
@@ -105,7 +128,7 @@ export default function ViewSupplierModal({ isOpen, onClose, supplier }) {
             </div>
           )}
 
-          {!isLoading && activeTab === "Purchase Order" && (
+          {!isLoading && !error && activeTab === "Purchase Order History" && (
             <div className="view-supplier-table-wrap">
               <table className="view-supplier-table">
                 <thead>
@@ -119,7 +142,7 @@ export default function ViewSupplierModal({ isOpen, onClose, supplier }) {
                 </thead>
                 <tbody>
                   {purchaseOrders.length === 0 && (
-                    <tr><td colSpan={5} className="placeholder-text">No purchase orders for this supplier yet.</td></tr>
+                    <tr><td colSpan={5} className="placeholder-text">No purchase order history available.</td></tr>
                   )}
                   {purchaseOrders.map((po) => (
                     <tr key={po.id}>
@@ -135,41 +158,10 @@ export default function ViewSupplierModal({ isOpen, onClose, supplier }) {
             </div>
           )}
 
-          {!isLoading && activeTab === "Delivery History" && (
-            <div className="view-supplier-table-wrap">
-              <table className="view-supplier-table">
-                <thead>
-                  <tr>
-                    <th>Purchase Order ID</th>
-                    <th>Date Received</th>
-                    <th>Total Quantity</th>
-                    <th>Status</th>
-                  </tr>
-                </thead>
-                <tbody>
-                  {deliveries.length === 0 && (
-                    <tr><td colSpan={4} className="placeholder-text">No completed deliveries from this supplier yet.</td></tr>
-                  )}
-                  {deliveries.map((d) => (
-                    <tr key={d.poId}>
-                      <td>{d.poNo}</td>
-                      <td>{new Date(d.orderDate).toLocaleDateString()}</td>
-                      <td>{d.totalQty}</td>
-                      <td>{d.status}</td>
-                    </tr>
-                  ))}
-                </tbody>
-              </table>
-            </div>
-          )}
+
         </div>
 
-        {/* Footer Actions */}
-        <div className="view-supplier-modal-actions">
-          <button type="button" className="btn-modal-back" onClick={onClose}>
-            Back
-          </button>
-        </div>
+
       </div>
     </div>
   );

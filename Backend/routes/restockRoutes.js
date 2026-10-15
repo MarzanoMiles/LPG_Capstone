@@ -77,7 +77,7 @@ async function rescorePending({ onlyMissing }) {
             COALESCE(SUM(i.StockOnHand), 0) AS stockOnHand
      FROM RestockRecommendation r
      JOIN Product p ON p.ProductID = r.ProductID
-     JOIN Supplier sup ON sup.SupplierID = r.SupplierID
+     JOIN SupplierHistory sup ON sup.SupplierID = r.SupplierID
      LEFT JOIN Inventory i ON i.ProductID = p.ProductID
      WHERE r.Status = 'Pending' ${onlyMissing ? "AND r.Confidence IS NULL" : ""}
      GROUP BY r.RestockID, p.ProductID, p.ReorderLevel, sup.LeadTimeDays`
@@ -126,7 +126,7 @@ router.get(
              CASE WHEN r.StockOnHand <= p.ReorderLevel THEN 'Critical' ELSE 'Low' END AS priority
       FROM RestockRecommendation r
       JOIN Product p ON p.ProductID = r.ProductID
-      JOIN Supplier s ON s.SupplierID = r.SupplierID
+      JOIN SupplierHistory s ON s.SupplierID = r.SupplierID
       WHERE r.Status = 'Pending'
       ORDER BY r.Confidence DESC, r.CreatedAt DESC`;
     const [rows] = await pool.query(sql);

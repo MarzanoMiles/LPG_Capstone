@@ -55,7 +55,7 @@ async function ensureSupplier(conn, data) {
   });
   if (existing[0]) return existing[0].SupplierID;
 
-  const supplierId = await nextId(conn, "Supplier", "SupplierID", "SP");
+  const supplierId = await nextId(conn, "Supplier", "SupplierID", "SUP");
   await conn.query(
     `INSERT INTO Supplier (SupplierID, SupplierName, ContactPerson, Email, Address, Contact, LeadTimeDays, Status)
      VALUES (:supplierId, :supplierName, :contactPerson, :email, :address, :contact, :leadTimeDays, 'Active')`,
@@ -403,7 +403,7 @@ async function main() {
            VALUES (:orderId, :customerId, :orderNo, :orderDate, :orderType, :status, :totalAmount, :remarks)`,
           {
             orderId,
-            customerId: useCustomerB ? customerB : customerA,
+            customerId: orderType === "Walk-in" ? await require("../utils/walkInCustomer").resolveWalkInCustomer(conn) : (useCustomerB ? customerB : customerA),
             orderNo,
             orderDate: saleDate,
             orderType,
@@ -438,7 +438,7 @@ async function main() {
           {
             saleId,
             orderId,
-            customerId: useCustomerB ? customerB : customerA,
+            customerId: orderType === "Walk-in" ? await require("../utils/walkInCustomer").resolveWalkInCustomer(conn) : (useCustomerB ? customerB : customerA),
             userId: jose.UserID,
             saleNo,
             saleDate,

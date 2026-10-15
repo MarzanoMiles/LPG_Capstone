@@ -31,7 +31,7 @@ CREATE TABLE Brand (
 );
 
 CREATE TABLE Supplier (
-  SupplierID     VARCHAR(20) PRIMARY KEY,               -- SP-001
+  SupplierID     VARCHAR(20) PRIMARY KEY,               -- SUP-001
   SupplierName   VARCHAR(150) NOT NULL,
   ContactPerson  VARCHAR(100) NULL,
   Email          VARCHAR(150) NULL,

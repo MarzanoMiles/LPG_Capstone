@@ -110,7 +110,7 @@ router.get(
              COALESCE(SUM(i.StockOnHand), 0) AS stock
       FROM Product p
       JOIN Category c ON c.CategoryID = p.CategoryID
-      JOIN Supplier s ON s.SupplierID = p.SupplierID
+      JOIN SupplierHistory s ON s.SupplierID = p.SupplierID
       ${inventoryJoin}
       WHERE 1=1`;
 
@@ -141,7 +141,7 @@ router.get(
        FROM Product p
        JOIN Category c ON c.CategoryID = p.CategoryID
        JOIN Brand b ON b.BrandID = p.BrandID
-       JOIN Supplier s ON s.SupplierID = p.SupplierID
+       JOIN SupplierHistory s ON s.SupplierID = p.SupplierID
        WHERE p.ProductID = :id`,
       { id: req.params.id }
     );

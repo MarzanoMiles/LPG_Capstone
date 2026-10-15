@@ -118,7 +118,7 @@ async function queryDataset(dataType, start, end) {
       FROM Product p
       JOIN Category c ON c.CategoryID = p.CategoryID
       JOIN Brand b ON b.BrandID = p.BrandID
-      JOIN Supplier s ON s.SupplierID = p.SupplierID
+      JOIN SupplierHistory s ON s.SupplierID = p.SupplierID
       ORDER BY p.ProductID
     `);
     return {
@@ -133,7 +133,7 @@ async function queryDataset(dataType, start, end) {
       `SELECT r.RestockID, p.ProductName, s.SupplierName, r.StockOnHand, r.RecommendedQuantity, r.Status, r.ForecastDate
        FROM RestockRecommendation r
        JOIN Product p ON p.ProductID = r.ProductID
-       JOIN Supplier s ON s.SupplierID = r.SupplierID
+       JOIN SupplierHistory s ON s.SupplierID = r.SupplierID
        WHERE r.ForecastDate BETWEEN :start AND :end
        ORDER BY r.ForecastDate`,
       { start, end }

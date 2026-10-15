@@ -19,7 +19,7 @@ router.get(
     if (search) {
       sql += ` AND (SupplierName LIKE :s OR ContactPerson LIKE :s OR SupplierID = :sid)`;
       params.s = `%${search}%`;
-      params.sid = Number(search) || 0;
+      params.sid = search.trim();
     }
     if (status) {
       sql += ` AND Status = :status`;
@@ -51,7 +51,7 @@ router.get(
   "/:id/products",
   asyncHandler(async (req, res) => {
     const [rows] = await pool.query(
-      `SELECT ProductID AS id, ProductName AS name, CostPrice AS costPrice, Unit AS unit,
+      `SELECT ProductID AS id, ProductName AS name, CostPrice AS costPrice, Unit AS unit, UnitValue AS unitValue,
               ReorderLevel AS reorderLevel, Status AS status
        FROM Product WHERE SupplierID = :id ORDER BY ProductID`,
       { id: req.params.id }
@@ -96,10 +96,17 @@ router.post(
   asyncHandler(async (req, res) => {
     const { fullName, defaultLeadTime, status, contactPerson, email, phone, address } = req.body;
     if (!fullName) throw new ApiError(400, "fullName is required.");
-    const [result] = await pool.query(
-      `INSERT INTO Supplier (SupplierName, ContactPerson, Email, Address, Contact, LeadTimeDays, Status)
-       VALUES (:name, :contactPerson, :email, :address, :phone, :leadTime, :status)`,
+    const conn = await pool.getConnection();
+    try {
+      const [[lock]] = await conn.query("SELECT GET_LOCK('gastrack_supplier_ids', 10) AS acquired");
+      if (Number(lock.acquired) !== 1) throw new ApiError(503, "Supplier ID allocation busy. Please retry.");
+      const [[row]] = await conn.query("SELECT COALESCE(MAX(CAST(SUBSTRING(SupplierID, 5) AS UNSIGNED)), 0) AS lastId FROM SupplierHistory WHERE SupplierID REGEXP '^SUP-[0-9]+$'");
+      const id = `SUP-${String(Number(row.lastId) + 1).padStart(3, "0")}`;
+      await conn.query(
+      `INSERT INTO Supplier (SupplierID, SupplierName, ContactPerson, Email, Address, Contact, LeadTimeDays, Status)
+       VALUES (:id, :name, :contactPerson, :email, :address, :phone, :leadTime, :status)`,
       {
+        id,
         name: fullName,
         contactPerson: contactPerson || null,
         email: email || null,
@@ -109,7 +116,11 @@ router.post(
         status: status || "Active",
       }
     );
-    res.status(201).json({ id: result.insertId });
+      res.status(201).json({ id });
+    } finally {
+      try { await conn.query("SELECT RELEASE_LOCK('gastrack_supplier_ids')"); }
+      finally { conn.release(); }
+    }
   })
 );
 
@@ -143,16 +154,33 @@ router.put(
   })
 );
 
-// DELETE /suppliers/:id — soft delete: suppliers are referenced by Product, PurchaseOrder, RestockRecommendation.
+// Linked records retain the same SupplierID through SupplierHistory snapshots.
 router.delete(
   "/:id",
   asyncHandler(async (req, res) => {
-    const [result] = await pool.query(
-      `UPDATE Supplier SET Status = 'Inactive' WHERE SupplierID = :id`,
-      { id: req.params.id }
-    );
-    if (!result.affectedRows) throw new ApiError(404, "Supplier not found.");
-    res.json({ message: "Supplier deactivated." });
+    const conn = await pool.getConnection();
+    try {
+      await conn.beginTransaction();
+      const [rows] = await conn.query("SELECT * FROM Supplier WHERE SupplierID = :id FOR UPDATE", { id: req.params.id });
+      if (!rows[0]) throw new ApiError(404, "Supplier not found.");
+      // Refresh the snapshot atomically before removing the live supplier.
+      const columns = Object.keys(rows[0]);
+      const quote = value => '`' + value.replace(/`/g, '``') + '`';
+      await conn.query(
+        `INSERT INTO SupplierHistory (${columns.map(quote).join(', ')})
+         SELECT ${columns.map(quote).join(', ')} FROM Supplier WHERE SupplierID = :id
+         ON DUPLICATE KEY UPDATE ${columns.filter(column => column !== 'SupplierID').map(column => `${quote(column)} = VALUES(${quote(column)})`).join(', ')}`,
+        { id: req.params.id }
+      );
+      await conn.query("DELETE FROM Supplier WHERE SupplierID = :id", { id: req.params.id });
+      await conn.commit();
+      res.json({ message: "Supplier deleted permanently. Linked records retain a supplier snapshot." });
+    } catch (error) {
+      await conn.rollback();
+      throw error;
+    } finally {
+      conn.release();
+    }
   })
 );
 

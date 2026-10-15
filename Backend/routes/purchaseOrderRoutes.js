@@ -34,7 +34,7 @@ router.get(
              COUNT(poi.PurchaseOrderItemID) AS itemCount,
              GROUP_CONCAT(p.ProductName ORDER BY p.ProductName SEPARATOR ', ') AS productNames
       FROM PurchaseOrder po
-      JOIN Supplier s ON s.SupplierID = po.SupplierID
+      JOIN SupplierHistory s ON s.SupplierID = po.SupplierID
       LEFT JOIN PurchaseOrderItem poi ON poi.PurchaseOrderID = po.PurchaseOrderID
       LEFT JOIN ProductHistory p ON p.ProductID = poi.ProductID
       WHERE 1=1`;
@@ -55,7 +55,7 @@ router.get(
   "/:id",
   asyncHandler(async (req, res) => {
     const [poRows] = await pool.query(
-      `SELECT po.*, s.SupplierName FROM PurchaseOrder po JOIN Supplier s ON s.SupplierID = po.SupplierID
+      `SELECT po.*, s.SupplierName FROM PurchaseOrder po JOIN SupplierHistory s ON s.SupplierID = po.SupplierID
        WHERE po.PurchaseOrderID = :id`,
       { id: req.params.id }
     );

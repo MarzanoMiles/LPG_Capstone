@@ -4,10 +4,11 @@ import { apiRequest } from "./api";
 
 const emptyForm = {
   fullName: "",
-  supplierType: "Manufacturer",
+  supplierType: "",
   defaultLeadTime: "",
   status: "Active",
-  contactPerson: "",
+  contactFirstName: "",
+  contactLastName: "",
   email: "",
   phone: "",
   address: "",
@@ -23,12 +24,14 @@ export default function AddSupplierModal({ isOpen, onClose, selectedSupplier, on
 
   useEffect(() => {
     if (selectedSupplier) {
+      const [contactFirstName = "", ...lastNameParts] = (selectedSupplier.contactPerson || "").trim().split(/\s+/);
       setFormData({
         fullName: selectedSupplier.name || "",
-        supplierType: selectedSupplier.supplierType || "Manufacturer",
+        supplierType: selectedSupplier.supplierType || "",
         defaultLeadTime: selectedSupplier.leadTime ?? "",
         status: selectedSupplier.status || "Active",
-        contactPerson: selectedSupplier.contactPerson || "",
+        contactFirstName,
+        contactLastName: lastNameParts.join(" "),
         email: selectedSupplier.email || "",
         phone: selectedSupplier.phone || "",
         address: selectedSupplier.address || "",
@@ -43,19 +46,36 @@ export default function AddSupplierModal({ isOpen, onClose, selectedSupplier, on
 
   const handleSubmit = async (e) => {
     e.preventDefault();
-    if (!formData.fullName.trim()) {
-      setError("Full name is required.");
+    const requiredFields = [
+      ["fullName", "Supplier name"],
+      ["supplierType", "Supplier type"],
+      ["defaultLeadTime", "Lead time"],
+      ["status", "Status"],
+      ["contactFirstName", "Contact person's first name"],
+      ["contactLastName", "Contact person's last name"],
+      ["email", "Email address"],
+      ["phone", "Phone number"],
+      ["address", "Address"],
+    ];
+    const missing = requiredFields.find(([field]) => !String(formData[field]).trim());
+    if (missing) {
+      setError(`${missing[1]} is required.`);
+      return;
+    }
+    const leadTime = Number(formData.defaultLeadTime);
+    if (!Number.isInteger(leadTime) || leadTime < 0) {
+      setError("Lead time must be a whole number of zero or more days.");
       return;
     }
 
     const payload = {
       fullName: formData.fullName.trim(),
-      defaultLeadTime: Number(formData.defaultLeadTime) || 0,
+      defaultLeadTime: leadTime,
       status: formData.status,
-      contactPerson: formData.contactPerson || null,
-      email: formData.email || null,
-      phone: formData.phone || null,
-      address: formData.address || null,
+      contactPerson: `${formData.contactFirstName.trim()} ${formData.contactLastName.trim()}`,
+      email: formData.email.trim(),
+      phone: formData.phone.trim(),
+      address: formData.address.trim(),
     };
 
     setIsSubmitting(true);
@@ -83,8 +103,8 @@ export default function AddSupplierModal({ isOpen, onClose, selectedSupplier, on
 
   return (
     <div className="supplier-modal-overlay">
-      <div className="supplier-modal-card">
-        <h2 className="supplier-modal-title">Supplier Information</h2>
+      <div className="supplier-modal-card" role="dialog" aria-modal="true" aria-labelledby="supplier-information-title">
+        <h2 id="supplier-information-title" className="supplier-modal-title">Supplier Information</h2>
 
         {error && <p style={{ color: "#dc2626", fontWeight: 600, marginTop: -8 }}>{error}</p>}
 
@@ -92,8 +112,8 @@ export default function AddSupplierModal({ isOpen, onClose, selectedSupplier, on
           {/* BASIC INFORMATION */}
           <div className="supplier-section-header">BASIC INFORMATION</div>
 
-          <div className="form-row-2-1">
-            <div className="form-field">
+          <div className="supplier-row-name">
+            <div className="supplier-form-field">
               <label>Supplier ID</label>
               <input
                 type="text"
@@ -101,42 +121,47 @@ export default function AddSupplierModal({ isOpen, onClose, selectedSupplier, on
                 disabled
               />
             </div>
-            <div className="form-field">
-              <label>Full Name</label>
+            <div className="supplier-form-field">
+              <label>Supplier Name <span className="supplier-required-mark" aria-hidden="true">*</span></label>
               <input
+                required
                 type="text"
                 value={formData.fullName}
                 onChange={(e) => setFormData({ ...formData, fullName: e.target.value })}
-                placeholder="ABC Company"
+                placeholder="Supplier Name"
               />
             </div>
           </div>
 
-          <div className="form-row-3">
-            <div className="form-field">
-              <label>Supplier Type</label>
+          <div className="supplier-row-basic">
+            <div className="supplier-form-field">
+              <label>Supplier Type <span className="supplier-required-mark" aria-hidden="true">*</span></label>
               <select
+                required
                 value={formData.supplierType}
                 onChange={(e) => setFormData({ ...formData, supplierType: e.target.value })}
               >
+                <option value="" disabled>Select Type</option>
                 <option value="Manufacturer">Manufacturer</option>
                 <option value="Distributor">Distributor</option>
                 <option value="Wholesaler">Wholesaler</option>
               </select>
             </div>
-            <div className="form-field">
-              <label>Default Lead Time (days)</label>
+            <div className="supplier-form-field">
+              <label>Lead Time (Days) <span className="supplier-required-mark" aria-hidden="true">*</span></label>
               <input
+                required
                 type="number"
                 min="0"
                 value={formData.defaultLeadTime}
                 onChange={(e) => setFormData({ ...formData, defaultLeadTime: e.target.value })}
-                placeholder="Enter Number"
+                placeholder="Number of Days"
               />
             </div>
-            <div className="form-field">
-              <label>Status</label>
+            <div className="supplier-form-field">
+              <label>Status <span className="supplier-required-mark" aria-hidden="true">*</span></label>
               <select
+                required
                 value={formData.status}
                 onChange={(e) => setFormData({ ...formData, status: e.target.value })}
               >
@@ -149,45 +174,69 @@ export default function AddSupplierModal({ isOpen, onClose, selectedSupplier, on
           {/* CONTACT INFORMATION */}
           <div className="supplier-section-header">CONTACT INFORMATION</div>
 
-          <div className="form-row-equal">
-            <div className="form-field">
-              <label>Contact Person</label>
+          <div className="supplier-row-contact">
+            <div className="supplier-form-field">
+              <label htmlFor="supplier-contact-first-name">Contact Person First Name <span className="supplier-required-mark" aria-hidden="true">*</span></label>
               <input
+                id="supplier-contact-first-name"
                 type="text"
-                value={formData.contactPerson}
-                onChange={(e) => setFormData({ ...formData, contactPerson: e.target.value })}
-                placeholder="Juan Dela Cruz"
+                autoComplete="given-name"
+                required
+                value={formData.contactFirstName}
+                onChange={(e) => setFormData({ ...formData, contactFirstName: e.target.value })}
+                placeholder="First Name"
               />
             </div>
-            <div className="form-field">
-              <label>Email Address</label>
+            <div className="supplier-form-field">
+              <label htmlFor="supplier-contact-last-name">Contact Person Last Name <span className="supplier-required-mark" aria-hidden="true">*</span></label>
               <input
-                type="email"
-                value={formData.email}
-                onChange={(e) => setFormData({ ...formData, email: e.target.value })}
-                placeholder="abccompany@supplier.com"
+                id="supplier-contact-last-name"
+                type="text"
+                autoComplete="family-name"
+                required
+                value={formData.contactLastName}
+                onChange={(e) => setFormData({ ...formData, contactLastName: e.target.value })}
+                placeholder="Last Name"
               />
             </div>
           </div>
 
-          <div className="form-row-equal">
-            <div className="form-field">
-              <label>Phone Number</label>
+          <div className="supplier-row-contact">
+            <div className="supplier-form-field">
+              <label>Email Address <span className="supplier-required-mark" aria-hidden="true">*</span></label>
               <input
+                required
+                type="email"
+                value={formData.email}
+                onChange={(e) => setFormData({ ...formData, email: e.target.value })}
+                placeholder="Email Address"
+              />
+            </div>
+            <div className="supplier-form-field">
+              <label>Phone Number <span className="supplier-required-mark" aria-hidden="true">*</span></label>
+              <input
+                required
                 type="text"
                 value={formData.phone}
                 onChange={(e) => setFormData({ ...formData, phone: e.target.value })}
-                placeholder="09875412558"
+                placeholder="Phone Number"
               />
             </div>
-            <div className="form-field">
-              <label>Address</label>
+            <div className="supplier-form-field supplier-address-field">
+              <label htmlFor="supplier-address">Address <span className="supplier-required-mark" aria-hidden="true">*</span></label>
               <input
+                required
                 type="text"
+                id="supplier-address"
+                aria-describedby="supplier-address-format"
                 value={formData.address}
                 onChange={(e) => setFormData({ ...formData, address: e.target.value })}
-                placeholder="146 Makinang Manila City"
+                placeholder="Complete Address"
               />
+              <div id="supplier-address-format" className="supplier-address-note">
+                <span className="supplier-address-note-title">Address format</span>
+                <p>House / Unit / Building / Lot &amp; Block No., Street Name, Subdivision / Village / Sitio / Purok, Brgy. Barangay, City / Municipality, ZIP Code Province</p>
+              </div>
             </div>
           </div>
 
