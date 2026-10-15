@@ -1,3 +1,4 @@
+import PageLayout, { PageHeader } from "./PageLayout";
 import Pagination from "./Pagination";
 import React, { useEffect, useState } from "react";
 import { Search, ChevronDown, Plus, FileText, Edit, Trash2 } from "lucide-react";
@@ -86,8 +87,8 @@ export default function Suppliers() {
   };
 
   return (
-    <div className="suppliers-page">
-      <h1 className="suppliers-title">Suppliers</h1>
+    <PageLayout className="suppliers-page">
+      <PageHeader title="Suppliers" />
 
       {loadError && <p style={{ color: "#dc2626", fontWeight: 600 }}>{loadError}</p>}
       {actionError && <p style={{ color: "#dc2626", fontWeight: 600 }}>{actionError}</p>}
@@ -210,6 +211,6 @@ export default function Suppliers() {
         onClose={() => setIsViewModalOpen(false)}
         supplier={selectedSupplier}
       />
-    </div>
+    </PageLayout>
   );
 }

@@ -1,3 +1,4 @@
+import PageLayout, { PageHeader } from "./PageLayout";
 import Pagination from "./Pagination";
 import React, { useCallback, useEffect, useMemo, useState } from "react";
 import {
@@ -228,9 +229,9 @@ export default function Users() {
   };
 
   return (
-    <div className="users-page">
-      <div className="users-inner">
-        <h1 className="users-title">Users</h1>
+    <PageLayout className="users-page" contentClassName="users-inner">
+
+        <PageHeader title="Users" />
 
         {loadError && <p style={{ color: "#dc2626", fontWeight: 600 }}>{loadError}</p>}
         {actionError && <p style={{ color: "#dc2626", fontWeight: 600 }}>{actionError}</p>}
@@ -413,7 +414,7 @@ export default function Users() {
             </div>
           </>
         )}
-      </div>
+
 
       <AddUserModal
         isOpen={showAddUserModal}
@@ -429,7 +430,7 @@ export default function Users() {
       />
 
       <ViewUserModal user={viewingUser} onClose={() => setViewingUser(null)} />
-    </div>
+    </PageLayout>
   );
 }
 

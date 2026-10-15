@@ -1,4 +1,5 @@
-﻿import React, { useEffect, useState } from "react";
+import PageLayout, { PageHeader } from "./PageLayout";
+import React, { useEffect, useState } from "react";
 import { Download, FileText, ChevronDown, AlertTriangle } from "lucide-react";
 import { apiRequest } from "./api";
 import "./Data.css";
@@ -128,9 +129,9 @@ export default function Data() {
   };
 
   return (
-    <div className="data-page">
-      <div className="data-inner">
-        <h1 className="data-title">{getPageTitle()}</h1>
+    <PageLayout className="data-page" contentClassName="data-inner">
+
+        <PageHeader title={getPageTitle()} />
 
         {/* Navigation Tabs */}
         <div className="data-tabs-wrap">
@@ -484,8 +485,8 @@ export default function Data() {
             </div>
           </div>
         )}
-      </div>
-    </div>
+
+    </PageLayout>
   );
 }
 

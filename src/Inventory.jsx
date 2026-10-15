@@ -1,3 +1,4 @@
+import PageLayout, { PageHeader } from "./PageLayout";
 import Pagination from "./Pagination";
 import React, { useEffect, useMemo, useRef, useState } from "react";
 import {
@@ -417,9 +418,9 @@ export default function Inventory() {
   };
 
   return (
-    <div className="inventory-page">
-      <div className="inventory-inner">
-        <h1 className="inventory-title">Inventory</h1>
+    <PageLayout className="inventory-page" contentClassName="inventory-inner">
+
+        <PageHeader title="Inventory" />
 
         {actionError && (
           <p style={{ color: "#dc2626", fontWeight: 600, margin: 0 }}>{actionError}</p>
@@ -682,7 +683,7 @@ export default function Inventory() {
             </>
           )}
         </div>
-      </div>
+
 
       {/* View / Edit Modals */}
       <ViewInventoryModal item={viewItem} onClose={() => setViewItem(null)} />
@@ -718,6 +719,6 @@ export default function Inventory() {
           loadTransactions();
         }}
       />
-    </div>
+    </PageLayout>
   );
 }

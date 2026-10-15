@@ -1,4 +1,5 @@
-﻿import React, { useEffect, useMemo, useState } from "react";
+import PageLayout, { PageHeader } from "./PageLayout";
+import React, { useEffect, useMemo, useState } from "react";
 import {
   CalendarClock,
   CalendarX2,
@@ -392,17 +393,16 @@ export default function ReportCompliance() {
   };
 
   return (
-    <div className="rc-page">
-      <div className="rc-inner">
-        <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
-          <h1 className="rc-title">Report and Compliance</h1>
+    <PageLayout className="rc-page" contentClassName="rc-inner">
+
+        <PageHeader title="Report and Compliance">
           <button
             onClick={() => setIsNewReportOpen(true)}
             style={{ background: "#2563eb", color: "#fff", border: "none", borderRadius: 8, padding: "10px 18px", fontWeight: 700, cursor: "pointer" }}
           >
             + Schedule Report
           </button>
-        </div>
+        </PageHeader>
 
         {loadError && <p style={{ color: "#dc2626", fontWeight: 600 }}>{loadError}</p>}
         {actionError && <p style={{ color: "#dc2626", fontWeight: 600 }}>{actionError}</p>}
@@ -534,9 +534,9 @@ export default function ReportCompliance() {
             </div>
           </div>
         </div>
-      </div>
+
 
       <NewReportModal isOpen={isNewReportOpen} onClose={() => setIsNewReportOpen(false)} onCreated={loadData} />
-    </div>
+    </PageLayout>
   );
 }

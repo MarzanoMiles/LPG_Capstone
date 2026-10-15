@@ -1,0 +1,55 @@
+/* Shared spacing for every authenticated module. */
+.page-layout {
+  --page-padding-block: 24px;
+  --page-padding-inline: 24px;
+  --page-section-gap: 20px;
+  min-height: 100vh;
+  min-width: 0;
+  padding: var(--page-padding-block) var(--page-padding-inline);
+}
+
+.page-layout > .page-container {
+  width: 100%;
+  max-width: 1400px;
+  min-width: 0;
+  margin-inline: auto;
+  display: flex;
+  flex-direction: column;
+  gap: var(--page-section-gap);
+}
+
+.page-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  flex-wrap: wrap;
+  gap: 12px 20px;
+  min-width: 0;
+}
+
+.page-header > .module-title {
+  margin: 0;
+  min-width: 0;
+}
+
+.page-header-actions {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 12px;
+  max-width: 100%;
+}
+
+/* The container gap supplies spacing between top-level sections. */
+.page-container > :is(.settings-card, .users-toolbar, .users-tabs,
+  .suppliers-toolbar, .data-tabs-wrap) {
+  margin-block: 0;
+}
+
+@media (max-width: 600px) {
+  .page-layout {
+    --page-padding-block: 16px;
+    --page-padding-inline: 12px;
+    --page-section-gap: 16px;
+  }
+}

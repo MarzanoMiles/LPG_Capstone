@@ -1,9 +1,8 @@
 /* ─── Page Container ──────────────────────────────────────── */
 .od-page {
-  min-height: 100vh;
   background: #f4f6fa;
   color: #1e293b;
-  padding: 32px 40px;
+
   font-family: system-ui, -apple-system, 'Segoe UI', Roboto, 'Helvetica Neue', sans-serif;
   box-sizing: border-box;
 }
@@ -12,13 +11,6 @@
 .od-page *::before,
 .od-page *::after {
   box-sizing: border-box;
-}
-
-.od-page-title {
-  font-size: 32px;
-  font-weight: 700;
-  margin-bottom: 24px;
-  color: #212529;
 }
 
 .od-panel {
@@ -383,7 +375,7 @@
 
 /* ─── Responsive ───────────────────────────────────────────── */
 @media (max-width: 768px) {
-  .od-page { padding: 16px; }
+
   .od-filters {
     flex-direction: column;
     align-items: stretch;

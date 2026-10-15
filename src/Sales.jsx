@@ -1,3 +1,4 @@
+import PageLayout, { PageHeader } from "./PageLayout";
 import Pagination from "./Pagination";
 import React, { useEffect, useMemo, useRef, useState } from "react";
 import { ChevronDown, Download, FileSearch, Printer, Trash2, Upload } from "lucide-react";
@@ -243,9 +244,9 @@ export default function Sales() {
   };
 
   return (
-    <div className="sales-page">
-      <div className="sales-inner">
-        <h1 className="sales-title">Sales</h1>
+    <PageLayout className="sales-page" contentClassName="sales-inner">
+
+        <PageHeader title="Sales" />
 
         {loadError && <p style={{ color: "#dc2626", fontWeight: 600 }}>{loadError}</p>}
         {actionError && <p style={{ color: "#dc2626", fontWeight: 600 }}>{actionError}</p>}
@@ -362,7 +363,7 @@ export default function Sales() {
             <Pagination currentPage={validatedCurrentPage} totalPages={totalPages} onPageChange={goToPage} />
           )}
         </div>
-      </div>
+
 
       <SalesInfoModal
         isOpen={!!selectedSale}
@@ -386,7 +387,7 @@ export default function Sales() {
         storeName="GasTrack Store"
         onClose={() => setSelectedSale(null)}
       />
-    </div>
+    </PageLayout>
   );
 }
 

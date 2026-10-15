@@ -1,3 +1,4 @@
+import PageLayout, { PageHeader } from "./PageLayout";
 import Pagination from "./Pagination";
 import React, { useEffect, useMemo, useState } from "react";
 import {
@@ -373,9 +374,9 @@ export default function Restocking() {
   };
 
   return (
-    <div className="restocking-page">
-      <div className="restocking-inner">
-        <h1 className="restocking-title">Restocking Assistant</h1>
+    <PageLayout className="restocking-page" contentClassName="restocking-inner">
+
+        <PageHeader title="Restocking Assistant" />
 
         {loadError && <p style={{ color: "#dc2626", fontWeight: 600 }}>{loadError}</p>}
         {historyLoadError && <p style={{ color: "#dc2626", fontWeight: 600 }}>{historyLoadError}</p>}
@@ -767,7 +768,7 @@ export default function Restocking() {
             </div>
           </div>
         )}
-      </div>
+
 
       {/* Confirmation Modal */}
       <ConfirmPOModal
@@ -875,7 +876,7 @@ export default function Restocking() {
           </div>
         </div>
       )}
-    </div>
+    </PageLayout>
   );
 }
 

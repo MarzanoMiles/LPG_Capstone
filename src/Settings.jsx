@@ -1,4 +1,5 @@
-﻿import React, { useEffect, useRef, useState } from "react";
+import PageLayout, { PageHeader } from "./PageLayout";
+import React, { useEffect, useRef, useState } from "react";
 import { apiRequest } from "./api";
 import { clearReceiptSettingsCache, DEFAULT_RECEIPT_HEADER } from "./utils/receipt";
 import "./Settings.css";
@@ -122,16 +123,16 @@ export default function Settings() {
 
   if (isLoading) {
     return (
-      <div className="settings-page">
-        <h1 className="page-title">Settings</h1>
+      <PageLayout className="settings-page">
+        <PageHeader title="Settings" />
         <p>Loading…</p>
-      </div>
+      </PageLayout>
     );
   }
 
   return (
-    <div className="settings-page">
-      <h1 className="page-title">Settings</h1>
+    <PageLayout className="settings-page">
+      <PageHeader title="Settings" />
 
       {loadError && <p style={{ color: "#dc2626", fontWeight: 600 }}>{loadError}</p>}
       {saveError && <p style={{ color: "#dc2626", fontWeight: 600 }}>{saveError}</p>}
@@ -394,7 +395,7 @@ export default function Settings() {
           </div>
         </div>
       </div>
-    </div>
+    </PageLayout>
   );
 }
 

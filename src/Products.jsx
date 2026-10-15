@@ -1,3 +1,4 @@
+import PageLayout, { PageHeader } from "./PageLayout";
 import Pagination from "./Pagination";
 import React, { useEffect, useMemo, useState } from "react";
 import {
@@ -184,9 +185,9 @@ export default function Products() {
   };
 
   return (
-    <div className="products-page">
-      <div className="products-inner">
-        <h1 className="products-title">Products</h1>
+    <PageLayout className="products-page" contentClassName="products-inner">
+
+        <PageHeader title="Products" />
         {loadError && <p className="products-error" style={{ color: "#dc2626" }}>{loadError}</p>}
         {actionError && <p className="products-error" style={{ color: "#dc2626" }}>{actionError}</p>}
 
@@ -300,7 +301,7 @@ export default function Products() {
           </div>
           <Pagination currentPage={currentPage} totalPages={totalPages} onPageChange={setPage} />
         </div>
-      </div>
+
 
       <AddProductModal
         isOpen={isAddProductOpen}
@@ -324,6 +325,6 @@ export default function Products() {
         </div>
       </div>}
       <ViewProductModal product={viewingProduct} onClose={() => setViewingProduct(null)} />
-    </div>
+    </PageLayout>
   );
 }

@@ -1,20 +1,4 @@
 /* Shared density for the management pages at normal browser zoom. */
-:is(.inventory-page, .products-page, .sales-page, .restocking-page, .suppliers-page, .users-page) {
-  padding: 20px 18px;
-  min-width: 0;
-}
-
-:is(.inventory-inner, .products-inner, .sales-inner, .restocking-inner, .users-inner) {
-  max-width: none;
-  min-width: 0;
-  gap: 12px;
-}
-
-:is(.inventory-title, .products-title, .sales-title, .restocking-title, .suppliers-title, .users-title) {
-  font-size: 1.75rem;
-  margin-bottom: 4px;
-}
-
 :is(.inventory-cards-grid, .restocking-cards-grid, .sales-stat-grid) {
   gap: 12px;
   margin-bottom: 0;
@@ -155,10 +139,6 @@
 }
 
 @media (max-width: 600px) {
-  :is(.inventory-page, .products-page, .sales-page, .restocking-page, .suppliers-page, .users-page) {
-    padding: 16px 12px;
-  }
-
   :is(.inventory-select-wrap, .products-select-wrap, .restocking-select-wrap, .sales-select-wrap, .suppliers-select-wrap, .filter-select-wrap) {
     flex: 1 1 140px;
     min-width: 0;

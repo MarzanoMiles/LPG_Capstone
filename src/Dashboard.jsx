@@ -1,4 +1,5 @@
-﻿import React, { useEffect, useState } from "react";
+import PageLayout, { PageHeader } from "./PageLayout";
+import React, { useEffect, useState } from "react";
 import {
   LineChart,
   Line,
@@ -287,23 +288,23 @@ export default function Dashboard() {
 
   if (isLoading && !summary) {
     return (
-      <div className="dashboard">
-        <div className="dashboard-inner">
-          <h1 className="dashboard-title">Dashboard</h1>
+      <PageLayout className="dashboard" contentClassName="dashboard-inner">
+
+          <PageHeader title="Dashboard" />
           <p>Loading…</p>
-        </div>
-      </div>
+
+      </PageLayout>
     );
   }
 
   if (loadError && !summary) {
     return (
-      <div className="dashboard">
-        <div className="dashboard-inner">
-          <h1 className="dashboard-title">Dashboard</h1>
+      <PageLayout className="dashboard" contentClassName="dashboard-inner">
+
+          <PageHeader title="Dashboard" />
           <p style={{ color: "#dc2626", fontWeight: 600 }}>{loadError}</p>
-        </div>
-      </div>
+
+      </PageLayout>
     );
   }
 
@@ -335,9 +336,9 @@ export default function Dashboard() {
   ];
 
   return (
-    <div className="dashboard">
-      <div className="dashboard-inner">
-        <h1 className="dashboard-title">Dashboard</h1>
+    <PageLayout className="dashboard" contentClassName="dashboard-inner">
+
+        <PageHeader title="Dashboard" />
 
         {/* Stat cards */}
         <div className="stat-grid">
@@ -406,7 +407,7 @@ export default function Dashboard() {
             ))}
           </div>
         </div>
-      </div>
+
 
       <LowStockModal isOpen={showLowStock} onClose={() => setShowLowStock(false)} />
       <TopProductsModal isOpen={showTopProducts} onClose={() => setShowTopProducts(false)} />
@@ -421,7 +422,7 @@ export default function Dashboard() {
           {toast}
         </div>
       )}
-    </div>
+    </PageLayout>
   );
 }
 

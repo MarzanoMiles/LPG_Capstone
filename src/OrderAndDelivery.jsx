@@ -1,3 +1,4 @@
+import PageLayout, { PageHeader } from "./PageLayout";
 import { customerPageData } from "./utils/customers";
 import { useCallback, useEffect, useState } from "react";
 import { FileSearch, Printer, Ban, X } from "lucide-react";
@@ -432,8 +433,8 @@ export default function OrderAndDelivery() {
   };
 
   return (
-    <div className="od-page">
-      <h1 className="od-page-title">Order and Delivery</h1>
+    <PageLayout className="od-page">
+      <PageHeader title="Order and Delivery" />
 
       {loadError && <p style={{ color: "#dc2626", fontWeight: 600 }}>{loadError}</p>}
 
@@ -745,7 +746,7 @@ export default function OrderAndDelivery() {
       )}
 
       {toastMsg && <div className="od-toast show">{toastMsg}</div>}
-    </div>
+    </PageLayout>
   );
 }
 

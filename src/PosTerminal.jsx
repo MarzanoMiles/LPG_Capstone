@@ -1,3 +1,4 @@
+import PageLayout, { PageHeader } from "./PageLayout";
 import React, { useEffect, useMemo, useState } from "react";
 import {
   Search,
@@ -1301,9 +1302,9 @@ export default function PosTerminal() {
   };
 
   return (
-    <div className="pos">
-      <div className="pos-inner">
-        <h1 className="pos-title">POS Terminal</h1>
+    <PageLayout className="pos" contentClassName="pos-inner">
+
+        <PageHeader title="POS Terminal" />
 
         {posError && (
           <p style={{ color: "#dc2626", fontWeight: 600, margin: "0 0 8px 0" }}>{posError}</p>
@@ -1561,7 +1562,7 @@ export default function PosTerminal() {
             </div>
           </div>
         </div>
-      </div>
+
 
       <PaymentModal
         isOpen={showPaymentModal}
@@ -1606,6 +1607,6 @@ export default function PosTerminal() {
         onRestore={restoreHeldCart}
         onDiscard={discardHeldCart}
       />
-    </div>
+    </PageLayout>
   );
 }
