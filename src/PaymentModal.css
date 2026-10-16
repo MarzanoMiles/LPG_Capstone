@@ -1,3 +1,27 @@
+.payment-modal.sale-completed-modal {
+  position: fixed;
+  inset: 0;
+  margin: auto;
+  border: none;
+  box-sizing: border-box;
+  max-width: min(480px, calc(100vw - 32px));
+  color: #111827;
+}
+
+.sale-completed-modal::backdrop {
+  background: rgba(17, 24, 39, 0.45);
+}
+
+.sale-completed-modal .payment-modal-title {
+  text-align: center;
+}
+
+.sale-completed-message {
+  margin: 0 0 24px;
+  line-height: 1.6;
+  overflow-wrap: anywhere;
+}
+
 .payment-modal-overlay {
   position: fixed;
   inset: 0;

@@ -13,6 +13,7 @@ import {
   Truck,
 } from "lucide-react";
 import PaymentModal from "./PaymentModal";
+import SaleCompletedModal from "./SaleCompletedModal";
 import { validatePickupSchedule } from "./utils/pickupSchedule";
 import { apiRequest } from "./api";
 import { printReceipt } from "./utils/receipt";
@@ -982,6 +983,7 @@ export default function PosTerminal() {
   const [customerType, setCustomerType] = useState("Walk-in");
   const [paymentMethod, setPaymentMethod] = useState("");
   const [showPaymentModal, setShowPaymentModal] = useState(false);
+  const [completedSale, setCompletedSale] = useState(null);
   const [referenceNo, setReferenceNo] = useState("");
   const availablePaymentMethods = paymentMethods.filter((method) =>
     customerType === "Walk-in" ? method !== "Cash on Delivery" :
@@ -1300,7 +1302,7 @@ export default function PosTerminal() {
 
       setShowPaymentModal(false);
       clearCart();
-      alert(`Sale ${response.saleNo} completed. Change due: ₱${response.changeDue?.toFixed(2) ?? "0.00"}`);
+      setCompletedSale({ saleNo: response.saleNo, changeDue: response.changeDue });
 
       refreshProducts().catch(() => {});
     } catch (err) {
@@ -1572,6 +1574,8 @@ export default function PosTerminal() {
           </div>
         </div>
 
+
+      <SaleCompletedModal sale={completedSale} onClose={() => setCompletedSale(null)} />
 
       <PaymentModal
         isOpen={showPaymentModal}

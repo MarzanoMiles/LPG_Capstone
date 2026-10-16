@@ -71,7 +71,7 @@ export default function PaymentModal({ isOpen, totalAmount, onCancel, onConfirm,
         </div>
 
         {!isCod && <div className="payment-modal-row">
-          <span className="payment-modal-label">{orderType === "Pickup" ? "Amount Collected:" : "Amount to Collect:"}</span>
+          <span className="payment-modal-label">{orderType === "Pickup" || (orderType === "Walk-in" && paymentMethod === "Cash") ? "Amount Collected:" : "Amount to Collect:"}</span>
           <input
             type="number"
             inputMode="decimal"
