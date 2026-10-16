@@ -52,7 +52,7 @@ async function context(conn,user,id) {
 async function audit(conn,user,row,action,details) {
   await conn.query(`INSERT INTO UserActivity(UserActivityID,UserID,ActivityType,Module,RecordID,Description)
     VALUES(:uid,:userId,'Update','Order and Delivery — Delivery Management',:id,:description)`,{
-    uid:'UA-'+randomBytes(8).toString('hex'),userId:user.userId,id:row.DeliveryID,description:(({dispatch:'Dispatched a delivery.',complete:'Completed a delivery.',fail:'Recorded a failed delivery attempt.',settle:'Settled a delivery.',cancel:'Cancelled a delivery.',Restock:'Restored delivery stock to inventory.','Assignment / notes':'Updated the delivery driver or notes.'})[action] || 'Updated delivery details.')+(action==='fail' && details.reason ? ` Reason: ${details.reason}.` : '')});
+    uid:await require('./entityIds').nextEntityId(conn,'UserActivity'),userId:user.userId,id:row.DeliveryID,description:(({dispatch:'Dispatched a delivery.',complete:'Completed a delivery.',fail:'Recorded a failed delivery attempt.',settle:'Settled a delivery.',cancel:'Cancelled a delivery.',Restock:'Restored delivery stock to inventory.','Assignment / notes':'Updated the delivery driver or notes.'})[action] || 'Updated delivery details.')+(action==='fail' && details.reason ? ` Reason: ${details.reason}.` : '')});
 }
 async function restore(conn,user,row) {
   if(row.RestockedAt) return;

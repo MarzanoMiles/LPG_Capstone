@@ -4,20 +4,7 @@ const asyncHandler = require("../utils/asyncHandler");
 const ApiError = require("../utils/apiError");
 const { authenticate } = require("../middleware/auth");
 
-async function nextId(conn, table, column, prefix, pad = 3) {
-  const [rows] = await conn.query(
-    `SELECT ${column} AS id FROM ${table} WHERE ${column} LIKE :pattern ORDER BY ${column} DESC LIMIT 500`,
-    { pattern: `${prefix}-%` }
-  );
-  let max = 0;
-  for (const row of rows) {
-    const match = String(row.id || "").match(new RegExp(`^${prefix}-(\\d+)$`));
-    if (!match) continue;
-    const n = Number(match[1]);
-    if (Number.isInteger(n) && n > max) max = n;
-  }
-  return `${prefix}-${String(max + 1).padStart(pad, "0")}`;
-}
+async function nextId(conn, table) { return require('../utils/entityIds').nextEntityId(conn, table); }
 
 function randomProductCode(length = 8) {
   const alphabet = "ABCDEFGHJKLMNPQRSTUVWXYZ23456789";
@@ -186,7 +173,7 @@ router.post(
 
     await seedCoreWarehouseInventoryForProduct(pool, productId, req.user.companyId);
 
-    const userActivityId = await nextId(pool, "UserActivity", "UserActivityID", "UA");
+    const userActivityId = await nextId(pool, "UserActivity", "UserActivityID", "UAD");
     await pool.query(
       `INSERT INTO UserActivity (UserActivityID, UserID, ActivityType, Module, RecordID, Description)
        VALUES (:userActivityId, :userId, 'Create', 'Products — Product Management', :recordId, 'Created a new product')`,
@@ -234,7 +221,7 @@ router.put(
     );
     if (!result.affectedRows) throw new ApiError(404, "Product not found.");
 
-    const userActivityId = await nextId(pool, "UserActivity", "UserActivityID", "UA");
+    const userActivityId = await nextId(pool, "UserActivity", "UserActivityID", "UAD");
     await pool.query(
       `INSERT INTO UserActivity (UserActivityID, UserID, ActivityType, Module, RecordID, Description)
        VALUES (:userActivityId, :userId, 'Update', 'Products — Product Management', :recordId, 'Updated a product')`,
@@ -255,7 +242,7 @@ router.delete(
     );
     if (!result.affectedRows) throw new ApiError(404, "Product not found.");
 
-    const userActivityId = await nextId(pool, "UserActivity", "UserActivityID", "UA");
+    const userActivityId = await nextId(pool, "UserActivity", "UserActivityID", "UAD");
     await pool.query(
       `INSERT INTO UserActivity (UserActivityID, UserID, ActivityType, Module, RecordID, Description)
        VALUES (:userActivityId, :userId, 'Delete', 'Products — Product Management', :recordId, 'Deleted a product; transaction details retained in ProductHistory')`,

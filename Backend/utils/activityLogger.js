@@ -13,7 +13,7 @@ async function logUserActivity(
 ) {
   if (!userId || !activityType || !module) return;
 
-  const userActivityId = `AUD-${require("crypto").randomBytes(8).toString("hex")}`;
+  const userActivityId = await require('./entityIds').nextEntityId(conn, 'UserActivity');
   await conn.query(
     `INSERT INTO UserActivity (UserActivityID, UserID, ActivityType, Module, RecordID, Description, Outcome)
      VALUES (:userActivityId, :userId, :activityType, :module, :recordId, :description, :outcome)`,

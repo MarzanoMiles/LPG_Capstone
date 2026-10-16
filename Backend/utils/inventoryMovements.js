@@ -8,7 +8,7 @@ async function recordStockIn(conn, {inventoryId, quantity, userId, reason, refer
   await conn.query("UPDATE Inventory SET StockOnHand = StockOnHand + :qty WHERE InventoryID = :id", {qty:quantity,id:inventoryId});
   await conn.query(`INSERT INTO InventoryTransaction (TransactionID, InventoryID, UserID, TransactionType, Quantity, Reason, ReferenceNo, Remarks)
     VALUES (:transactionId, :invId, :userId, 'Stock In', :qty, :reason, :ref, :remarks)`, {
-    transactionId:transactionId || "T-"+randomBytes(9).toString("hex"),invId:inventoryId,userId,qty:quantity,reason,ref:referenceNo,remarks:remarks || null
+    transactionId:transactionId || await require('./entityIds').nextEntityId(conn,'InventoryTransaction'),invId:inventoryId,userId,qty:quantity,reason,ref:referenceNo,remarks:remarks || null
   });
 }
 async function receiveEmptyCylinders(conn, {companyId,userId,warehouseId,items}) {
@@ -22,7 +22,7 @@ async function receiveEmptyCylinders(conn, {companyId,userId,warehouseId,items})
     const [rows]=await conn.query("SELECT InventoryID FROM Inventory WHERE WarehouseID=:warehouseId AND ProductID=:productId FOR UPDATE",{warehouseId,productId:item.productId});
     let inventoryId=rows[0]?.InventoryID;
     if(!inventoryId) {
-      inventoryId="INT-"+randomBytes(8).toString("hex");
+      inventoryId=await require('./entityIds').nextEntityId(conn,'Inventory');
       await conn.query("INSERT INTO Inventory (InventoryID,WarehouseID,ProductID,StockOnHand) VALUES (:inventoryId,:warehouseId,:productId,0)",{inventoryId,warehouseId,productId:item.productId});
     }
     await recordStockIn(conn,{inventoryId,quantity:item.qty,userId,reason:"Empty Cylinder Returned",referenceNo});

@@ -7,34 +7,7 @@ const ApiError = require("../utils/apiError");
 const { authenticate } = require("../middleware/auth");
 const { parseCsv } = require("../utils/csv");
 
-async function nextId(conn, table, column, prefix, pad = 3) {
-  const normalizedPrefix = String(prefix || "").toUpperCase();
-  const [rows] = await conn.query(
-    `SELECT ${column} AS id FROM ${table} WHERE ${column} LIKE :pattern`,
-    { pattern: `${normalizedPrefix}%` }
-  );
-
-  let max = 0;
-  const matcher = new RegExp(`^${normalizedPrefix}-?([0-9]+)$`);
-  for (const row of rows) {
-    const candidate = String(row.id || "").toUpperCase();
-    const match = candidate.match(matcher);
-    if (!match) continue;
-    const n = Number(match[1]);
-    if (Number.isInteger(n) && n > max) max = n;
-  }
-
-  let next = max + 1;
-  while (true) {
-    const candidateId = `${normalizedPrefix}-${String(next).padStart(pad, "0")}`;
-    const [existsRows] = await conn.query(
-      `SELECT ${column} AS id FROM ${table} WHERE ${column} = :id LIMIT 1`,
-      { id: candidateId }
-    );
-    if (!existsRows[0]) return candidateId;
-    next += 1;
-  }
-}
+async function nextId(conn, table) { return require('../utils/entityIds').nextEntityId(conn, table); }
 
 router.use(authenticate);
 
@@ -877,7 +850,7 @@ router.delete(
       await conn.query(`DELETE FROM Inventory WHERE InventoryID = :id`, { id: req.params.id });
 
       if (force && count > 0) {
-        const userActivityId = await nextId(conn, "UserActivity", "UserActivityID", "UA");
+        const userActivityId = await nextId(conn, "UserActivity", "UserActivityID", "UAD");
         await conn.query(
           `INSERT INTO UserActivity (UserActivityID, UserID, ActivityType, Module, RecordID, Description)
            VALUES (:userActivityId, :userId, 'Delete', 'Inventory — Inventory Transactions', :recordId, :description)`,

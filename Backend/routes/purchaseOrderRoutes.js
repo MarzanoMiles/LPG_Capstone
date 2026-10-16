@@ -6,10 +6,8 @@ const { authenticate } = require('../middleware/auth');
 const { nextSequence } = require('../utils/generateNumbers');
 const { recordStockIn } = require('../utils/inventoryMovements');
 const { transporter } = require('../config/mailer');
-const { randomBytes } = require('crypto');
 const { purchaseOrderText, purchaseOrderPDF } = require('../utils/purchaseOrderDocument');
 const { pricePurchaseOrderItems } = require('../utils/purchaseOrderCosts');
-const uid = prefix => prefix + '-' + randomBytes(8).toString('hex');
 router.use(authenticate);
 const scope = `JOIN User owner ON owner.UserID=po.CreatedByUserID`;
 async function transaction(work) {
@@ -135,10 +133,10 @@ router.post('/',asyncHandler(async(req,res)=>{
     }
     const poNo=await nextSequence(conn,'PurchaseOrder','PONo','PO');
     const [ids]=await conn.query("SELECT PurchaseOrderID FROM PurchaseOrder WHERE PurchaseOrderID REGEXP '^PO-[0-9]+$'");
-    const id='PO-'+String(Math.max(0,...ids.map(row=>Number(row.PurchaseOrderID.slice(3))))+1).padStart(3,'0');
+    const id=await require('../utils/entityIds').nextEntityId(conn,'PurchaseOrder');
     await conn.query(`INSERT INTO PurchaseOrder (PurchaseOrderID,SupplierID,RestockID,CreatedByUserID,PONo,OrderDate,Status,TotalAmount,WarehouseID,PaymentMethod,PaymentReference,RequestKey)
       VALUES (:id,:supplierId,:restockId,:userId,:poNo,NOW(),'Pending',:total,:warehouseId,:paymentMethod,:referenceNo,:requestKey)`,{id,supplierId,restockId:restockIds[0]||null,userId:req.user.userId,poNo,total:totalCents/100,warehouseId,paymentMethod:paymentMethod||null,referenceNo:referenceNo||null,requestKey});
-    for(const item of pricedItems) await conn.query(`INSERT INTO PurchaseOrderItem (PurchaseOrderItemID,PurchaseOrderID,ProductID,Quantity,UnitCost,Subtotal) VALUES (:itemId,:id,:productId,:qty,:unitCost,:subtotal)`,{...item,itemId:uid('POI'),id,subtotal:item.qty*Math.round(item.unitCost*100)/100});
+    for(const item of pricedItems) await conn.query(`INSERT INTO PurchaseOrderItem (PurchaseOrderItemID,PurchaseOrderID,ProductID,Quantity,UnitCost,Subtotal) VALUES (:itemId,:id,:productId,:qty,:unitCost,:subtotal)`,{...item,itemId:await require('../utils/entityIds').nextEntityId(conn,'PurchaseOrderItem'),id,subtotal:item.qty*Math.round(item.unitCost*100)/100});
     for(const restockId of restockIds) await conn.query(`UPDATE RestockRecommendation SET Status='Converted' WHERE RestockID=:restockId`,{restockId});
     return {id,poNo,status:'Pending'};
   });
@@ -233,7 +231,7 @@ router.put('/:id/receive',asyncHandler(async(req,res)=>res.json(await transactio
     if(!qty) continue;
     const [inventory]=await conn.query('SELECT InventoryID FROM Inventory WHERE WarehouseID=:warehouseId AND ProductID=:productId FOR UPDATE',{warehouseId,productId:item.ProductID});
     let inventoryId=inventory[0]?.InventoryID;
-    if(!inventoryId) {inventoryId=uid('INT');await conn.query('INSERT INTO Inventory (InventoryID,WarehouseID,ProductID,StockOnHand) VALUES (:inventoryId,:warehouseId,:productId,0)',{inventoryId,warehouseId,productId:item.ProductID});}
+    if(!inventoryId) {inventoryId=await require('../utils/entityIds').nextEntityId(conn,'Inventory');await conn.query('INSERT INTO Inventory (InventoryID,WarehouseID,ProductID,StockOnHand) VALUES (:inventoryId,:warehouseId,:productId,0)',{inventoryId,warehouseId,productId:item.ProductID});}
     await recordStockIn(conn,{inventoryId,quantity:qty,userId:req.user.userId,reason:'Supplier Delivery',referenceNo:po.PONo,remarks:receiptRemark});
     await conn.query('UPDATE PurchaseOrderItem SET ReceivedQuantity=ReceivedQuantity+:qty WHERE PurchaseOrderItemID=:id',{qty,id:item.PurchaseOrderItemID});
     item.ReceivedQuantity+=qty;credited+=qty;

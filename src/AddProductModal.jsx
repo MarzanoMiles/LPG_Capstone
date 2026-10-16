@@ -1,3 +1,4 @@
+import { numericUnitValue } from "./utils/unitValue.js";
 ﻿import React, { useEffect, useState } from "react";
 import "./AddProductModal.css";
 import { Settings } from "lucide-react";
@@ -62,7 +63,7 @@ export default function AddProductModal({ isOpen, onClose, onSaved, selectedProd
         brandId: selectedProduct.brandId || "",
         supplierId: selectedProduct.supplierId || "",
         unit: selectedProduct.unit === "pcs" ? "pc" : selectedProduct.unit || "",
-        unitValue: String(selectedProduct.unitValue ?? "").replace(/[^0-9.]/g, ""),
+        unitValue: String(numericUnitValue(selectedProduct.unitValue, selectedProduct.unit) ?? ""),
         unitPrice: selectedProduct.unitPrice ?? "",
         costPrice: selectedProduct.costPrice ?? "",
         reorderLevel: selectedProduct.reorderLevel ?? "",

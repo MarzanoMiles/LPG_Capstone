@@ -1,1 +1,1 @@
-module.exports = require("../utils/productLookupRouter")("Category", "CategoryID", "CTGRY");
+module.exports = require("../utils/productLookupRouter")("Category", "CategoryID", "CTRGY");

@@ -23,15 +23,16 @@ router.post("/", asyncHandler(async (req, res) => {
   }
   if (!["Sale", "Purchase"].includes(paymentType)) throw new ApiError(400, "Use the authorized order refund workflow for refunds.");
   if (!Number.isFinite(Number(amountPaid)) || Number(amountPaid) <= 0) throw new ApiError(400, "Payment must be positive.");
-  const [result] = await pool.query(
-    `INSERT INTO Payment (PaymentType, SaleID, PurchaseOrderID, PaymentMethod, AmountPaid, ReferenceNo, Remarks)
-     VALUES (:paymentType, :saleId, :purchaseOrderId, :paymentMethod, :amountPaid, :referenceNo, :remarks)`,
+  const id = await require('../utils/entityIds').nextEntityId(pool,'Payment');
+  await pool.query(
+    `INSERT INTO Payment (PaymentID, PaymentType, SaleID, PurchaseOrderID, PaymentMethod, AmountPaid, ReferenceNo, Remarks)
+     VALUES (:id, :paymentType, :saleId, :purchaseOrderId, :paymentMethod, :amountPaid, :referenceNo, :remarks)`,
     {
-      paymentType, saleId: saleId || null, purchaseOrderId: purchaseOrderId || null,
+      id, paymentType, saleId: saleId || null, purchaseOrderId: purchaseOrderId || null,
       paymentMethod, amountPaid, referenceNo: referenceNo || null, remarks: remarks || null,
     }
   );
-  res.status(201).json({ id: result.insertId });
+  res.status(201).json({ id });
 }));
 
 module.exports = router;

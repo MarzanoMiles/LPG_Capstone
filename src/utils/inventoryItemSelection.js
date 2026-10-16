@@ -1,6 +1,7 @@
+import { formatUnitValue } from "./unitValue.js";
 const normalize = value => String(value || "").trim().toLowerCase();
 const unique = values => [...new Set(values.filter(Boolean))].sort((a, b) => a.localeCompare(b, undefined, { numeric: true }));
-const weightOf = product => product.unitValue != null && product.unit ? `${Number(product.unitValue)} ${product.unit}` : "";
+const weightOf = product => formatUnitValue(product.unitValue, product.unit);
 
 export function getItemChoices(products, item) {
   const categoryProducts = products.filter(product => product.category === item.category);
@@ -23,7 +24,10 @@ export function updateItemSelection(products, item, field, value) {
   if (field === "brand") Object.assign(next, { weight: "", productId: "" });
   const choices = getItemChoices(products, next);
   if (choices.derived) {
-    next.productId = next.brand && next.weight && choices.matches.length === 1 ? String(choices.matches[0].productId) : "";
+    const selectedMatch = field === "productId" && choices.matches.find(product => String(product.productId) === String(value));
+    next.productId = next.brand && next.weight
+      ? selectedMatch ? String(selectedMatch.productId) : choices.matches.length === 1 ? String(choices.matches[0].productId) : ""
+      : "";
   } else if (!choices.brandProducts.some(product => String(product.productId) === String(next.productId))) {
     next.productId = "";
   }

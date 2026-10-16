@@ -1,3 +1,4 @@
+import { formatUnitValue } from "./utils/unitValue.js";
 import React, { useEffect, useRef, useState } from 'react';
 import { createPortal } from 'react-dom';
 import { Eye, Send, Check, X, Truck, PackageCheck, CreditCard, ReceiptText, FileText } from 'lucide-react';
@@ -53,7 +54,7 @@ export function POCreationModal({draft,onClose,onSaved}) {
     setItems(previous => previous.map(item => {
       const product = data.products.find(p => p.productId === item.productId);
       return product ? { ...item, category: product.category, brand: product.brand,
-        weight: `${Number(product.unitValue)} ${product.unit}`, unitCost: Number(product.unitCost) } : item;
+        weight: formatUnitValue(product.unitValue, product.unit), unitCost: Number(product.unitCost) } : item;
     }));
   }).catch(e=>setError(e.message));},[]);
   const business=options?.business, supplier=options?.suppliers.find(s=>s.id===supplierId);
@@ -121,7 +122,6 @@ export function POCreationModal({draft,onClose,onSaved}) {
                     {items.map((item, index) => <tr key={index}>
                       <td>{index + 1}</td>
                       <InventoryItemSelector
-                        allowAmbiguousProductSelection
                         products={options.products.filter(p => p.supplierId === supplierId && (p.productId === item.productId || !items.some((row, rowIndex) => rowIndex !== index && row.productId === p.productId)))}
                         item={item}
                         rowNumber={index + 1}

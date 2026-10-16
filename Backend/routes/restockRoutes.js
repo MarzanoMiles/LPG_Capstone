@@ -5,20 +5,7 @@ const ApiError = require("../utils/apiError");
 const { authenticate } = require("../middleware/auth");
 const { getRestockPredictions } = require("../utils/mlClient");
 
-async function nextId(conn, table, column, prefix, pad = 3) {
-  const [rows] = await conn.query(
-    `SELECT ${column} AS id FROM ${table} WHERE ${column} LIKE :pattern ORDER BY ${column} DESC LIMIT 500`,
-    { pattern: `${prefix}-%` }
-  );
-  let max = 0;
-  for (const row of rows) {
-    const match = String(row.id || "").match(new RegExp(`^${prefix}-(\\d+)$`));
-    if (!match) continue;
-    const n = Number(match[1]);
-    if (Number.isInteger(n) && n > max) max = n;
-  }
-  return `${prefix}-${String(max + 1).padStart(pad, "0")}`;
-}
+async function nextId(conn, table) { return require('../utils/entityIds').nextEntityId(conn, table); }
 
 router.use(authenticate);
 

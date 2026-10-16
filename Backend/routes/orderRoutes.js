@@ -6,25 +6,7 @@ const { issueRefund, settleCancellation } = require("../utils/financialRules");
 const { authenticate, authorize } = require("../middleware/auth");
 const { nextSequence } = require("../utils/generateNumbers");
 
-async function nextId(conn, table, column, prefix, pad = 3) {
-  if (table === 'Customer') {
-    const [ids]=await conn.query('SELECT CustomerID AS id FROM Customer UNION SELECT historical_customer_id AS id FROM `Order` UNION SELECT historical_customer_id AS id FROM Sales');
-    const max=ids.reduce((value,row)=>{const match=String(row.id || '').match(/^CUST-?(\d+)$/);return match ? Math.max(value,Number(match[1])) : value;},0);
-    return `CUST-${String(max+1).padStart(3,'0')}`;
-  }
-  const [rows] = await conn.query(
-    `SELECT ${column} AS id FROM ${table} WHERE ${column} LIKE :pattern ORDER BY ${column} DESC LIMIT 500`,
-    { pattern: `${prefix}-%` }
-  );
-  let max = 0;
-  for (const row of rows) {
-    const match = String(row.id || "").match(new RegExp(`^${prefix}-(\\d+)$`));
-    if (!match) continue;
-    const n = Number(match[1]);
-    if (Number.isInteger(n) && n > max) max = n;
-  }
-  return `${prefix}-${String(max + 1).padStart(pad, "0")}`;
-}
+async function nextId(conn, table) { return require('../utils/entityIds').nextEntityId(conn, table); }
 
 const pickup = require("../utils/pickupLifecycle");
 

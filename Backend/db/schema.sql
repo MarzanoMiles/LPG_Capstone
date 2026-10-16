@@ -21,7 +21,7 @@ CREATE TABLE Role (
 );
 
 CREATE TABLE Category (
-  CategoryID  VARCHAR(20) PRIMARY KEY,                  -- CTGRY-001
+  CategoryID  VARCHAR(20) PRIMARY KEY,                  -- CTRGY-001
   Category    VARCHAR(100) NOT NULL UNIQUE
 );
 
@@ -348,7 +348,7 @@ CREATE TABLE DataActivityLog (
 );
 
 CREATE TABLE UserActivity (
-  UserActivityID  VARCHAR(20) PRIMARY KEY,              -- UA-001
+  UserActivityID  VARCHAR(20) PRIMARY KEY,              -- UAD-001
   UserID          VARCHAR(20) NOT NULL,
   ActivityType    VARCHAR(30) NOT NULL,                 -- Login, Create, Update, Delete, Approve
   Module          VARCHAR(50) NOT NULL,
@@ -497,3 +497,5 @@ CREATE TRIGGER customer_snapshot_delivery BEFORE INSERT ON `Delivery` FOR EACH R
   SET NEW.customer_type=COALESCE(NEW.customer_type,(SELECT customer_type FROM Sales WHERE SaleID=NEW.SaleID));
 END$$
 DELIMITER ;
+
+CREATE TABLE IF NOT EXISTS EntityIdSequence (Entity VARCHAR(64) PRIMARY KEY, NextValue BIGINT UNSIGNED NOT NULL);

@@ -467,9 +467,9 @@ async function seed() {
   // Seed Categories
   await pool.query(`
     INSERT INTO Category (CategoryID, Category) VALUES 
-    ('CTGRY-001', 'Gasul LPG'),
-    ('CTGRY-002', 'Cylinder'),
-    ('CTGRY-003', 'Accessories')
+    ('CTRGY-001', 'Gasul LPG'),
+    ('CTRGY-002', 'Cylinder'),
+    ('CTRGY-003', 'Accessories')
   `);
 
   // Seed Brand
@@ -510,12 +510,12 @@ async function seed() {
   // Seed Products
   await pool.query(`
     INSERT INTO Product (ProductID, ProductName, CategoryID, BrandID, SupplierID, Unit, UnitPrice, CostPrice, ReorderLevel, ImageURL, ARModelURL, Status, CreatedAt) VALUES 
-    ('P-D2N7X4KP', 'Gasul LPG 2.7 kg', 'CTGRY-001', 'BD-001', 'SUP-001', 'kg', 243.00, 200.00, 30, NULL, NULL, 'Active', '2023-09-20 10:00:00'),
-    ('P-BX6T9R4N', 'Gasul LPG 7 kg', 'CTGRY-001', 'BD-001', 'SUP-001', 'kg', 603.00, 560.00, 20, NULL, NULL, 'Active', '2023-09-20 10:00:00'),
-    ('P-P3N8XK5T', 'Gasul LPG 11 kg Elite', 'CTGRY-001', 'BD-001', 'SUP-001', 'kg', 907.00, 850.00, 40, NULL, NULL, 'Active', '2023-09-20 10:00:00'),
-    ('P-M7Q2Z9LR', 'Gasul LPG 11 kg', 'CTGRY-001', 'BD-001', 'SUP-001', 'kg', 921.00, 870.00, 50, NULL, NULL, 'Active', '2023-09-20 10:00:00'),
-    ('P-H4V8TN2W', 'Gasul LPG 22 kg', 'CTGRY-001', 'BD-001', 'SUP-001', 'kg', 1726.00, 1680.00, 15, NULL, NULL, 'Active', '2023-09-20 10:00:00'),
-    ('P-7KF29M3Q', 'Gasul LPG 50 kg', 'CTGRY-001', 'BD-001', 'SUP-001', 'kg', 3964.00, 3890.00, 10, NULL, NULL, 'Active', '2023-09-20 10:00:00')
+    ('P-D2N7X4KP', 'Gasul LPG 2.7 kg', 'CTRGY-001', 'BD-001', 'SUP-001', 'kg', 243.00, 200.00, 30, NULL, NULL, 'Active', '2023-09-20 10:00:00'),
+    ('P-BX6T9R4N', 'Gasul LPG 7 kg', 'CTRGY-001', 'BD-001', 'SUP-001', 'kg', 603.00, 560.00, 20, NULL, NULL, 'Active', '2023-09-20 10:00:00'),
+    ('P-P3N8XK5T', 'Gasul LPG 11 kg Elite', 'CTRGY-001', 'BD-001', 'SUP-001', 'kg', 907.00, 850.00, 40, NULL, NULL, 'Active', '2023-09-20 10:00:00'),
+    ('P-M7Q2Z9LR', 'Gasul LPG 11 kg', 'CTRGY-001', 'BD-001', 'SUP-001', 'kg', 921.00, 870.00, 50, NULL, NULL, 'Active', '2023-09-20 10:00:00'),
+    ('P-H4V8TN2W', 'Gasul LPG 22 kg', 'CTRGY-001', 'BD-001', 'SUP-001', 'kg', 1726.00, 1680.00, 15, NULL, NULL, 'Active', '2023-09-20 10:00:00'),
+    ('P-7KF29M3Q', 'Gasul LPG 50 kg', 'CTRGY-001', 'BD-001', 'SUP-001', 'kg', 3964.00, 3890.00, 10, NULL, NULL, 'Active', '2023-09-20 10:00:00')
   `);
 
   // Seed Inventory
@@ -535,7 +535,7 @@ async function seed() {
     VALUES ('CUST-001', NULL, 'Residential', 'Walk-in Customer', 'WALKIN', 'San Juan City, Metro Manila', 'Active', '2023-09-20 09:00:00', '2023-09-20 09:00:00')
   `);
 
-  await pool.query("UPDATE Product SET UnitValue = LOWER(REGEXP_SUBSTR(ProductName, '[0-9]+([.][0-9]+)?[ ]*[kK][gG]')) WHERE UnitValue IS NULL AND ProductName REGEXP '[0-9]+([.][0-9]+)?[ ]*[kK][gG]'");
+  await pool.query("UPDATE Product SET UnitValue = REGEXP_SUBSTR(REGEXP_SUBSTR(ProductName, '[0-9]+([.][0-9]+)?[ ]*[kK][gG]'), '[0-9]+([.][0-9]+)?') WHERE UnitValue IS NULL AND ProductName REGEXP '[0-9]+([.][0-9]+)?[ ]*[kK][gG]'");
   // Keep seeded databases compatible with the customer profile/history APIs.
   await require("./migrate_customer_history")();
   // Pickup queues and claims require all three pickup migration stages.

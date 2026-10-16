@@ -1,5 +1,5 @@
 const routerFactory = require("express").Router;
-const { randomUUID } = require("crypto");
+const { nextEntityId } = require("./entityIds");
 const pool = require("../config/db");
 const asyncHandler = require("./asyncHandler");
 const ApiError = require("./apiError");
@@ -14,7 +14,7 @@ module.exports = function productLookupRouter(table, column, prefix) {
   const save = async (req, res, editing) => {
     const name = typeof req.body.name === 'string' ? req.body.name.trim() : '';
     if (!name || name.length > 100) throw new ApiError(400, 'Name is required and must be at most 100 characters.');
-    const id = editing ? req.params.id : `${prefix}-${randomUUID().replace(/-/g, '').slice(0, 12)}`;
+    const id = editing ? req.params.id : await nextEntityId(pool, table);
     const conn = await pool.getConnection();
     try {
       await conn.beginTransaction();

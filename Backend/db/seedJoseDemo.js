@@ -623,7 +623,7 @@ async function main() {
       ];
 
       for (const a of activities) {
-        const userActivityId = await nextId(conn, "UserActivity", "UserActivityID", "UA");
+        const userActivityId = await nextId(conn, "UserActivity", "UserActivityID", "UAD");
         await conn.query(
           `INSERT INTO UserActivity (UserActivityID, UserID, ActivityType, Module, RecordID, Description, ActivityDate)
            VALUES (:userActivityId, :userId, :activityType, :module, :recordId, :description, :activityDate)`,

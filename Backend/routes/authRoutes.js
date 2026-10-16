@@ -124,10 +124,10 @@ router.post(
       const fullAddress = `${completeAddress}, ${cityMunicipality}`;
 
       // Generate custom primary keys
-      const companyId = generateId("C");
-      const warehouseId = generateId("WH");
+      const companyId = await require('../utils/entityIds').nextEntityId(conn, 'Company');
+      const warehouseId = await require('../utils/entityIds').nextEntityId(conn, 'Warehouse');
       const userId = await nextUserId(conn);
-      const userActivityId = generateId("UA");
+      const userActivityId = await require('../utils/entityIds').nextEntityId(conn, 'UserActivity');
 
       // 1. Insert Company
       await conn.query(
@@ -331,7 +331,7 @@ router.post(
         id: record.TokenID,
       });
 
-      const userActivityId = generateId("UA");
+      const userActivityId = await require('../utils/entityIds').nextEntityId(conn, 'UserActivity');
       await conn.query(
         `INSERT INTO UserActivity (UserActivityID, UserID, ActivityType, Module, Description)
          VALUES (:userActivityId, :userId, 'Update', 'Users — Authentication', 'Password reset via email link')`,

@@ -5,7 +5,7 @@ async function seedReports() {
   // Ensure the ComplianceReport table exists with all standard columns
   await pool.query(`
     CREATE TABLE IF NOT EXISTS ComplianceReport (
-      ReportID INT AUTO_INCREMENT PRIMARY KEY,
+      ReportID VARCHAR(20) PRIMARY KEY,
       ReportName VARCHAR(255) NOT NULL,
       ReportType VARCHAR(100),
       PeriodLabel VARCHAR(100),
@@ -96,9 +96,9 @@ async function seedReports() {
     );
     if (existing[0]) continue;
     await pool.query(
-      `INSERT INTO ComplianceReport (ReportName, ReportType, PeriodLabel, PeriodStart, PeriodEnd, DueDate, Status)
-       VALUES (:name, :type, :periodLabel, :periodStart, :periodEnd, :dueDate, 'Upcoming')`,
-      r
+      `INSERT INTO ComplianceReport (ReportID, ReportName, ReportType, PeriodLabel, PeriodStart, PeriodEnd, DueDate, Status)
+       VALUES (:id, :name, :type, :periodLabel, :periodStart, :periodEnd, :dueDate, 'Upcoming')`,
+      { ...r, id: await require("../utils/entityIds").nextEntityId(pool,"ComplianceReport") }
     );
     console.log(`Seeded report: ${r.name} (${r.periodLabel})`);
   }

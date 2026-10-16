@@ -3,7 +3,7 @@ const pool = require('../config/db');
 const asyncHandler = require('../utils/asyncHandler');
 const ApiError = require('../utils/apiError');
 const { authenticate, authorize } = require('../middleware/auth');
-const { randomBytes } = require('crypto');
+const { nextEntityId } = require('../utils/entityIds');
 const { logUserActivity } = require('../utils/activityLogger');
 
 // These names define permissions in the existing RBAC implementation.
@@ -11,7 +11,7 @@ const systemRoles = new Set(['admin', 'administrator', 'manager', 'operations su
   'assistant operations supervisor', 'store supervisor', 'assistant store supervisor',
   'stockman', 'head maintenance', 'driver', 'drivers', 'helper', 'helpers', 'customer']);
 const configs = {
-  roles: { table: 'Role', key: 'RoleID', prefix: 'R', module: 'Role Settings', fields: { name: 'RoleName' } },
+  roles: { table: 'Role', key: 'RoleID', prefix: 'RL', module: 'Role Settings', fields: { name: 'RoleName' } },
   branches: { table: 'Branch', key: 'BranchID', prefix: 'BRH', module: 'Branch Settings', fields: { name: 'BranchName', address: 'Address', contact: 'ContactNo' } },
   warehouses: { table: 'Warehouse', key: 'WarehouseID', prefix: 'WH', module: 'Warehouse Settings', fields: { name: 'WarehouseName', location: 'Location', branchId: 'BranchID' } },
 };
@@ -43,7 +43,7 @@ router.all('/:kind/:id?', asyncHandler(async (req, res) => {
     await conn.beginTransaction();
     let originalName;
     let originalRecord;
-    const params = { id: req.params.id || `${c.prefix}-${randomBytes(6).toString('hex')}`, companyId: req.user.companyId };
+    const params = { id: req.params.id || await nextEntityId(conn, c.table), companyId: req.user.companyId };
     // Serialize name checks within a company; Role also has a database unique constraint.
     await conn.query('SELECT CompanyID FROM Company WHERE CompanyID = :companyId FOR UPDATE', params);
     if (req.params.id) {

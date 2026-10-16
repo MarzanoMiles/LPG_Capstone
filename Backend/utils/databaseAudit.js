@@ -5,7 +5,7 @@ const {describeAction} = require('./activityDescriptions');
 function mutation(sql, params, result) {
   const text = typeof sql === 'string' ? sql : sql?.sql || '';
   const match = text.match(/^\s*(INSERT(?:\s+IGNORE)?\s+INTO|UPDATE|DELETE\s+FROM)\s+`?(\w+)`?/i);
-  if (!match || ['useractivity','dataactivitylog'].includes(match[2].toLowerCase()) || !result?.affectedRows) return null;
+  if (!match || ['useractivity','dataactivitylog','entityidsequence'].includes(match[2].toLowerCase()) || !result?.affectedRows) return null;
   const verb = match[1].toUpperCase().startsWith('INSERT') ? 'Create' : match[1].toUpperCase().startsWith('DELETE') ? 'Delete' : 'Update';
   if (verb === 'Update' && result.changedRows === 0) return null;
   let id = params && !Array.isArray(params) ? params.id || null : null;

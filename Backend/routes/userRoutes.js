@@ -230,7 +230,7 @@ router.post(
       }
     );
 
-    const userActivityId = `AUD-${require("crypto").randomBytes(8).toString("hex")}`;
+    const userActivityId = await require('../utils/entityIds').nextEntityId(conn, 'UserActivity');
     await conn.query(
       `INSERT INTO UserActivity (UserActivityID, UserID, ActivityType, Module, RecordID, Description)
        VALUES (:userActivityId, :userId, 'Create', 'Users — User Management', :recordId, 'Created a new user')`,
@@ -323,7 +323,7 @@ router.put(
     if (!result.affectedRows) throw new ApiError(404, "User not found.");
 
     if (changes.length) {
-    const userActivityId = `AUD-${require("crypto").randomBytes(8).toString("hex")}`;
+    const userActivityId = await require('../utils/entityIds').nextEntityId(conn, 'UserActivity');
     await conn.query(
       `INSERT INTO UserActivity (UserActivityID, UserID, ActivityType, Module, RecordID, Description)
        VALUES (:userActivityId, :userId, 'Update', 'Users — User Management', :recordId, :description)`,
@@ -358,7 +358,7 @@ router.delete(
     if (!result.affectedRows) throw new ApiError(404, "User not found.");
 
     if (target.Status !== 'Inactive') {
-    const userActivityId = `AUD-${require("crypto").randomBytes(8).toString("hex")}`;
+    const userActivityId = await require('../utils/entityIds').nextEntityId(conn, 'UserActivity');
     await conn.query(
       `INSERT INTO UserActivity (UserActivityID, UserID, ActivityType, Module, RecordID, Description)
        VALUES (:userActivityId, :userId, 'Delete', 'Users — User Management', :recordId, :description)`,

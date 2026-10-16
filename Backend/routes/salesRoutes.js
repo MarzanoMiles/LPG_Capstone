@@ -7,39 +7,7 @@ const { authenticate } = require("../middleware/auth");
 const { nextSequence } = require("../utils/generateNumbers");
 const { parseCsv } = require("../utils/csv");
 
-async function nextId(conn, table, column, prefix, pad = 3) {
-  if (table === 'Customer') {
-    const [ids]=await conn.query('SELECT CustomerID AS id FROM Customer UNION SELECT historical_customer_id AS id FROM `Order` UNION SELECT historical_customer_id AS id FROM Sales');
-    const max=ids.reduce((value,row)=>{const match=String(row.id || '').match(/^CUST-?(\d+)$/);return match ? Math.max(value,Number(match[1])) : value;},0);
-    return `CUST-${String(max+1).padStart(3,'0')}`;
-  }
-  const normalizedPrefix = String(prefix || "").toUpperCase();
-  const [rows] = await conn.query(
-    `SELECT ${column} AS id FROM ${table} WHERE ${column} LIKE :pattern`,
-    { pattern: `${normalizedPrefix}%` }
-  );
-
-  let max = 0;
-  const matcher = new RegExp(`^${normalizedPrefix}-?([0-9]+)$`);
-  for (const row of rows) {
-    const candidate = String(row.id || "").toUpperCase();
-    const match = candidate.match(matcher);
-    if (!match) continue;
-    const n = Number(match[1]);
-    if (Number.isInteger(n) && n > max) max = n;
-  }
-
-  let next = max + 1;
-  while (true) {
-    const candidateId = `${normalizedPrefix}-${String(next).padStart(pad, "0")}`;
-    const [existsRows] = await conn.query(
-      `SELECT ${column} AS id FROM ${table} WHERE ${column} = :id LIMIT 1`,
-      { id: candidateId }
-    );
-    if (!existsRows[0]) return candidateId;
-    next += 1;
-  }
-}
+async function nextId(conn, table) { return require('../utils/entityIds').nextEntityId(conn, table); }
 
 const DEFAULT_WAREHOUSE_ID = "WH-001"; // fallback when an explicit warehouse is provided by callers
 
