@@ -10,15 +10,14 @@ quantity based on demand during the supplier's lead time.
 ```bash
 cd ML
 python -m venv venv
-source venv/bin/activate        # Windows: venv\Scripts\activate
-pip install -r requirements.txt --break-system-packages
-cp .env.example .env            # fill in your DB credentials (same as backend/.env)
+.\venv\Scripts\python.exe -m pip install -r requirements.txt
+if (!(Test-Path .env)) { Copy-Item .env.example .env }
 ```
 
 ## Train the model
 
 ```bash
-python train_model.py
+.\venv\Scripts\python.exe train_model.py
 ```
 
 This pulls your real `InventoryTransaction` history from MySQL (if there's
@@ -31,7 +30,7 @@ synthetic data.
 ## Run the service
 
 ```bash
-python serve.py
+.\venv\Scripts\python.exe serve.py
 ```
 
 Listens on `http://localhost:5001`. Leave this running alongside your Node
@@ -42,7 +41,18 @@ unreachable, so the app keeps working even if you haven't started it.
 ## Verify it's working
 
 ```bash
-curl http://localhost:5001/health
+Invoke-RestMethod http://localhost:5001/health
 ```
 
 Should return `{"status":"ok","model_loaded":true}`.
+
+Set `DB_HOST`, `DB_PORT`, `DB_USER`, `DB_PASSWORD`, and `DB_NAME` in `ML/.env`
+to the same database used by the backend. Set `ML_SERVICE_PORT=5001`. Both
+entry points load this file relative to their own directory and accept UTF-8
+with or without a byte-order mark. Prediction uses the saved model and does
+not require a database query; training uses MySQL history when available.
+
+Checked locally on October 16, 2026: service health, a prediction request,
+backend ML client integration, MySQL connectivity, Python compilation, and
+`pip check` passed. The saved model was reused; it was not retrained.
+See the root README for the prediction smoke test and full system status.

@@ -4,6 +4,8 @@
   "type": "commonjs",
   "main": "server.js",
   "scripts": {
+    "migrate:company-profile": "node db/migrate_company_profile.js",
+    "migrate:company-registration": "node db/migrate_company_registration.js",
     "migrate:user-history": "node db/migrate_user_history.js",
     "migrate:unit-values": "node db/migrate_unit_values.js",
     "migrate:entity-ids": "node db/migrate_entity_ids.js",

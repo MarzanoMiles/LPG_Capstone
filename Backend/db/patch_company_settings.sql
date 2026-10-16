@@ -1,12 +1,9 @@
 ﻿CREATE TABLE IF NOT EXISTS CompanySettings (
   CompanyID VARCHAR(20) PRIMARY KEY, -- Changed from INT to VARCHAR(20)
-  FullName VARCHAR(150) NULL,
+  CompanyName VARCHAR(150) NULL,
   Address VARCHAR(255) NULL,
   ContactEmail VARCHAR(150) NULL,
   Phone              VARCHAR(30) NULL,
-  Branch             VARCHAR(150) NULL,
-  Warehouse          VARCHAR(150) NULL,
-  Brand              VARCHAR(150) NULL,
   LogoDataUrl        LONGTEXT NULL,
 
   BusinessDays VARCHAR(100) NOT NULL DEFAULT 'Monday,Tuesday,Wednesday,Thursday,Friday,Saturday',
@@ -40,10 +37,3 @@
   UpdatedAt DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
   FOREIGN KEY (CompanyID) REFERENCES Company(CompanyID)
 );
-
-ALTER TABLE CompanySettings ADD COLUMN IF NOT EXISTS Branch VARCHAR(150) NULL;
-ALTER TABLE CompanySettings ADD COLUMN IF NOT EXISTS Warehouse VARCHAR(150) NULL;
-ALTER TABLE CompanySettings ADD COLUMN IF NOT EXISTS Brand VARCHAR(150) NULL;
-
-
-

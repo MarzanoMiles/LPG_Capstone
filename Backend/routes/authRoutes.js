@@ -71,28 +71,21 @@ router.post(
   "/register",
   asyncHandler(async (req, res) => {
     const {
-      companyName, dtiSecNo, doeLicenseNo, branchName, cityMunicipality,
-      completeAddress, firstName, lastName, email, password,
+      companyName, branchName, completeAddress, firstName, lastName, email, password, confirmPassword,
     } = req.body;
 
     if (
-      !companyName || !dtiSecNo || !branchName || !cityMunicipality ||
-      !completeAddress || !firstName || !lastName || !email || !password
+      !companyName || !branchName || !completeAddress ||
+      !firstName || !lastName || !email || !password || !confirmPassword
     ) {
       throw new ApiError(400, "All required fields must be filled in.");
     }
 
-    const DTI_PATTERN = /^[A-Z]{2,4}\d{6,12}$/;
-    const DOE_PATTERN = /^DOE-LPG-\d{4}-\d{3,4}$/;
     const EMAIL_PATTERN = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
     const NAME_PATTERN = /^[A-Za-z\u00F1\u00D1' .-]{2,50}$/;
 
-    const dtiUpper = dtiSecNo.toUpperCase();
-    if (!DTI_PATTERN.test(dtiUpper)) {
-      throw new ApiError(400, "DTI/SEC registration number format is invalid. Expected format like CS202412345.");
-    }
-    if (doeLicenseNo && !DOE_PATTERN.test(doeLicenseNo.toUpperCase())) {
-      throw new ApiError(400, "DOE distributor license number format is invalid. Expected format like DOE-LPG-2026-001.");
+    if (password !== confirmPassword) {
+      throw new ApiError(400, "Passwords do not match.");
     }
     if (!EMAIL_PATTERN.test(email)) {
       throw new ApiError(400, "Please enter a valid email address.");
@@ -109,11 +102,11 @@ router.post(
       await conn.beginTransaction();
 
       const [existingCompany] = await conn.query(
-        `SELECT CompanyID FROM Company WHERE CompanyName = :name OR DTIRegNo = :dti`,
-        { name: companyName, dti: dtiUpper }
+        `SELECT CompanyID FROM Company WHERE CompanyName = :name`,
+        { name: companyName }
       );
       if (existingCompany[0]) {
-        throw new ApiError(409, "A company with this name or DTI/SEC registration number is already registered.");
+        throw new ApiError(409, "A company with this name is already registered.");
       }
 
       const [existingUser] = await conn.query(`SELECT UserID FROM User WHERE Email = :email`, { email });
@@ -121,26 +114,34 @@ router.post(
         throw new ApiError(409, "An account with this email already exists.");
       }
 
-      const fullAddress = `${completeAddress}, ${cityMunicipality}`;
+      const fullAddress = completeAddress;
 
       // Generate custom primary keys
       const companyId = await require('../utils/entityIds').nextEntityId(conn, 'Company');
+      const branchId = await require('../utils/entityIds').nextEntityId(conn, 'Branch');
       const warehouseId = await require('../utils/entityIds').nextEntityId(conn, 'Warehouse');
       const userId = await nextUserId(conn);
       const userActivityId = await require('../utils/entityIds').nextEntityId(conn, 'UserActivity');
 
       // 1. Insert Company
       await conn.query(
-        `INSERT INTO Company (CompanyID, CompanyName, DTIRegNo, DOENo, PrimaryBranch, Address)
-         VALUES (:companyId, :name, :dti, :doe, :branch, :address)`,
-        { companyId, name: companyName, dti: dtiUpper, doe: doeLicenseNo ? doeLicenseNo.toUpperCase() : null, branch: branchName, address: fullAddress }
+        `INSERT INTO Company (CompanyID, CompanyName, PrimaryBranch, Address)
+         VALUES (:companyId, :name, :branch, :address)`,
+        { companyId, name: companyName, branch: branchName, address: fullAddress }
+      );
+
+      // Create the primary branch shown in Manage Branches.
+      await conn.query(
+        `INSERT INTO Branch (BranchID, CompanyID, BranchName, Address)
+         VALUES (:branchId, :companyId, :name, :address)`,
+        { branchId, companyId, name: branchName, address: fullAddress }
       );
 
       // 2. Insert Default Warehouse
       await conn.query(
-        `INSERT INTO Warehouse (WarehouseID, CompanyID, WarehouseName, Location)
-         VALUES (:warehouseId, :companyId, :name, :location)`,
-        { warehouseId, companyId, name: branchName, location: fullAddress }
+        `INSERT INTO Warehouse (WarehouseID, CompanyID, BranchID, WarehouseName, Location)
+         VALUES (:warehouseId, :companyId, :branchId, :name, :location)`,
+        { warehouseId, companyId, branchId, name: branchName, location: fullAddress }
       );
 
       // 3. Get Admin Role (handles both 'Administrator' and 'Admin')
@@ -154,13 +155,14 @@ router.post(
       const defaultModules = Object.fromEntries(Object.keys(emptyModuleAccess()).map(key => [key,true]));
 
       await conn.query(
-        `INSERT INTO \`User\` (UserID, CompanyID, RoleID, WarehouseID, FirstName, LastName, Email, PasswordHash, Status, ModuleAccess)
-         VALUES (:userId, :companyId, :roleId, :warehouseId, :firstName, :lastName, :email, :passwordHash, 'Active', :modules)`,
+        `INSERT INTO \`User\` (UserID, CompanyID, RoleID, WarehouseID, BranchID, FirstName, LastName, Email, PasswordHash, Status, ModuleAccess)
+         VALUES (:userId, :companyId, :roleId, :warehouseId, :branchId, :firstName, :lastName, :email, :passwordHash, 'Active', :modules)`,
         {
           userId,
           companyId,
           roleId: adminRole.RoleID,
           warehouseId,
+          branchId,
           firstName,
           lastName,
           email,
@@ -171,9 +173,9 @@ router.post(
 
       // 5. Insert Company Settings
       await conn.query(
-        `INSERT INTO CompanySettings (CompanyID, FullName, Address, ContactEmail)
-         VALUES (:companyId, :fullName, :address, :email)`,
-        { companyId, fullName: companyName, address: fullAddress, email }
+        `INSERT INTO CompanySettings (CompanyID, CompanyName, Address, ContactEmail)
+         VALUES (:companyId, :companyName, :address, :email)`,
+        { companyId, companyName: companyName, address: fullAddress, email }
       );
 
       // 6. Log User Activity

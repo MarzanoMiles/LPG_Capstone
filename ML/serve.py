@@ -16,7 +16,7 @@ from dotenv import load_dotenv
 
 from features import FEATURE_NAMES, build_feature_vector, vector_to_row
 
-load_dotenv()
+load_dotenv(os.path.join(os.path.dirname(__file__), '.env'), encoding='utf-8-sig')
 
 MODEL_PATH = os.path.join(os.path.dirname(__file__), "restock_model.pkl")
 

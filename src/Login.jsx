@@ -18,8 +18,7 @@ import "./Login.css";
 //     accept that type of input" behavior.
 //  2. "patterns" run on submit (and live, once the user has tried to submit
 //     once) to catch inputs that are made of valid characters but still
-//     don't match the required shape (e.g. "AB1" is all valid characters for
-//     a DTI number but too short) — these show an inline error message.
+//     don't match the required shape — these show an inline error message.
 // ---------------------------------------------------------------------------
 
 const filters = {
@@ -258,6 +257,7 @@ export default function Login({ onLogin, onRegisterSuccess, sessionError }) {
           lastName: regForm.lastName,
           email: regForm.email,
           password: regForm.regPassword,
+          confirmPassword: regForm.confirmPassword,
         }),
       });
       onRegisterSuccess?.(data);

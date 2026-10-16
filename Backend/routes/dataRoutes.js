@@ -160,7 +160,7 @@ router.post(
       const reportData = await getAnnualReportData(pool, String(brandId), parsedYear);
 
       const [[settingsRow]] = await pool.query(
-        `SELECT FullName, ContactEmail FROM CompanySettings WHERE CompanyID = :companyId`,
+        `SELECT CompanyName, ContactEmail FROM CompanySettings WHERE CompanyID = :companyId`,
         { companyId: req.user.companyId }
       );
       const [[userRow]] = await pool.query(
@@ -168,7 +168,7 @@ router.post(
         { id: req.user.userId }
       );
       const meta = {
-        companyName: settingsRow?.FullName || "",
+        companyName: settingsRow?.CompanyName || "",
         contactEmail: settingsRow?.ContactEmail || "",
         preparedBy: userRow?.name || "",
       };

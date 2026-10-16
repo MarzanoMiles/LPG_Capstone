@@ -7,7 +7,7 @@ import SettingsOperations from "./SettingsOperations";
 import SettingsFinancial from "./SettingsFinancial";
 
 const emptySettings = {
-  fullName: "",
+  companyName: "",
   address: "",
   contactEmail: "",
   phone: "",
@@ -144,12 +144,12 @@ export default function Settings() {
         <div className="business-profile-grid">
           <div className="input-column">
             <div className="form-group">
-              <label>Full name</label>
+              <label>Company Name</label>
               <input
                 type="text"
                 className="form-control"
-                value={settings.fullName}
-                onChange={(e) => updateField("fullName", e.target.value)}
+                value={settings.companyName}
+                onChange={(e) => updateField("companyName", e.target.value)}
               />
             </div>
             <div className="form-group">
@@ -214,7 +214,7 @@ export default function Settings() {
             className="btn btn-primary"
             onClick={() =>
               saveSection("profile", "profile", {
-                fullName: settings.fullName,
+                companyName: settings.companyName,
                 address: settings.address,
                 contactEmail: settings.contactEmail,
                 phone: settings.phone,

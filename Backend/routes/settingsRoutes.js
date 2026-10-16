@@ -12,7 +12,7 @@ function toBool(v) {
 
 function mapRow(row) {
   return {
-    fullName: row.FullName || "",
+    companyName: row.CompanyName || "",
     address: row.Address || "",
     contactEmail: row.ContactEmail || "",
     phone: row.Phone || "",
@@ -107,15 +107,15 @@ router.put(
   authorize("Admin", "Manager"),
   asyncHandler(async (req, res) => {
     await ensureRow(req.user.companyId);
-    const { fullName, address, contactEmail, phone } = req.body;
+    const { companyName, address, contactEmail, phone } = req.body;
     await pool.query(
       `UPDATE CompanySettings SET
-         FullName = COALESCE(:fullName, FullName),
+         CompanyName = COALESCE(:companyName, CompanyName),
          Address = COALESCE(:address, Address),
          ContactEmail = COALESCE(:contactEmail, ContactEmail),
          Phone = COALESCE(:phone, Phone)
        WHERE CompanyID = :companyId`,
-      { companyId: req.user.companyId, fullName: fullName ?? null, address: address ?? null, contactEmail: contactEmail ?? null, phone: phone ?? null }
+      { companyId: req.user.companyId, companyName: companyName ?? null, address: address ?? null, contactEmail: contactEmail ?? null, phone: phone ?? null }
     );
     res.json({ message: "Business profile saved." });
   })

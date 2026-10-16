@@ -34,6 +34,20 @@ Both `npm.cmd run dev` and `npm.cmd start` in `Backend` check the database
 before starting. If it already contains tables, seeding is skipped. Restarting
 preserves saved records, edits, deletions, accounts, and passwords.
 
+Company registration collects the registered company name, branch name, complete
+address, administrator first and last name, email, password, and confirmation.
+For an existing database or one restored from an older snapshot, run
+`npm.cmd run migrate:company-registration` from `Backend` before using registration.
+This removes the legacy DTI/SEC, DOE license, and city/municipality columns
+from Company if present, including any values stored in those columns.
+
+Run `npm.cmd run migrate:company-profile` from `Backend` when upgrading an older
+database. This renames Business Profile `FullName` to `CompanyName`, preserving
+its value, and removes the unused CompanySettings `Branch`, `Warehouse`, and
+`Brand` columns. Registration fills the profile company name, address, and email.
+The primary branch is created in Manage Branches and assigned to the initial
+administrator and default warehouse.
+
 ## Current database is the only seed
 
 The configured database was captured on October 16, 2026 in
@@ -141,6 +155,21 @@ unavailable.
 
 ## Check the installation
 
+Latest local check: October 16, 2026 (Asia/Shanghai).
+
+| Component | Verified result |
+| --- | --- |
+| Frontend | Port 5173 responds; production build passes. Lint exits successfully with 13 warnings. Vite reports a large JavaScript chunk. |
+| Backend | Port 4000 health responds; MySQL connection and authenticated Business Profile read pass. Profile company name, address, and email match MySQL. |
+| Backend tests | Eight failures in pickup claim, pickup settlement, and purchase-order workflow tests. Their SQL mocks do not support the current `EntityIdSequence` allocation query; the settlement concurrency assertion also fails. The suite is not fully passing. |
+| ML | Port 5001 health reports `model_loaded: true`; prediction and backend ML client checks pass. Python compilation, dependency checks, and MySQL connection pass. |
+| SQL snapshot | Refreshed `Backend/db/snapshots/current.sql`; export completion and current registration/profile schema verified. No restore was performed. |
+
+ML reads its own `.env` relative to the script and supports UTF-8 files with or
+without a byte-order mark. Restart ML after pulling this environment-loading fix.
+Existing immutable audit records, including prior registration test history,
+remain part of the current database and snapshot.
+
 ```powershell
 Invoke-RestMethod http://localhost:4000/health
 Invoke-RestMethod http://localhost:5001/health
@@ -156,6 +185,28 @@ Frontend checks from the project root:
 npm.cmd run build
 npm.cmd run lint
 ```
+
+Backend tests, from `Backend`:
+
+```powershell
+node --test tests/*.test.js
+```
+
+This suite includes a financial-rules database test that connects to the configured
+MySQL database, runs its migration, and cleans up its temporary ledger rows. Other
+database integration tests are opt-in. Use a separate test database for repeated
+development testing.
+
+ML checks, from `ML`:
+
+```powershell
+.\venv\Scripts\python.exe -m pip check
+.\venv\Scripts\python.exe -m py_compile serve.py features.py train_model.py
+$prediction = @{ items = @(@{ productId = "SMOKE-TEST"; current_stock = 5; reorder_level = 10; sales_7d = 14; sales_30d = 60; sales_90d = 180; lead_time_days = 3; days_since_last_restock = 12 }) } | ConvertTo-Json -Depth 4
+Invoke-RestMethod http://localhost:5001/predict -Method Post -ContentType "application/json" -Body $prediction
+```
+
+The prediction check computes a response without writing business records.
 
 Use `npm.cmd` if PowerShell blocks `npm.ps1`. If a port is occupied, stop the
 existing service before starting another copy. For database errors, check

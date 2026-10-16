@@ -9,8 +9,6 @@ DROP TABLE IF EXISTS DeliveryAction, PickupClaim, PickupSettlement, UserActivity
 CREATE TABLE Company (
   CompanyID      VARCHAR(20) PRIMARY KEY,               -- C-001
   CompanyName    VARCHAR(150) NOT NULL UNIQUE,
-  DTIRegNo       VARCHAR(50)  NOT NULL UNIQUE,
-  DOENo          VARCHAR(50)  NULL,
   PrimaryBranch  VARCHAR(100) NULL,
   Address        VARCHAR(255) NOT NULL
 );
@@ -89,10 +87,12 @@ CREATE TABLE Warehouse (
   WarehouseID    VARCHAR(20) PRIMARY KEY,               -- WH-001
   CompanyID      VARCHAR(20) NOT NULL,
   WarehouseName  VARCHAR(100) NOT NULL,
+  BranchID       VARCHAR(20) NULL,
   Location       VARCHAR(255) NOT NULL,
   Status         VARCHAR(20) NOT NULL DEFAULT 'Active',
   CreatedAt      DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
-  FOREIGN KEY (CompanyID) REFERENCES Company(CompanyID)
+  FOREIGN KEY (CompanyID) REFERENCES Company(CompanyID),
+  FOREIGN KEY (BranchID) REFERENCES Branch(BranchID)
 );
 
 CREATE TABLE User (
@@ -100,6 +100,7 @@ CREATE TABLE User (
   CompanyID     VARCHAR(20) NOT NULL,
   RoleID        VARCHAR(20) NOT NULL,
   WarehouseID   VARCHAR(20) NULL,
+  BranchID      VARCHAR(20) NULL,
   FirstName     VARCHAR(50) NOT NULL,
   LastName      VARCHAR(50) NOT NULL,
   Email         VARCHAR(150) NOT NULL UNIQUE,
@@ -360,13 +361,10 @@ CREATE TABLE UserActivity (
 
 CREATE TABLE CompanySettings (
   CompanyID          VARCHAR(20) PRIMARY KEY,
-  FullName           VARCHAR(150) NULL,
+  CompanyName        VARCHAR(150) NULL,
   Address            VARCHAR(255) NULL,
   ContactEmail       VARCHAR(150) NULL,
   Phone              VARCHAR(30) NULL,
-  Branch             VARCHAR(150) NULL,
-  Warehouse          VARCHAR(150) NULL,
-  Brand              VARCHAR(150) NULL,
   LogoDataUrl        LONGTEXT NULL,
   BusinessDays VARCHAR(100) NOT NULL DEFAULT 'Monday,Tuesday,Wednesday,Thursday,Friday,Saturday',
   OpeningTime TIME NOT NULL DEFAULT '08:00:00',
