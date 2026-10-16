@@ -5,6 +5,10 @@
     "main":  "server.js",
     "scripts":  {
     "migrate:supplier-types": "node db/migrate_supplier_types.js",
+    "check:po-database": "node db/check_po_database.js",
+    "migrate:po-paid-status": "node db/migrate_po_paid_status.js",
+    "migrate:po-payment-email": "node db/migrate_po_payment_email.js",
+    "migrate:po-payment-amount": "node db/migrate_po_payment_amount.js",
     "migrate:po-workflow": "node db/migrate_po_workflow.js",
     "migrate:supplier-history": "node db/migrate_supplier_history.js",
                     "migrate:walkin-customer": "node db/migrate_walkin_customer.js",

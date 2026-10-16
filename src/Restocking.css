@@ -865,3 +865,108 @@
   padding-inline: 0;
   justify-content: flex-start;
 }
+
+.po-document { background: #fff; color: #1e293b; border: 1px solid #cbd5e1; padding: 32px; margin: 20px 0; line-height: 1.6; }
+.po-document-header { display: flex; justify-content: space-between; gap: 24px; border-bottom: 3px solid #142f43; padding-bottom: 20px; }
+.po-document-header h2 { color: #142f43; font-size: 20px; margin: 0 0 8px; }
+.po-document p { margin: 4px 0; overflow-wrap: anywhere; }
+.po-document h4 { color: #475569; font-size: 12px; letter-spacing: 1px; margin: 0 0 8px; }
+.po-document-parties { display: grid; grid-template-columns: 1fr 1fr; gap: 24px; margin: 24px 0; }
+.po-document-total { display: flex; justify-content: flex-end; gap: 24px; border-top: 2px solid #142f43; padding: 16px 0; font-size: 17px; }
+.po-document-note { border-top: 1px solid #cbd5e1; margin-top: 24px; padding-top: 16px; color: #475569; font-size: 12px; }
+@media (max-width: 600px) { .po-document { padding: 16px; } .po-document-header { flex-direction: column; } .po-document-parties { grid-template-columns: 1fr; } .po-document-total { flex-wrap: wrap; } }
+
+.po-document-dialog { width: min(900px, calc(100vw - 32px)); max-height: 90vh; box-sizing: border-box; overflow: auto; border: 0; border-radius: 12px; padding: 24px; background: #fff; color: #1e293b; box-shadow: 0 20px 50px rgba(0, 0, 0, .2); }
+.po-document-dialog::backdrop { background: rgba(17, 24, 39, .6); }
+.po-document-dialog .po-document { margin-bottom: 0; }
+@media (max-width: 600px) { .po-document-dialog { padding: 16px; } }
+
+.po-document-button-row { display: flex; justify-content: center; }
+.po-document-dialog { margin: auto; inset: 0; }
+.po-pdf-preview { display: flex; flex-direction: column; gap: 12px; margin-top: 16px; }
+.po-pdf-preview > a { align-self: flex-end; text-decoration: none; }
+.po-pdf-preview object { width: 100%; height: 68vh; border: 1px solid #cbd5e1; }
+
+.po-history-status-pill.rejected { background: #fee2e2; color: #991b1b; }
+.po-action-buttons .po-reject-btn { border: 1px solid #fecaca; background: #fff1f2; color: #991b1b; }
+.po-action-buttons .po-reject-btn:hover:not(:disabled) { background: #fee2e2; }
+
+.po-orders-table .po-action-buttons .po-icon-action { display: inline-flex; align-items: center; justify-content: center; flex: 0 0 36px; width: 36px; height: 36px; padding: 0; border-radius: 9px; border: 1px solid #dbe3ed; background: #f8fafc; color: #475569; transition: background .15s, border-color .15s; }
+.po-orders-table .po-action-buttons .po-icon-action:hover:not(:disabled) { background: #e2e8f0; border-color: #94a3b8; }
+.po-orders-table .po-action-buttons .po-icon-action-send, .po-orders-table .po-action-buttons .po-icon-action-dispatch { color: #1d4ed8; background: #eff6ff; border-color: #bfdbfe; }
+.po-orders-table .po-action-buttons .po-icon-action-approve, .po-orders-table .po-action-buttons .po-icon-action-receive { color: #15803d; background: #f0fdf4; border-color: #bbf7d0; }
+.po-orders-table .po-action-buttons .po-icon-action-reject { color: #b91c1c; background: #fff1f2; border-color: #fecaca; }
+.po-orders-table .po-action-buttons .po-icon-action:focus-visible { outline: 2px solid #2563eb; outline-offset: 3px; }
+.po-orders-table .po-action-buttons .po-icon-action:disabled { opacity: .5; cursor: not-allowed; }
+
+.po-workflow-dialog { width: min(680px, calc(100vw - 32px)); padding: 22px; }
+.po-workflow-context { margin: 6px 0 18px; color: #64748b; font-size: 13px; }
+.po-workflow-tabs { display: flex; gap: 6px; padding: 5px; background: #f1f5f9; border-radius: 10px; }
+.po-workflow-tabs button { flex: 1; display: flex; align-items: center; justify-content: center; gap: 8px; padding: 9px 6px; border: 0; border-radius: 7px; background: transparent; color: #64748b; font-weight: 600; cursor: pointer; }
+.po-workflow-tabs button[aria-selected="true"] { color: #1e3a5f; background: #fff; box-shadow: 0 1px 4px #00000012; }
+.po-workflow-tabs button span { display: grid; place-items: center; width: 22px; height: 22px; border-radius: 50%; background: #e2e8f0; font-size: 12px; }
+.po-workflow-tabs button:disabled { opacity: .45; cursor: not-allowed; }
+.po-workflow-tabs button:focus-visible { outline: 2px solid #2563eb; outline-offset: 2px; }
+.po-workflow-panel { padding-top: 18px; }
+.po-workflow-panel h4 { margin: 0 0 10px; }
+.po-workflow-panel p { line-height: 1.5; }
+.po-workflow-fields { display: grid; grid-template-columns: 1fr 1fr; gap: 14px; margin-top: 16px; }
+.po-workflow-fields .po-field { display: flex; flex-direction: column; gap: 7px; font-size: 13px; font-weight: 600; }
+.po-workflow-fields input, .po-workflow-fields select { width: 100%; box-sizing: border-box; border: 1px solid #cbd5e1; border-radius: 8px; padding: 10px; background: #fff; }
+.po-workflow-amount { display: flex; justify-content: space-between; margin: 0 0 10px; }
+.po-workflow-dialog .po-form-footer { margin-top: 18px; padding-top: 14px; }
+.po-workflow-dialog .po-pdf-preview object { height: 42vh; }
+.po-payment-sent { background: #f0fdf4; color: #15803d; padding: 10px; border-radius: 8px; }
+@media (max-width: 480px) { .po-workflow-fields { grid-template-columns: 1fr; } .po-workflow-dialog { padding: 16px; } .po-workflow-tabs button { gap: 4px; font-size: 12px; } }
+
+.po-view-order-btn { display: inline-flex; align-items: center; justify-content: center; gap: 8px; white-space: nowrap; align-self: center; }
+.po-view-order-btn svg { flex-shrink: 0; }
+
+.po-document-actions { display: flex; align-items: center; justify-content: center; gap: 12px; flex-wrap: wrap; }
+.po-history-close-btn.po-modal-x { display: inline-flex; align-items: center; justify-content: center; width: 36px; height: 36px; padding: 0; flex-shrink: 0; }
+.po-modal-x:focus-visible { outline: 2px solid #2563eb; outline-offset: 2px; }
+
+.po-payment-heading { display: flex; justify-content: space-between; align-items: flex-start; gap: 16px; }
+.po-payment-heading .po-form-intro { margin: 0; font-size: 13px; }
+.po-payment-order-amount { display: flex; flex-direction: column; gap: 4px; text-align: right; flex-shrink: 0; }
+.po-payment-order-amount span { color: #64748b; font-size: 12px; }
+.po-payment-order-amount strong { color: #1e3a5f; font-size: 17px; }
+.po-payment-form .po-workflow-fields { gap: 16px; margin-top: 20px; }
+.po-payment-form .po-field { min-width: 0; margin: 0; }
+.po-payment-reference { grid-column: 1 / -1; }
+.po-payment-form input, .po-payment-form select { height: 42px; font: inherit; font-weight: 400; color: #1e293b; }
+.po-payment-form input:focus, .po-payment-form select:focus { outline: 2px solid #2563eb; outline-offset: 1px; }
+.po-payment-form input[readonly] { background: #f8fafc; color: #475569; }
+.po-payment-form .po-form-footer { justify-content: space-between; }
+@media (max-width: 480px) { .po-payment-heading { flex-direction: column; } .po-payment-order-amount { text-align: left; } }
+
+.po-form-footer .po-confirm-decline { background: #b91c1c; color: #fff; }
+.po-form-footer .po-confirm-decline:hover:not(:disabled) { background: #991b1b; }
+
+.po-history-status-pill.paid { background: #dcfce7; color: #166534; }
+
+.po-receive-modal { max-width: 740px; gap: 18px; }
+.po-receive-modal .po-view-details { display: grid; grid-template-columns: 1fr 1fr; gap: 14px 24px; padding: 18px; }
+.po-receive-modal .po-view-detail { grid-template-columns: 1fr; gap: 3px; line-height: 1.45; }
+.po-receive-modal .po-view-detail strong { font-size: 12px; color: #64748b; font-weight: 600; }
+.po-receive-modal .po-view-address { grid-column: 1 / -1; padding-bottom: 14px; }
+.po-receive-modal .po-history-items-table { margin: 0; }
+.po-receive-modal .po-history-items-table th:not(:first-child), .po-receive-modal .po-history-items-table td:not(:first-child) { text-align: center; }
+.po-receive-modal .po-form-footer { margin-top: 18px; padding-top: 16px; }
+@media (max-width: 480px) { .po-receive-modal .po-view-details { grid-template-columns: 1fr; } }
+
+.po-delivery-details { display: flex; flex-direction: column; gap: 22px; margin-top: 20px; }
+.po-delivery-info { display: grid; grid-template-columns: 1fr 1fr; gap: 16px 24px; margin: 0; padding: 18px; background: #f8fafc; border: 1px solid #e2e8f0; border-radius: 10px; }
+.po-delivery-info dt { color: #64748b; font-size: 12px; font-weight: 600; margin-bottom: 5px; }
+.po-delivery-info dd { margin: 0; color: #1e293b; font-size: 14px; line-height: 1.5; overflow-wrap: anywhere; }
+.po-delivery-address { grid-column: 1 / -1; padding-top: 14px; border-top: 1px solid #e2e8f0; }
+.po-delivery-details h4 { margin: 0 0 12px; color: #1e3a5f; font-size: 14px; }
+.po-delivery-table-wrap { border: 1px solid #e2e8f0; border-radius: 8px; }
+.po-delivery-details table { width: 100%; margin: 0; min-width: 540px; table-layout: fixed; }
+.po-delivery-details table th, .po-delivery-details table td { padding: 12px 14px; vertical-align: middle; overflow-wrap: anywhere; line-height: 1.5; }
+.po-delivery-items th:first-child { width: 43%; }
+.po-delivery-items th:not(:first-child), .po-delivery-items td:not(:first-child), .po-delivery-records th:nth-child(3), .po-delivery-records td:nth-child(3) { text-align: center; font-variant-numeric: tabular-nums; }
+.po-delivery-date, .po-delivery-time { display: block; }
+.po-delivery-time { color: #64748b; font-size: 12px; margin-top: 3px; }
+.po-delivery-empty { margin: 0; padding: 24px 16px; text-align: center; border: 1px dashed #cbd5e1; border-radius: 8px; color: #64748b; font-size: 14px; }
+@media (max-width: 480px) { .po-delivery-info { grid-template-columns: 1fr; padding: 14px; } }

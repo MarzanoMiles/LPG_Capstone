@@ -1,6 +1,6 @@
 const pool=require('../config/db');
 async function migrate() {
-  for(const [table,definitions] of Object.entries({PurchaseOrder:{WarehouseID:'VARCHAR(20) NULL',PaymentMethod:'VARCHAR(30) NULL',PaymentReference:'VARCHAR(100) NULL',RequestKey:'VARCHAR(64) NULL'},PurchaseOrderItem:{ReceivedQuantity:'INT NOT NULL DEFAULT 0'}})) {
+  for(const [table,definitions] of Object.entries({PurchaseOrder:{WarehouseID:'VARCHAR(20) NULL',PaymentMethod:'VARCHAR(30) NULL',PaymentReference:'VARCHAR(100) NULL',AmountPaid:'DECIMAL(12,2) NULL',PaymentEmailSentAt:'DATETIME NULL',RequestKey:'VARCHAR(64) NULL'},PurchaseOrderItem:{ReceivedQuantity:'INT NOT NULL DEFAULT 0'}})) {
     const [columns]=await pool.query(`SHOW COLUMNS FROM ${table}`);
     for(const [name,type] of Object.entries(definitions)) if(!columns.some(c=>c.Field===name)) await pool.query(`ALTER TABLE ${table} ADD COLUMN ${name} ${type}`);
   }

@@ -1,26 +1,17 @@
 # Purchase order workflow
 
-Run `npm run migrate:po-workflow` from `Backend` before starting the updated API. The migration is additive and rerunnable. It adds WarehouseID, PaymentMethod, PaymentReference and RequestKey to PurchaseOrder, ReceivedQuantity to PurchaseOrderItem, and a warehouse foreign key. Fresh installations receive the same fields from schema.sql. Existing Received orders are initialized as fully received. No stock is changed by this migration.
+From Backend, run `npm run migrate:po-workflow`, then `npm run migrate:po-paid-status` before starting the updated API. The schema includes nullable AmountPaid and PaymentEmailSentAt fields. Separate rerunnable migrations are also available as `migrate:po-payment-amount` and `migrate:po-payment-email`. Existing payment amounts and email-send times are not inferred. No stock is changed by these migrations.
 
-Existing POs have no stored destination warehouse. The migration deliberately leaves it NULL rather than guessing where stock should go. Review and backfill the correct business warehouse administratively before dispatch/receipt. Existing historical statuses and inventory movements are preserved; reconcile legacy Approved/Sent orders with actual supplier communications because the previous API did not verify email dispatch.
+Creation snapshots each active product's database CostPrice within the order transaction. Browser-supplied costs are ignored. Quantities and stored unit costs determine item subtotals and the order total. Existing orders retain their original costs.
 
-Configure the existing mail transport in Backend/.env:
+Creation saves Pending before SMTP. Successful email submission sets Sent. Failed email leaves a retryable Pending order. The purchase order PDF contains requested products, quantities and total item count. It excludes payment and price information.
 
-- SMTP_HOST
-- SMTP_PORT (587 by default)
-- SMTP_SECURE=true for implicit TLS, normally port 465; false for STARTTLS on 587
-- SMTP_USER
-- SMTP_PASS
-- SMTP_FROM (optional; defaults to SMTP_USER for PO emails)
+Supplier acceptance sets Approved; supplier decline sets Rejected. Rejected orders remain in Supplier Purchase Order History and cannot proceed to payment or receipt. The payment step requires GCash, Card or Bank Transfer, a reference number, and a positive amount with at most two decimal places. Recording payment sets Paid. This records external payment; it does not charge an account or create a Payment ledger entry. Payment details can be corrected before the acknowledgment email is sent.
 
-The authenticated business profile needs business name, address, ContactEmail and Phone. Suppliers need a saved email. Supplier selection follows the existing selected recommendation/product supplier flow. Payment details record only method and an optional reference, without creating a payment/settlement or collecting card credentials.
+The payment PDF contains saved costs, item totals, Total Amount Due and Total Amount Paid. The preview and email attachment share one PDF generator. Successful payment email submission records PaymentEmailSentAt. The workflow icon disappears, repeat send requests return without another email, and payment details become immutable. The payment PDF remains available from Purchase Order Details.
 
-Creation saves a Pending PO before contacting SMTP. Successful SMTP acceptance advances it to Sent. Failure is logged and displayed, and the saved Pending PO can be retried with Send. A PDF containing business, supplier, warehouse, items and payment summary is attached. SMTP acceptance confirms handoff, not supplier acceptance or delivery to the inbox. Approve is a separate confirmed user action, followed by confirmed dispatch to Out for Delivery.
+The delivery icon for Paid orders opens Confirm Goods Received. Confirmation credits the outstanding quantities to the persisted destination warehouse with Stock In / Supplier Delivery movement records and sets Received. Legacy Out for Delivery receipts remain supported. PO and warehouse locking, receipt keys and transactional movement writes prevent duplicate stock; stock, receipt quantities and status roll back together on failure. Received, Cancelled and Rejected orders are excluded from the active table and retained in supplier history.
 
-Receiving requires Out for Delivery and an active destination warehouse owned by the authenticated company. Ordered quantities, previously received quantities and this delivery's actual units are shown. A partial receipt stays Out for Delivery; the PO becomes Received only when all units have arrived. Overdelivery is rejected.
+SMTP requires SMTP_HOST, SMTP_USER and SMTP_PASS, with SMTP_FROM optional. The purchasing business requires name, address, email and phone; suppliers require a saved email. SMTP acceptance confirms handoff rather than inbox delivery. SMTP cannot participate in a MySQL transaction: a connection or commit failure after acceptance can leave delivery uncertain. An outbox or provider idempotency would be needed to resolve that window.
 
-The API locks the PO and warehouse and uses the existing recordStockIn helper within a single transaction. Inventory credit, Stock In / Purchase audit records, item receipt counters and final status commit together or all roll back. A receipt request key is recorded in the existing movement Remarks field and checked under the PO lock to prevent retries from duplicating stock. A creation request key and serialized ID allocation prevent duplicate creation and preserve existing PO ID/reference formats. Company scoping applies to PO list, details and mutations.
-
-SMTP cannot participate in a MySQL transaction: a connection/commit failure after SMTP accepts mail can leave delivery uncertain and a retry may send another email. Inventory is unaffected. An outbox/provider idempotency design would require additional persisted delivery infrastructure.
-
-Validation: `npm run build`; targeted oxlint on changed JavaScript/JSX; `node --test Backend/tests/purchaseOrderWorkflow.test.js`. Tests use isolated DB/SMTP adapters and the real stock-in helper; they cover full and partial receipts, duplicate retries, rollback after audit failure, invalid warehouse/state/quantity rejection, linear transitions and SMTP failure/success. No test fixtures are written to the application database. Live MySQL migration and real SMTP delivery must be verified in the configured deployment environment.
+Validation: `npm run check:po-database` checks the configured live database without changes. Run purchaseOrderWorkflow.test.js, purchaseOrderCosts.test.js and purchaseOrderDocument.test.js with node --test from the project root. The opt-in purchaseOrder.database.test.js performs an inventory stock-in inside a rolled-back transaction; run from Backend with RUN_PO_DATABASE_TESTS=1. No emails are sent by these tests.

@@ -246,6 +246,8 @@ CREATE TABLE PurchaseOrder (
   WarehouseID          VARCHAR(20) NULL,
   PaymentMethod        VARCHAR(30) NULL,
   PaymentReference     VARCHAR(100) NULL,
+  AmountPaid           DECIMAL(12,2) NULL,
+  PaymentEmailSentAt   DATETIME NULL,
   RequestKey           VARCHAR(64) NULL,
   PurchaseOrderID       VARCHAR(20) PRIMARY KEY,        -- PO-001
   SupplierID            VARCHAR(20) NOT NULL,

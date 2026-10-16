@@ -228,7 +228,7 @@ export default function Restocking() {
               className={`restocking-tab ${activeTab === "purchaseOrder" ? "active" : ""}`}
               onClick={() => setActiveTab("purchaseOrder")}
             >
-              Purchase Order <span className="po-tab-badge">{purchaseOrderHistory.filter(po => !["Received", "Cancelled"].includes(po.status)).length}</span>
+              Purchase Order <span className="po-tab-badge">{purchaseOrderHistory.filter(po => !["Received", "Cancelled", "Rejected"].includes(po.status)).length}</span>
             </button>
           </div>
 
@@ -389,7 +389,7 @@ export default function Restocking() {
           </>
         )}
 
-        {activeTab === "purchaseOrder" && <POTable orders={purchaseOrderHistory} loading={isHistoryLoading} onRefresh={() => { loadPurchaseOrderHistory(); loadRecommendations(); }} />}
+        {activeTab === "purchaseOrder" && <POTable orders={purchaseOrderHistory.filter(po => !["Received", "Cancelled", "Rejected"].includes(po.status))} loading={isHistoryLoading} onRefresh={() => { loadPurchaseOrderHistory(); loadRecommendations(); }} />}
         {poDraft && <POCreationModal draft={poDraft} onClose={() => { setPoDraft(null); loadPurchaseOrderHistory(); loadRecommendations(); }} onSaved={() => { setPoDraft(null); setSelectedRows([]); loadRecommendations(); loadPurchaseOrderHistory(); }} />}
 
       {/* Bulk Customize Modal — edits the currently checked rows */}

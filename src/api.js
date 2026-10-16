@@ -14,6 +14,8 @@ export async function apiRequest(path, options = {}) {
     headers,
   });
 
+  if (res.ok && options.responseType === 'blob') return res.blob();
+
   const data = await res.json().catch(() => ({}));
   if (!res.ok) {
     const error = new Error(data.error || "Request failed");
