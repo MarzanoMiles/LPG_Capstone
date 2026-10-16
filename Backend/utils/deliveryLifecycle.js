@@ -32,7 +32,7 @@ function transition(row, action, max) {
 }
 async function context(conn,user,id) {
   const [rows]=await conn.query(`SELECT d.*,o.OrderID,o.OrderNo,o.OrderStatus,o.TotalAmount,o.customer_name AS CustomerName FROM Delivery d
-    JOIN Sales s ON s.SaleID=d.SaleID JOIN User owner ON owner.UserID=s.UserID
+    JOIN Sales s ON s.SaleID=d.SaleID JOIN UserHistory owner ON owner.UserID=s.UserID
     JOIN \`Order\` o ON o.OrderID=s.OrderID LEFT JOIN Customer c ON c.CustomerID=o.CustomerID
     WHERE d.DeliveryID=:id AND owner.CompanyID=:companyId FOR UPDATE`,{id,companyId:user.companyId});
   const row=rows[0];

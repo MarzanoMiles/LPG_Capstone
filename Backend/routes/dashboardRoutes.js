@@ -88,7 +88,7 @@ router.get(
       `SELECT a.UserActivityID AS id, a.Description AS text, a.Module AS module,
               a.ActivityType AS action, UNIX_TIMESTAMP(a.ActivityDate) AS date
        FROM UserActivity a
-       JOIN User u ON u.UserID = a.UserID
+       JOIN UserHistory u ON u.UserID = a.UserID
        WHERE u.CompanyID = :companyId
        ORDER BY a.ActivityDate DESC
        LIMIT 6`,
@@ -167,7 +167,7 @@ router.get(
               a.Module AS module, a.ActivityType AS action, a.Description AS description,
               UNIX_TIMESTAMP(a.ActivityDate) AS date
        FROM UserActivity a
-       JOIN User u ON u.UserID = a.UserID
+       JOIN UserHistory u ON u.UserID = a.UserID
        WHERE u.CompanyID = :companyId
        ORDER BY a.ActivityDate DESC
        LIMIT :limit`,

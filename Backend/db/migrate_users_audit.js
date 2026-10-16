@@ -4,7 +4,9 @@ async function migrate() {
  try {
   await c.query('CREATE TABLE IF NOT EXISTS UserIdSequence (SequenceID INT PRIMARY KEY, NextValue BIGINT NOT NULL)');
   await c.query("INSERT INTO UserIdSequence (SequenceID,NextValue) SELECT 1, COALESCE(MAX(CAST(SUBSTRING(UserID,3) AS UNSIGNED)),0)+1 FROM User WHERE UserID REGEXP '^U-[0-9]+$' ON DUPLICATE KEY UPDATE NextValue=GREATEST(NextValue,VALUES(NextValue))");
-  for (const table of ['User','Warehouse']) {
+  const [history]=await c.query("SHOW TABLES LIKE 'userhistory'");
+ if(history.length) await c.query("UPDATE UserIdSequence SET NextValue=GREATEST(NextValue,(SELECT COALESCE(MAX(CAST(SUBSTRING(UserID,3) AS UNSIGNED)),0)+1 FROM UserHistory WHERE UserID REGEXP '^U-[0-9]+$')) WHERE SequenceID=1");
+ for (const table of ['User','Warehouse']) {
    const [cols]=await c.query(`SHOW COLUMNS FROM \`${table}\``);
    if(!cols.some(x=>x.Field==='BranchID')) await c.query(`ALTER TABLE \`${table}\` ADD BranchID VARCHAR(20) NULL, ADD FOREIGN KEY (BranchID) REFERENCES Branch(BranchID)`);
   }

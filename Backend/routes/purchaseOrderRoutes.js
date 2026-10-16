@@ -9,7 +9,7 @@ const { transporter } = require('../config/mailer');
 const { purchaseOrderText, purchaseOrderPDF } = require('../utils/purchaseOrderDocument');
 const { pricePurchaseOrderItems } = require('../utils/purchaseOrderCosts');
 router.use(authenticate);
-const scope = `JOIN User owner ON owner.UserID=po.CreatedByUserID`;
+const scope = `JOIN UserHistory owner ON owner.UserID=po.CreatedByUserID`;
 async function transaction(work) {
   const conn = await pool.getConnection();
   try { await conn.beginTransaction(); const result = await work(conn); await conn.commit(); return result; }

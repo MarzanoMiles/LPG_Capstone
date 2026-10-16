@@ -1,6 +1,6 @@
 import PageLayout, { PageHeader } from "./PageLayout";
 import Pagination from "./Pagination";
-import React, { useCallback, useEffect, useMemo, useState } from "react";
+import React, { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import {
   Search,
   ChevronDown,
@@ -98,6 +98,27 @@ function ViewUserModal({ user, onClose }) {
   );
 }
 
+function DeleteUserModal({ user, busy, error, onCancel, onConfirm }) {
+  const dialog = useRef(null);
+  useEffect(() => {
+    const element = dialog.current;
+    element.showModal();
+    return () => element.close();
+  }, []);
+  return (
+    <dialog ref={dialog} className="user-delete-dialog" aria-labelledby="delete-user-title" aria-describedby="delete-user-description"
+      onCancel={event => { event.preventDefault(); if (!busy) onCancel(); }}>
+      <h2 id="delete-user-title">Delete user?</h2>
+      <p id="delete-user-description">Delete <strong>{user.name}</strong>? They will be removed from the Users list and will no longer be able to sign in. Their activity logs and transaction history will be preserved.</p>
+      {error && <p className="user-delete-error" role="alert">{error}</p>}
+      <div className="user-delete-buttons">
+        <button type="button" disabled={busy} onClick={onCancel} autoFocus>Cancel</button>
+        <button type="button" className="user-delete-confirm" disabled={busy} onClick={onConfirm}>{busy ? "Deleting..." : "Confirm Delete"}</button>
+      </div>
+    </dialog>
+  );
+}
+
 // ---------------------------------------------------------------------------
 // Main Users component
 // ---------------------------------------------------------------------------
@@ -120,6 +141,9 @@ export default function Users() {
   const [showAddUserModal, setShowAddUserModal] = useState(false);
   const [editingUser, setEditingUser] = useState(null);
   const [viewingUser, setViewingUser] = useState(null);
+  const [deletingUser, setDeletingUser] = useState(null);
+  const [isDeleting, setIsDeleting] = useState(false);
+  const deleteInFlight = useRef(false);
 
   const [activitySearchTerm, setActivitySearchTerm] = useState("");
   const [activityModule, setActivityModule] = useState("");
@@ -219,16 +243,22 @@ export default function Users() {
 
   const handleView = (user) => setViewingUser(user);
 
-  const handleDelete = async (user) => {
-    const confirmed = window.confirm(`Deactivate ${user.name}? They will no longer be able to log in.`);
-    if (!confirmed) return;
+  const handleDelete = async () => {
+    if (!deletingUser || deleteInFlight.current) return;
+    deleteInFlight.current = true;
+    setIsDeleting(true);
     setActionError("");
     try {
-      await apiRequest(`/users/${user.id}`, { method: "DELETE" });
+      await apiRequest(`/users/${deletingUser.id}`, { method: "DELETE" });
+      setUsers(previous => previous.filter(user => user.id !== deletingUser.id));
+      setDeletingUser(null);
       loadUsers();
       loadActivityLog();
     } catch (err) {
-      setActionError(err.message || "Failed to deactivate user.");
+      setActionError(err.message || "Failed to delete user.");
+    } finally {
+      deleteInFlight.current = false;
+      setIsDeleting(false);
     }
   };
 
@@ -238,7 +268,7 @@ export default function Users() {
         <PageHeader title="Users" />
 
         {loadError && <p style={{ color: "#dc2626", fontWeight: 600 }}>{loadError}</p>}
-        {actionError && <p style={{ color: "#dc2626", fontWeight: 600 }}>{actionError}</p>}
+        {actionError && !deletingUser && <p style={{ color: "#dc2626", fontWeight: 600 }}>{actionError}</p>}
 
         {/* Tabs */}
         <div className="users-tabs">
@@ -292,8 +322,8 @@ export default function Users() {
                       <th>Username/Email</th>
                       <th>Role</th>
                       <th>Branch / Warehouse</th>
-                      <th>Actions</th>
                       <th>Status</th>
+                      <th>Actions</th>
                     </tr>
                   </thead>
                   <tbody>
@@ -307,6 +337,7 @@ export default function Users() {
                         <td>{user.email}</td>
                         <td>{user.role}</td>
                         <td>{user.branch || "—"}</td>
+                        <td><StatusPill status={user.status} /></td>
                         <td>
                           <div className="action-icons">
                             <button
@@ -328,14 +359,13 @@ export default function Users() {
                             <button
                               type="button"
                               className="action-icon delete"
-                              aria-label={`Deactivate ${user.name}`}
-                              onClick={() => handleDelete(user)}
+                              aria-label={`Delete ${user.name}`}
+                              onClick={() => { setActionError(""); setDeletingUser(user); }}
                             >
                               <Trash2 size={16} />
                             </button>
                           </div>
                         </td>
-                        <td><StatusPill status={user.status} /></td>
                       </tr>
                     ))}
                     {!isLoading && paginatedUsers.length === 0 && (
@@ -431,6 +461,8 @@ export default function Users() {
         }}
       />
 
+      {deletingUser && <DeleteUserModal user={deletingUser} busy={isDeleting} error={actionError}
+        onCancel={() => { if (!deleteInFlight.current) { setDeletingUser(null); setActionError(""); } }} onConfirm={handleDelete} />}
       <ViewUserModal user={viewingUser} onClose={() => setViewingUser(null)} />
     </PageLayout>
   );

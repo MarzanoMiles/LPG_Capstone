@@ -73,7 +73,7 @@ router.get(
   "/",
   asyncHandler(async (req, res) => {
     const { search, role, status, branch } = req.query;
-    let sql = LIST_SELECT + ` WHERE u.CompanyID = :companyId`;
+    let sql = LIST_SELECT + ` WHERE u.CompanyID = :companyId AND u.Status <> 'Deleted'`;
     const params = { companyId: req.user.companyId };
     if (search) {
       sql += ` AND (u.FirstName LIKE :s OR u.LastName LIKE :s OR u.Email LIKE :s)`;
@@ -130,7 +130,7 @@ router.get(
     const [countRows] = await pool.query(
       `SELECT COUNT(*) AS total
        FROM UserActivity a
-       LEFT JOIN User u ON u.UserID = a.UserID
+       LEFT JOIN UserHistory u ON u.UserID = a.UserID
        LEFT JOIN Role r ON r.RoleID = u.RoleID
        ${whereClause}`,
       params
@@ -145,7 +145,7 @@ router.get(
              a.ActorRole AS role, u.Status AS status, a.Module AS module, a.ActivityType AS action,
              a.RecordID AS targetId, a.Outcome AS outcome, a.Description AS description, UNIX_TIMESTAMP(a.ActivityDate) AS datetime
       FROM UserActivity a
-      LEFT JOIN User u ON u.UserID = a.UserID
+      LEFT JOIN UserHistory u ON u.UserID = a.UserID
       LEFT JOIN Role r ON r.RoleID = u.RoleID
       ${whereClause}
       ORDER BY a.ActivityDate DESC, a.UserActivityID DESC
@@ -168,7 +168,7 @@ router.get(
 router.get(
   "/:id",
   asyncHandler(async (req, res) => {
-    const [rows] = await pool.query(LIST_SELECT + ` WHERE u.UserID = :id AND u.CompanyID = :companyId`, { id: req.params.id, companyId: req.user.companyId });
+    const [rows] = await pool.query(LIST_SELECT + ` WHERE u.UserID = :id AND u.CompanyID = :companyId AND u.Status <> 'Deleted'`, { id: req.params.id, companyId: req.user.companyId });
     if (!rows[0]) throw new ApiError(404, "User not found.");
     res.json({ ...rows[0], moduleAccess: parseModules(rows[0].moduleAccess) });
   })
@@ -255,7 +255,7 @@ router.put(
     const sets = [];
     const [targets] = await conn.query(`SELECT u.*,r.RoleName FROM User u JOIN Role r ON r.RoleID=u.RoleID WHERE u.UserID=:id AND u.CompanyID=:companyId FOR UPDATE`, params);
     const target = targets[0];
-    if (!target) throw new ApiError(404, 'User not found.');
+    if (!target || target.Status === 'Deleted') throw new ApiError(404, 'User not found.');
     if (!isAdministrator(req) && ['admin','administrator'].includes(String(target.RoleName).trim().toLowerCase())) throw new ApiError(403, 'Only administrators can modify administrator accounts.');
     const changes = [];
 
@@ -346,29 +346,31 @@ router.delete(
     try {
     await conn.beginTransaction();
     if (String(req.params.id) === String(req.user.userId)) {
-      throw new ApiError(400, "You cannot deactivate your own account.");
+      throw new ApiError(400, "You cannot delete your own account.");
     }
     const [targets] = await conn.query(`SELECT u.FirstName,u.LastName,u.Status,r.RoleName FROM User u JOIN Role r ON r.RoleID=u.RoleID WHERE u.UserID=:id AND u.CompanyID=:companyId FOR UPDATE`, {id:req.params.id,companyId:req.user.companyId});
     const target = targets[0];
-    if (!target) throw new ApiError(404, 'User not found.');
-    if (!isAdministrator(req) && ['admin','administrator'].includes(String(target.RoleName).trim().toLowerCase())) throw new ApiError(403, 'Only administrators can deactivate administrator accounts.');
-    const [result] = await conn.query(`UPDATE User SET Status = 'Inactive' WHERE UserID = :id AND CompanyID = :companyId`, {
+    if (!target || target.Status === 'Deleted') throw new ApiError(404, 'User not found.');
+    if (!isAdministrator(req) && ['admin','administrator'].includes(String(target.RoleName).trim().toLowerCase())) throw new ApiError(403, 'Only administrators can delete administrator accounts.');
+    await conn.query('DELETE FROM PasswordResetToken WHERE UserID=:id', {id:req.params.id});
+    const [result] = await conn.query(`DELETE FROM User WHERE UserID = :id AND CompanyID = :companyId`, {
       id: req.params.id, companyId: req.user.companyId,
     });
     if (!result.affectedRows) throw new ApiError(404, "User not found.");
 
-    if (target.Status !== 'Inactive') {
+    await conn.query("UPDATE UserHistory SET Status='Deleted' WHERE UserID=:id", {id:req.params.id});
+    if (target.Status !== 'Deleted') {
     const userActivityId = await require('../utils/entityIds').nextEntityId(conn, 'UserActivity');
     await conn.query(
       `INSERT INTO UserActivity (UserActivityID, UserID, ActivityType, Module, RecordID, Description)
        VALUES (:userActivityId, :userId, 'Delete', 'Users — User Management', :recordId, :description)`,
-      { userActivityId, userId: req.user.userId, recordId: req.params.id, description:`Deactivated user ${target.FirstName} ${target.LastName}.` }
+      { userActivityId, userId: req.user.userId, recordId: req.params.id, description:`Deleted user ${target.FirstName} ${target.LastName}. Activity and transaction history preserved.` }
     );
     }
 
     await conn.commit();
     } catch (error) { await conn.rollback(); throw error; } finally { conn.release(); }
-    res.json({ message: "User deactivated." });
+    res.json({ message: "User deleted. History preserved." });
   })
 );
 

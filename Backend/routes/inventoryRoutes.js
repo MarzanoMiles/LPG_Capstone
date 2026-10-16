@@ -240,7 +240,7 @@ router.get(
       JOIN Inventory i ON i.InventoryID = t.InventoryID
       JOIN ProductHistory p ON p.ProductID = i.ProductID
       JOIN Warehouse w ON w.WarehouseID = i.WarehouseID
-      JOIN User u ON u.UserID = t.UserID
+      JOIN UserHistory u ON u.UserID = t.UserID
       ORDER BY t.TransactionDate DESC
       LIMIT 200
     `);
@@ -531,7 +531,7 @@ router.get(
        FROM Transfer t
        JOIN Warehouse fw ON fw.WarehouseID = t.FromWarehouseID
        JOIN Warehouse tw ON tw.WarehouseID = t.ToWarehouseID
-       JOIN User u ON u.UserID = t.UserID
+       JOIN UserHistory u ON u.UserID = t.UserID
        JOIN TransferDetail td ON td.TransferID = t.TransferID
        JOIN ProductHistory p ON p.ProductID = td.ProductID
        WHERE fw.CompanyID = :companyId OR tw.CompanyID = :companyId

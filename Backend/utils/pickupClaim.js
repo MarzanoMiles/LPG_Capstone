@@ -25,7 +25,7 @@ async function complete(pool,user,orderId,body) {
   try {
     await conn.beginTransaction();
     const [orders]=await conn.query(`SELECT o.* FROM \`Order\` o WHERE o.OrderID=:orderId AND o.OrderType='Pickup'
-      AND EXISTS (SELECT 1 FROM Sales s JOIN User u ON u.UserID=s.UserID WHERE s.OrderID=o.OrderID AND u.CompanyID=:companyId) FOR UPDATE`,{orderId,companyId:user.companyId});
+      AND EXISTS (SELECT 1 FROM Sales s JOIN UserHistory u ON u.UserID=s.UserID WHERE s.OrderID=o.OrderID AND u.CompanyID=:companyId) FOR UPDATE`,{orderId,companyId:user.companyId});
     const order=orders[0];if(!order)throw new ApiError(404,"Pickup order not found.");
     const [claims]=await conn.query("SELECT * FROM PickupClaim WHERE OrderID=:orderId",{orderId});
     if(claims[0]) {
@@ -41,7 +41,7 @@ async function complete(pool,user,orderId,body) {
       await conn.commit();committed=true;throw new ApiError(409,"Pickup expired. Restock & Settle is required.");
     }
     // Checkout already created the sale/payment. Finalize that same transaction.
-    const [sales]=await conn.query("SELECT s.* FROM Sales s JOIN User u ON u.UserID=s.UserID WHERE s.OrderID=:orderId AND u.CompanyID=:companyId FOR UPDATE",{orderId,companyId:user.companyId});
+    const [sales]=await conn.query("SELECT s.* FROM Sales s JOIN UserHistory u ON u.UserID=s.UserID WHERE s.OrderID=:orderId AND u.CompanyID=:companyId FOR UPDATE",{orderId,companyId:user.companyId});
     if(sales.length!==1 || Number(sales[0].TotalAmount)!==Number(order.TotalAmount))throw new ApiError(409,"Expected one matching prepaid sale; review required.");
     const sale=sales[0];
     const [payments]=await conn.query("SELECT AmountPaid,ReferenceNo FROM Payment WHERE SaleID=:saleId AND PaymentType='Sale' FOR UPDATE",{saleId:sale.SaleID});

@@ -54,7 +54,8 @@ database, account `U-001` uses `jose.villanueva.admin@gmail.com`; use its existi
 password. This account is not automatically present in someone else's new
 database. Products `P-001` through `P-006` have been removed from this database's
 catalog and stock, with archived order details preserved. Restarting the app
-does not recreate them; `seed:products` is retired and creates no data.
+does not recreate them. All legacy demo seed entry points are retired and
+create no data, including when invoked directly with Node.
 
 ## First clone: prerequisites
 
@@ -147,8 +148,9 @@ service after changing configuration.
 ### 3. Prepare a NEW database
 
 **Skip schema import for an existing/shared database.** `schema.sql` drops
-application tables, and `npm.cmd run seed` also drops and recreates tables.
-Neither is a daily startup command. Back up existing data before migrations.
+application tables. Use it only for a verified empty database. Back up existing
+data before intentional migrations. The current `seed` command no longer resets
+tables or inserts sample business data; see the seed policy below.
 
 For a new local database only, run from `Backend`:
 
@@ -157,8 +159,15 @@ cd Backend
 mysql -u root -p -e "CREATE DATABASE gastrack CHARACTER SET utf8mb4"
 mysql -u root -p gastrack -e "source db/schema.sql"
 mysql -u root -p gastrack -e "source db/patch_password_reset.sql"
-mysql -u root -p gastrack -e "INSERT INTO Role (RoleID, RoleName) VALUES ('RL-001','Administrator'),('RL-002','Operations Supervisor'),('RL-003','Assistant Operations Supervisor'),('RL-004','Store Supervisor'),('RL-005','Assistant Store Supervisor'),('RL-006','Stockman'),('RL-007','Head Maintenance'),('RL-008','Drivers'),('RL-009','Helpers'),('RL-010','Customer')"
+npm.cmd run seed
+npm.cmd run migrate:supplier-history
 npm.cmd run migrate:product-history
+npm.cmd run migrate:users-audit
+npm.cmd run migrate:user-history
+npm.cmd run migrate:business-operations
+npm.cmd run migrate:financial-rules
+npm.cmd run migrate:pickup
+npm.cmd run migrate:po-workflow
 ```
 
 The `mysql` commands above use a **local root connection**, independently of
@@ -169,9 +178,11 @@ PowerShell does not support `< file.sql`; use the `source` syntax shown above.
 
 The current schema already includes fields from several older patches. Do not
 blindly apply every SQL file: some add duplicate columns, transform IDs, or
-remove inventory. `migrate:product-history` creates the history table required
-by product operations. The role rows above enable account registration; the
-schema alone does not create roles or login accounts.
+remove inventory. `migrate:supplier-history` and `migrate:product-history` create the history
+tables required by supplier and product operations. The other commands prepare
+user IDs, audit logging, settings, pickup and purchase-order workflows. `seed`
+initializes only the system roles on a fresh installation, enabling registration.
+The schema alone does not create roles or login accounts.
 
 Check the configured backend database connection:
 
@@ -186,9 +197,59 @@ on the frontend to create your company and administrator, then sign in with
 that account. A fresh database has no default login. Add suppliers, categories,
 brands, products, and stock through the app as needed.
 
-Demo seed scripts are optional developer tools, not part of this clean setup.
-In particular, running `seed` after migrations discards schema changes; inspect
-its code and reapply the required migrations if deliberately rebuilding a demo.
+### Database seeds for the current system
+
+The only applicable seed is `npm.cmd run seed` (run inside `Backend`). It creates
+10 required system roles only when no application or catalog history records
+exist. `SetupSeedHistory` records the first run. Subsequent runs preserve edited
+and deleted roles. On an existing installation it records setup and leaves all
+business records unchanged. It does not import the schema or apply migrations.
+Do not delete `SetupSeedHistory` to force reseeding.
+
+| Data | Current source / behavior |
+| --- | --- |
+| System roles | One-time fresh-install seed; subsequent changes through Role Settings. |
+| Company, branches, warehouses, users | Registration and the app's user/settings workflows. No demo accounts or password resets. |
+| Brands, categories, suppliers | App-managed catalog and supplier records. Deleted entries are not reseeded. |
+| Products and unit values | App-managed product catalog. No old names, prices, variants or deleted products are restored. |
+| Inventory, movements, transfers, restock recommendations | App stock and restocking workflows. No fixed stock or random inventory seeds. |
+| Customers, orders, order details, sales | App customer and sales workflows. No old customer or sales fixtures. |
+| Purchase orders, items, payments, deliveries | App transaction workflows. No synthetic transactions or deliveries. |
+| Reports | Existing reports and app report workflows. No fixed-date sample report seed. |
+| Settings, audit records and history | App defaults and operational writes; retained by migrations, not replaced with demo history. |
+| Supplier type options | Fresh schema includes defaults. Manage changes in the app; do not reimport the schema to restore options. |
+
+Legacy `seed:products`, `seed:reports`, `seed:demo:jose` and
+`seed:dashboard:history` commands remain harmless compatibility entry points.
+They print a retirement message without connecting to MySQL. Their old fixtures
+are no longer executed, including through `node db/seed*.js`.
+
+### Existing database: intentional maintenance only
+
+For the current configured database, normal startup needs **no seed, schema
+import or migration**. Do not run every migration on every restart. When updating
+an older installation, review the relevant migration and back up first. Run
+only the required commands with application writers stopped:
+
+| Change needed | Command inside `Backend` |
+| --- | --- |
+| Normalize legacy prefixed IDs and linked references | `npm.cmd run migrate:entity-ids` |
+| Remove measurement suffixes from legacy Unit Value strings | `npm.cmd run migrate:unit-values` |
+| Add missing supplier history support | `npm.cmd run migrate:supplier-history` |
+| Add missing product history support | `npm.cmd run migrate:product-history` |
+| Archive user identities without passwords and preserve transactions when deleting accounts | `npm.cmd run migrate:user-history` (after `migrate:users-audit`) |
+| Add user numbering, branch assignments and audit support | `npm.cmd run migrate:users-audit` |
+| Add supplier type tables to an older schema | `npm.cmd run migrate:supplier-types` |
+| Add business operating settings | `npm.cmd run migrate:business-operations` |
+| Add refund settings and ledger | `npm.cmd run migrate:financial-rules` |
+| Add pickup stages, settlement and claims | `npm.cmd run migrate:pickup` |
+| Add purchase-order receiving and payment fields | `npm.cmd run migrate:po-workflow` |
+
+Do not use one-off inventory randomizers, stock movers, password-reset utilities,
+verification scripts that write data, or raw SQL patches as seeds. These are
+maintenance tools with specific effects. `schema.sql` remains a destructive
+fresh-database definition; importing it over saved data will reset tables even
+though the Node seed commands are now safe.
 
 ### 4. Install ML dependencies and train once
 
@@ -278,21 +339,14 @@ than a schema reimport. Review the migration documentation under `Backend/db`,
 including `CUSTOMER_HISTORY.md`, `DELIVERY_LIFECYCLE.md`, `FINANCIAL_RULES.md`, and
 `PRODUCT_HISTORY.md`. Back up data and stop the app before schema maintenance.
 
-`Backend/db/patch_product_unit_value.sql` adds Product.UnitValue and populates
-recognizable weights without replacing saved values. Enter Unit Value (e.g.
-`11 kg`) in Products; returned-cylinder Weight uses this saved value.
+Unit Value is numeric (for example, `11`) and Unit is separate (`kg`). For an
+older database containing strings such as `11 kg`, use the reviewed
+`migrate:unit-values` command in the maintenance table above. Do not reimport
+sample products to correct measurements.
 
-For intentional removal of legacy inventory `P-001` through `P-006`, back up
-the database, stop the app, and run from the project root:
-
-```powershell
-mysql -u root -p gastrack -e "source Backend/db/patch_remove_legacy_inventory.sql"
-```
-
-This removes linked stock/inventory transactions and marks those products
-inactive; product and sales records remain. Run only for a database that needs
-this cleanup, after any demo seeding that recreates the products. Pushing SQL
-files to Git does not apply them to anyone's database.
+Legacy inventory cleanup is not part of setup. This database already had its
+legacy catalog cleanup; deleted products must remain deleted. SQL files in Git
+are not applied automatically to anyone's database.
 
 ## Verification scope
 

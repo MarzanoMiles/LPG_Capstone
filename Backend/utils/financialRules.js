@@ -33,7 +33,7 @@ function calculateRefund(eligible, settings, qualifies) {
 async function issueRefund(conn, user, orderId, reason) {
  const [orders] = await conn.query(`SELECT o.* FROM \`Order\` o WHERE o.OrderID = :orderId FOR UPDATE`, {orderId});
  if (!orders[0]) throw new ApiError(404, "Order not found.");
- const [sales] = await conn.query(`SELECT s.SaleID FROM Sales s JOIN User u ON u.UserID = s.UserID WHERE s.OrderID = :orderId AND u.CompanyID = :companyId FOR UPDATE`, {orderId, companyId: user.companyId});
+ const [sales] = await conn.query(`SELECT s.SaleID FROM Sales s JOIN UserHistory u ON u.UserID = s.UserID WHERE s.OrderID = :orderId AND u.CompanyID = :companyId FOR UPDATE`, {orderId, companyId: user.companyId});
  if (!sales.length) throw new ApiError(404, "Sale not found for this company.");
  const [existing] = await conn.query("SELECT * FROM RefundLedger WHERE OrderID = :orderId AND CompanyID = :companyId", {orderId, companyId: user.companyId});
  if (existing[0]) return existing[0];

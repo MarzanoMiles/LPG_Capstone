@@ -41,7 +41,7 @@ function transition(current, target, paid) {
 }
 async function evaluate(conn, companyId, now = new Date()) {
   const [settings] = await conn.query("SELECT * FROM CompanySettings WHERE CompanyID = :companyId", {companyId});
-  const [orders] = await conn.query(`SELECT o.OrderID, o.PickupScheduledAt FROM \`Order\` o WHERE o.OrderType='Pickup' AND o.PickupStatus IN ('Preparing','Ready for Pickup') AND EXISTS (SELECT 1 FROM Sales s JOIN User u ON u.UserID=s.UserID WHERE s.OrderID=o.OrderID AND u.CompanyID=:companyId AND (SELECT COALESCE(SUM(p.AmountPaid),0) FROM Payment p WHERE p.SaleID=s.SaleID)>=o.TotalAmount)`, {companyId});
+  const [orders] = await conn.query(`SELECT o.OrderID, o.PickupScheduledAt FROM \`Order\` o WHERE o.OrderType='Pickup' AND o.PickupStatus IN ('Preparing','Ready for Pickup') AND EXISTS (SELECT 1 FROM Sales s JOIN UserHistory u ON u.UserID=s.UserID WHERE s.OrderID=o.OrderID AND u.CompanyID=:companyId AND (SELECT COALESCE(SUM(p.AmountPaid),0) FROM Payment p WHERE p.SaleID=s.SaleID)>=o.TotalAmount)`, {companyId});
   for (const order of orders) {
     if (!order.PickupScheduledAt) continue; // Legacy rows need a verified schedule; never invent one.
     if (!settings[0]) throw new ApiError(409, "Configure pickup policies in Settings.");

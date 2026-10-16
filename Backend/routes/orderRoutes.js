@@ -37,14 +37,14 @@ const LIST_SELECT = `
   LEFT JOIN Sales s ON s.OrderID = o.OrderID
   LEFT JOIN (SELECT SaleID,SUM(AmountPaid) AS AmountPaid,MAX(PaymentID) AS PaymentID,MAX(ReferenceNo) AS ReferenceNo,MAX(PaymentMethod) AS PaymentMethod FROM Payment WHERE PaymentType='Sale' GROUP BY SaleID) pay ON pay.SaleID = s.SaleID
   LEFT JOIN Delivery d ON d.SaleID = s.SaleID
-  LEFT JOIN User rider ON rider.UserID = d.DeliveredByUserID
+  LEFT JOIN UserHistory rider ON rider.UserID = d.DeliveredByUserID
 `;
 
 // All pickup access is scoped through the sale creator's company.
 router.get("/pickup", asyncHandler(async (req, res) => {
   await pickup.evaluate(pool, req.user.companyId);
   const pickupSelect = LIST_SELECT.replace("LEFT JOIN Payment pay ON pay.SaleID = s.SaleID", "LEFT JOIN (SELECT SaleID, SUM(AmountPaid) AS AmountPaid, MAX(PaymentID) AS PaymentID, MAX(ReferenceNo) AS ReferenceNo, MAX(PaymentMethod) AS PaymentMethod FROM Payment GROUP BY SaleID) pay ON pay.SaleID = s.SaleID");
-  const [rows] = await pool.query(pickupSelect + ` WHERE o.OrderType='Pickup' AND o.PickupStatus IN ('Preparing','Ready for Pickup','Cancelled','Unclaimed') AND NOT EXISTS (SELECT 1 FROM PickupSettlement settled WHERE settled.OrderID=o.OrderID) AND pay.AmountPaid>=o.TotalAmount AND EXISTS (SELECT 1 FROM User owner WHERE owner.UserID=s.UserID AND owner.CompanyID=:companyId) ORDER BY o.PickupScheduledAt`, {companyId:req.user.companyId});
+  const [rows] = await pool.query(pickupSelect + ` WHERE o.OrderType='Pickup' AND o.PickupStatus IN ('Preparing','Ready for Pickup','Cancelled','Unclaimed') AND NOT EXISTS (SELECT 1 FROM PickupSettlement settled WHERE settled.OrderID=o.OrderID) AND pay.AmountPaid>=o.TotalAmount AND EXISTS (SELECT 1 FROM UserHistory owner WHERE owner.UserID=s.UserID AND owner.CompanyID=:companyId) ORDER BY o.PickupScheduledAt`, {companyId:req.user.companyId});
   const privileged = ["admin","administrator","manager","operations supervisor"].includes(String(req.user.roleName).toLowerCase());
   res.json(rows.map(row => ({...row, canSettle: privileged && !!row.settlementPending})));
 }));
@@ -54,7 +54,7 @@ router.put("/:id/pickup-status", authorize("Admin", "Manager", "Assistant Operat
   const conn = await pool.getConnection();
   try {
     await conn.beginTransaction();
-    const [rows] = await conn.query("SELECT o.* FROM `Order` o WHERE o.OrderID=:id AND o.OrderType='Pickup' AND EXISTS (SELECT 1 FROM Sales s JOIN User u ON u.UserID=s.UserID WHERE s.OrderID=o.OrderID AND u.CompanyID=:companyId) FOR UPDATE", {id:req.params.id, companyId:req.user.companyId});
+    const [rows] = await conn.query("SELECT o.* FROM `Order` o WHERE o.OrderID=:id AND o.OrderType='Pickup' AND EXISTS (SELECT 1 FROM Sales s JOIN UserHistory u ON u.UserID=s.UserID WHERE s.OrderID=o.OrderID AND u.CompanyID=:companyId) FOR UPDATE", {id:req.params.id, companyId:req.user.companyId});
     const order=rows[0];
     if (!order) throw new ApiError(404,"Pickup order not found.");
     if (!order.PickupScheduledAt) throw new ApiError(409,"Legacy pickup has no saved schedule; manual review required.");
@@ -76,7 +76,7 @@ router.put("/:id/pickup-status", authorize("Admin", "Manager", "Assistant Operat
 const claim = require("../utils/pickupClaim");
 const pickupOperators = ["Admin","Manager","Assistant Operations Supervisor","Store Supervisor","Assistant Store Supervisor","Cashier","Staff"];
 router.get("/:id/pickup-claim-options", authorize(...pickupOperators), asyncHandler(async(req,res)=>{
-  const [orders]=await pool.query("SELECT o.OrderID FROM `Order` o WHERE o.OrderID=:id AND o.OrderType='Pickup' AND EXISTS (SELECT 1 FROM Sales s JOIN User u ON u.UserID=s.UserID WHERE s.OrderID=o.OrderID AND u.CompanyID=:companyId)",{id:req.params.id,companyId:req.user.companyId});
+  const [orders]=await pool.query("SELECT o.OrderID FROM `Order` o WHERE o.OrderID=:id AND o.OrderType='Pickup' AND EXISTS (SELECT 1 FROM Sales s JOIN UserHistory u ON u.UserID=s.UserID WHERE s.OrderID=o.OrderID AND u.CompanyID=:companyId)",{id:req.params.id,companyId:req.user.companyId});
   if(!orders.length)throw new ApiError(404,"Pickup order not found.");
   const [warehouses]=await pool.query("SELECT WarehouseID AS id,WarehouseName AS name FROM Warehouse WHERE CompanyID=:companyId AND Status='Active' ORDER BY WarehouseName",{companyId:req.user.companyId});
   const [products]=await pool.query("SELECT p.ProductID AS id,p.ProductName AS name,b.Brand AS brand,p.UnitValue AS unitValue FROM Product p JOIN Category c ON c.CategoryID=p.CategoryID JOIN Brand b ON b.BrandID=p.BrandID WHERE c.Category='Cylinder' AND p.Status='Active' ORDER BY p.ProductName");
@@ -105,7 +105,7 @@ router.get("/customer/:customerId/history", asyncHandler(async(req,res)=>{
     CASE WHEN o.OrderType='Delivery' THEN d.SettledAt ELSE ps.CreatedAt END AS settledAt,
     CASE WHEN o.OrderType='Delivery' THEN COALESCE(deliveryRefund.settlementFee,0) ELSE ps.CancellationFee END AS settlementFee,
     CASE WHEN o.OrderType='Delivery' THEN COALESCE(deliveryRefund.netRefundAmount,0) ELSE ps.NetRefundAmount END AS netRefundAmount
-    FROM \`Order\` o JOIN Sales s ON s.OrderID=o.OrderID JOIN User owner ON owner.UserID=s.UserID
+    FROM \`Order\` o JOIN Sales s ON s.OrderID=o.OrderID JOIN UserHistory owner ON owner.UserID=s.UserID
     LEFT JOIN Delivery d ON d.SaleID=s.SaleID
     LEFT JOIN (SELECT SaleID,SUM(AmountPaid) AS amount FROM Payment WHERE PaymentType='Sale' GROUP BY SaleID) paid ON paid.SaleID=s.SaleID
     LEFT JOIN PickupSettlement ps ON ps.OrderID=o.OrderID AND ps.CompanyID=:companyId
@@ -124,7 +124,7 @@ router.get(
     const { search, status, type } = req.query;
     let sql = LIST_SELECT + ` WHERE o.OrderType IN ('Pickup', 'Delivery')`;
     const params = {companyId:req.user.companyId};
-    sql += ` AND EXISTS (SELECT 1 FROM User owner WHERE owner.UserID=s.UserID AND owner.CompanyID=:companyId)`;
+    sql += ` AND EXISTS (SELECT 1 FROM UserHistory owner WHERE owner.UserID=s.UserID AND owner.CompanyID=:companyId)`;
     if (search) {
       sql += ` AND (o.OrderNo LIKE :s OR o.customer_name LIKE :s)`;
       params.s = `%${search}%`;
@@ -151,10 +151,10 @@ router.get(
   "/:id",
   asyncHandler(async (req, res) => {
     await pickup.evaluate(pool, req.user.companyId);
-    const [rows] = await pool.query(LIST_SELECT + ` WHERE o.OrderID = :id AND EXISTS (SELECT 1 FROM User owner WHERE owner.UserID=s.UserID AND owner.CompanyID=:companyId)`, { id: req.params.id, companyId:req.user.companyId });
+    const [rows] = await pool.query(LIST_SELECT + ` WHERE o.OrderID = :id AND EXISTS (SELECT 1 FROM UserHistory owner WHERE owner.UserID=s.UserID AND owner.CompanyID=:companyId)`, { id: req.params.id, companyId:req.user.companyId });
     if (!rows[0]) throw new ApiError(404, "Order not found.");
     if (rows[0].type === "Pickup") {
-      const [owner] = await pool.query("SELECT s.SaleID FROM Sales s JOIN User u ON u.UserID=s.UserID WHERE s.OrderID=:id AND u.CompanyID=:companyId", {id:req.params.id,companyId:req.user.companyId});
+      const [owner] = await pool.query("SELECT s.SaleID FROM Sales s JOIN UserHistory u ON u.UserID=s.UserID WHERE s.OrderID=:id AND u.CompanyID=:companyId", {id:req.params.id,companyId:req.user.companyId});
       if (!owner[0]) throw new ApiError(404,"Order not found.");
     }
     const [items] = await pool.query(

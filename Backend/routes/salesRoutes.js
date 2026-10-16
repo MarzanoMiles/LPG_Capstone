@@ -34,7 +34,7 @@ router.get(
              COALESCE(s.customer_name, ' \u2014 ') AS customerName,
              s.TotalAmount AS amount, s.SalesDiscount AS discount
       FROM Sales s
-      JOIN User u ON u.UserID = s.UserID
+      JOIN UserHistory u ON u.UserID = s.UserID
       LEFT JOIN \`Order\` o ON o.OrderID = s.OrderID
       LEFT JOIN Customer c ON c.CustomerID = s.CustomerID
       WHERE 1=1`;
@@ -72,7 +72,7 @@ router.get(
              COALESCE(s.customer_name, ' \u2014 ') AS customerName,
               s.TotalAmount AS amount, s.SalesDiscount AS discount, s.Remarks AS remarks
        FROM Sales s
-       JOIN User u ON u.UserID = s.UserID
+       JOIN UserHistory u ON u.UserID = s.UserID
        LEFT JOIN \`Order\` o ON o.OrderID = s.OrderID
       LEFT JOIN Customer c ON c.CustomerID = s.CustomerID
        WHERE s.SaleID = :id`,
@@ -100,7 +100,7 @@ router.get(
        LEFT JOIN \`Order\` o ON o.OrderID = s.OrderID
        LEFT JOIN Customer c ON c.CustomerID = s.CustomerID
        LEFT JOIN Delivery d ON d.SaleID = s.SaleID
-       LEFT JOIN User r ON r.UserID = d.DeliveredByUserID
+       LEFT JOIN UserHistory r ON r.UserID = d.DeliveredByUserID
        LEFT JOIN Payment pay ON pay.SaleID = s.SaleID
        WHERE s.SaleID = :id
        ORDER BY pay.PaymentDate DESC LIMIT 1`,

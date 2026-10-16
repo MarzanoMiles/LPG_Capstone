@@ -26,7 +26,7 @@ function financials(paid, settings) {
 async function context(conn,user,orderId) {
   requirePermission(user);
   const [orders]=await conn.query(`SELECT o.*, o.customer_name AS CustomerName FROM \`Order\` o LEFT JOIN Customer c ON c.CustomerID=o.CustomerID
-    WHERE o.OrderID=:orderId AND o.OrderType='Pickup' AND EXISTS (SELECT 1 FROM Sales s JOIN User u ON u.UserID=s.UserID WHERE s.OrderID=o.OrderID AND u.CompanyID=:companyId) FOR UPDATE`, {orderId,companyId:user.companyId});
+    WHERE o.OrderID=:orderId AND o.OrderType='Pickup' AND EXISTS (SELECT 1 FROM Sales s JOIN UserHistory u ON u.UserID=s.UserID WHERE s.OrderID=o.OrderID AND u.CompanyID=:companyId) FOR UPDATE`, {orderId,companyId:user.companyId});
   const order=orders[0];
   if (!order) throw new ApiError(404,"Pickup order not found.");
   const [existing]=await conn.query("SELECT OrderID FROM PickupSettlement WHERE OrderID=:orderId",{orderId});

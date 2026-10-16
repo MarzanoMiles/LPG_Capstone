@@ -16,9 +16,9 @@ router.get('/',asyncHandler(async(req,res)=>{
     COALESCE(d.PaymentMethod,pay.method) AS paymentMethod,
     GREATEST(0,ROUND(o.TotalAmount-COALESCE(pay.amount,0),2)) AS amountToCollect,
     d.RestockedAt AS restockedAt,d.SettledAt AS settledAt
-    FROM Delivery d JOIN Sales s ON s.SaleID=d.SaleID JOIN User owner ON owner.UserID=s.UserID
+    FROM Delivery d JOIN Sales s ON s.SaleID=d.SaleID JOIN UserHistory owner ON owner.UserID=s.UserID
     JOIN \`Order\` o ON o.OrderID=s.OrderID LEFT JOIN Customer c ON c.CustomerID=o.CustomerID
-    LEFT JOIN User rider ON rider.UserID=d.DeliveredByUserID JOIN CompanySettings settings ON settings.CompanyID=owner.CompanyID
+    LEFT JOIN UserHistory rider ON rider.UserID=d.DeliveredByUserID JOIN CompanySettings settings ON settings.CompanyID=owner.CompanyID
     LEFT JOIN (SELECT SaleID,SUM(AmountPaid) AS amount,MAX(PaymentMethod) AS method FROM Payment WHERE PaymentType='Sale' GROUP BY SaleID) pay ON pay.SaleID=s.SaleID
     WHERE owner.CompanyID=:companyId AND d.DeliveryStatus<>'Delivered' AND d.SettledAt IS NULL AND NOT (d.DeliveryStatus='Cancelled' AND COALESCE(pay.amount,0)=0) AND (:isDriver=0 OR (d.DeliveredByUserID=:userId AND d.DeliveryStatus IN ('Out for Delivery','Failed Attempt') AND o.OrderStatus NOT IN ('Cancelled','Completed','Delivery Failed') AND d.AttemptCount<settings.MaxDeliveryAttempts))
     ORDER BY d.NextAttemptAt,o.OrderDate DESC`,{companyId:req.user.companyId,userId:req.user.userId,isDriver:Number(life.driver(req.user))});

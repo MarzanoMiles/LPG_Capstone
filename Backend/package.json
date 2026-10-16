@@ -4,6 +4,8 @@
     "type":  "commonjs",
     "main":  "server.js",
     "scripts":  {
+    "migrate:user-history": "node db/migrate_user_history.js",
+    "migrate:unit-values": "node db/migrate_unit_values.js",
     "migrate:entity-ids": "node db/migrate_entity_ids.js",
     "migrate:supplier-types": "node db/migrate_supplier_types.js",
     "check:po-database": "node db/check_po_database.js",

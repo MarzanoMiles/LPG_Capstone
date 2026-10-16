@@ -38,7 +38,7 @@ async function queryDataset(dataType, start, end) {
       `SELECT s.SaleNo, s.SaleDate, CONCAT(u.FirstName,' ',u.LastName) AS Cashier,
               s.SalesDiscount, s.TotalAmount, o.OrderType, o.OrderStatus
        FROM Sales s
-       JOIN User u ON u.UserID = s.UserID
+       JOIN UserHistory u ON u.UserID = s.UserID
        LEFT JOIN \`Order\` o ON o.OrderID = s.OrderID
        WHERE DATE(s.SaleDate) BETWEEN :start AND :end
        ORDER BY s.SaleDate`,
@@ -164,7 +164,7 @@ router.post(
         { companyId: req.user.companyId }
       );
       const [[userRow]] = await pool.query(
-        `SELECT CONCAT(FirstName,' ',LastName) AS name FROM User WHERE UserID = :id`,
+        `SELECT CONCAT(FirstName,' ',LastName) AS name FROM UserHistory WHERE UserID = :id`,
         { id: req.user.userId }
       );
       const meta = {
