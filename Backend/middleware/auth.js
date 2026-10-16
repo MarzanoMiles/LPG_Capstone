@@ -1,6 +1,8 @@
 const jwt = require("jsonwebtoken");
 const ApiError = require("../utils/apiError");
-const { logUserActivity } = require("../utils/activityLogger");
+const {resourceFor,describeAction} = require('../utils/activityDescriptions');
+const { auditContext } = require('../utils/databaseAudit');
+const { normalizeModuleAccess } = require('../utils/moduleAccess');
 
 function toActivityType(method) {
   if (method === "POST") return "Create";
@@ -10,6 +12,17 @@ function toActivityType(method) {
 }
 
 function toModule(pathname, method) {
+  if (pathname.startsWith("/user-settings/roles")) return "Role Settings";
+  if (pathname.startsWith("/user-settings/branches")) return "Branch Settings";
+  if (pathname.startsWith("/user-settings/warehouses")) return "Warehouse Settings";
+  if (pathname.startsWith('/brands')) return 'Brand Settings';
+  if (pathname.startsWith('/categories')) return 'Category Settings';
+  if (pathname.startsWith('/suppliers/types')) return 'Supplier Type Settings';
+  if (pathname.startsWith('/settings/')) {
+    const labels = {operations:'Business Operations',profile:'Company Profile',logo:'Company Logo',tax:'Tax',receipt:'Receipt',system:'System'};
+    return `${labels[pathname.split('/')[2]] || 'General'} Settings`;
+  }
+  if (pathname.startsWith("/auth")) return "Authentication";
   if (pathname.startsWith("/dashboard")) return "Dashboard — Activity Timeline";
 
   if (pathname.startsWith("/inventory/stock-in")) return "Inventory — Stock In";
@@ -56,79 +69,80 @@ function toModule(pathname, method) {
   return "System";
 }
 
-function shouldSkipAutoLog(pathname, method) {
-  if (!["POST", "PUT", "PATCH", "DELETE"].includes(method)) return true;
+function toAction(pathname, method) {
+  if (method === 'GET') return /document/.test(pathname) ? 'Preview' : /export/.test(pathname) ? 'Export' : 'View';
+  const last = pathname.split('/').filter(Boolean).at(-1);
+  const actions = { 'document-preview':'Preview', export:'Export', import:'Import', confirm:'Approve',
+    reject:'Reject', dispatch:'Dispatch', complete:'Complete', fail:'Failed Attempt', settle:'Settle',
+    cancel:'Cancel', receive:'Receive', refund:'Refund', 'pickup-claim':'Claim', 'pickup-settlement':'Settle',
+    generate:'Generate', send:'Send', 'send-payment':'Send Payment', logout:'Logout',
+    'stock-in':'Stock In', 'stock-out':'Stock Out', transfer:'Transfer', adjust:'Adjustment', adjustment:'Adjustment' };
+  return actions[last] || toActivityType(method);
+}
 
-  // These routes already write explicit activity records.
-  if (pathname.startsWith("/users")) return true;
-  if (pathname.startsWith("/products")) return true;
-  if (pathname.startsWith("/auth")) return true;
-
-  // Keep existing explicit Inventory force-delete audit behavior as the source of truth.
-  if (method === "DELETE" && /^\/inventory\/[^/]+$/.test(pathname)) return true;
-
-  return false;
+function allowedModules(req, pathname) {
+  const base = pathname.split('/').filter(Boolean)[0];
+  const write = req.method !== 'GET';
+  const map = {
+    users:['users'], 'user-settings':['users'], roles:['users'], dashboard:['dashboard'],
+    inventory: write ? ['inventory'] : ['inventory','pos','orders','restocking'],
+    warehouses:['inventory','pos','orders','restocking','users','sales','products'],
+    products: write ? ['products'] : ['products','pos','inventory','orders','restocking','sales'],
+    brands: write ? ['products'] : ['products','inventory','pos','restocking','report','data'],
+    categories: write ? ['products'] : ['products','inventory','pos','restocking'],
+    sales: write ? (pathname === '/sales' ? ['pos'] : ['sales']) : ['sales','pos','orders','report'],
+    payments:['pos','orders','restocking'], customers:['orders','pos'],
+    orders: write ? ['orders','pos'] : ['orders','pos','sales'], deliveries: pathname === '/deliveries/drivers' && !write ? ['orders','pos'] : ['orders'],
+    suppliers: write ? ['suppliers'] : ['suppliers','products','restocking'],
+    restocking:['restocking'], 'purchase-orders':['restocking'], reports:['report'], data:['data'],
+    settings: write ? ['settings'] : ['settings','pos','orders','restocking','inventory','report'],
+  };
+  return map[base] || [];
 }
 
 function inferRecordId(pathname) {
-  const actionSegments = new Set(["confirm", "cancel", "receive", "import", "export", "generate", "rescore", "quick"]);
-  const segments = String(pathname || "").split("?")[0].split("/").filter(Boolean);
-  if (!segments.length) return null;
-
-  const last = segments[segments.length - 1];
-  if (actionSegments.has(last) && segments.length >= 2) {
-    return segments[segments.length - 2] || null;
-  }
-
-  if (/^[A-Za-z]+-\d+$/i.test(last) || /^\d+$/.test(last)) {
-    return last;
-  }
-
-  return null;
+  const segments = String(pathname || '').split('?')[0].split('/').filter(Boolean);
+  return segments.reverse().find(segment => /^[A-Z][A-Z0-9]*-[A-Za-z0-9]+$/.test(segment) || /^\d+$/.test(segment)) || null;
 }
 
-function buildDescription(method, pathname) {
-  if (method === "POST" && pathname.includes("/import")) return "Imported records";
-  if (method === "POST" && pathname.includes("/export")) return "Exported records";
-  if (method === "PUT" && pathname.includes("/confirm")) return "Confirmed a record";
-  if (method === "PUT" && pathname.includes("/cancel")) return "Cancelled a record";
-  if (method === "PUT" && pathname.includes("/receive")) return "Marked a record as received";
-  return `${method} ${pathname}`;
-}
-
-function authenticate(req, res, next) {
+async function authenticate(req, res, next) {
   const header = req.headers.authorization || "";
   const token = header.startsWith("Bearer ") ? header.slice(7) : null;
   if (!token) return next(new ApiError(401, "Missing or invalid authorization token"));
 
   try {
     const payload = jwt.verify(token, process.env.JWT_SECRET);
-    req.user = payload; // { userId, companyId, roleId, roleName, email }
+    const [actors] = await require('../config/db').query(`SELECT u.UserID AS userId,u.CompanyID AS companyId,u.RoleID AS roleId,r.RoleName AS roleName,u.Email AS email,u.Status AS status,u.ModuleAccess AS moduleAccess FROM User u JOIN Role r ON r.RoleID=u.RoleID WHERE u.UserID=:id`, {id:payload.userId});
+    if (!actors[0] || actors[0].status !== 'Active') return next(new ApiError(401, 'Account is inactive or unavailable'));
+    req.user = actors[0];
+    payload.roleName = req.user.roleName;
     if (["driver", "drivers"].includes(String(payload.roleName).trim().toLowerCase()) && req.baseUrl !== "/deliveries" && req.baseUrl !== "/auth") {
       return next(new ApiError(403, "Drivers may only access their assigned delivery queue."));
     }
 
-    const pathname = String(req.path || "");
+    const pathname = String(req.originalUrl || "").split("?")[0];
     const method = String(req.method || "GET").toUpperCase();
 
-    if (!shouldSkipAutoLog(pathname, method)) {
-      res.on("finish", () => {
-        if (res.statusCode >= 400) return;
-        logUserActivity({
-          userId: req.user.userId,
-          activityType: toActivityType(method),
-          module: toModule(pathname, method),
-          recordId: inferRecordId(pathname),
-          description: buildDescription(method, pathname),
-        }).catch(() => {
-          // Best-effort audit logging; do not break request lifecycle.
-        });
-      });
+    const permissions = normalizeModuleAccess(req.user.moduleAccess);
+    req.user.moduleAccess = permissions;
+    const required = allowedModules(req, pathname);
+    if (required.length && !required.some(key => permissions[key])) {
+      return next(new ApiError(403, 'Module access is disabled for this account.'));
     }
 
-    next();
-  } catch {
-    next(new ApiError(401, "Invalid or expired token"));
+    const context = { userId:req.user.userId, module:toModule(pathname, method),
+      action:toAction(pathname, method), recordId:inferRecordId(pathname),
+      resource:resourceFor(pathname), description:describeAction(toAction(pathname, method),resourceFor(pathname)), records:0 };
+    const originalJson = res.json;
+    res.json = function(body) {
+      context.recordId ||= body?.id || body?.saleId || body?.orderId || body?.purchaseOrderId || body?.deliveryId || null;
+      return originalJson.call(this,body);
+    };
+    // Only committed database changes produce activity entries.
+    auditContext.run(context, next);
+  } catch (error) {
+    if (["JsonWebTokenError", "TokenExpiredError", "NotBeforeError"].includes(error.name)) return next(new ApiError(401, "Invalid or expired token"));
+    next(error);
   }
 }
 

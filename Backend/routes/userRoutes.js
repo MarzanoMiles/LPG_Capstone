@@ -4,90 +4,68 @@ const pool = require("../config/db");
 const asyncHandler = require("../utils/asyncHandler");
 const ApiError = require("../utils/apiError");
 const { authenticate, authorize } = require("../middleware/auth");
+const { nextUserId } = require("../utils/userIds");
 const { mapActivityRow } = require("../utils/activityLog");
-
-async function nextId(conn, table, column, prefix, pad = 3) {
-  const [rows] = await conn.query(
-    `SELECT ${column} AS id FROM ${table} WHERE ${column} LIKE :pattern ORDER BY ${column} DESC LIMIT 500`,
-    { pattern: `${prefix}-%` }
-  );
-  let max = 0;
-  for (const row of rows) {
-    const match = String(row.id || "").match(new RegExp(`^${prefix}-(\\d+)$`));
-    if (!match) continue;
-    const n = Number(match[1]);
-    if (Number.isInteger(n) && n > max) max = n;
-  }
-  return `${prefix}-${String(max + 1).padStart(pad, "0")}`;
-}
+const { emptyModuleAccess, normalizeModuleAccess: parseModules } = require('../utils/moduleAccess');
 
 router.use(authenticate);
+
 
 const LIST_SELECT = `
   SELECT u.UserID AS id, CONCAT(u.FirstName, ' ', u.LastName) AS name, u.FirstName AS firstName,
          u.LastName AS lastName, u.Email AS email, r.RoleName AS role, r.RoleID AS roleId,
-         w.WarehouseName AS branch, u.WarehouseID AS warehouseId,
+         w.WarehouseName AS branch, u.WarehouseID AS warehouseId, u.BranchID AS branchId, b.BranchName AS branchName,
          u.Status AS status, u.ModuleAccess AS moduleAccess, u.CreatedAt AS createdAt
   FROM User u
   JOIN Role r ON r.RoleID = u.RoleID
   LEFT JOIN Warehouse w ON w.WarehouseID = u.WarehouseID
+  LEFT JOIN Branch b ON b.BranchID = u.BranchID
 `;
 
-function parseModules(raw) {
-  if (!raw) return { dashboard: true };
-  if (typeof raw === "object") return raw;
-  try {
-    return JSON.parse(raw);
-  } catch {
-    return { dashboard: true };
-  }
+function isAdministrator(req) {
+  return ['admin', 'administrator'].includes(String(req.user.roleName || '').trim().toLowerCase());
 }
 
-function modulesByRole(roleName) {
-  const role = String(roleName || "").trim().toLowerCase();
+function readModuleOverrides(req, defaults) {
+  if (req.body.modules === undefined) return defaults;
+  if (!isAdministrator(req)) throw new ApiError(403, 'Only administrators can change module access.');
+  const modules = req.body.modules;
+  const keys = Object.keys(emptyModuleAccess());
+  if (!modules || Array.isArray(modules) || typeof modules !== 'object' ||
+      Object.entries(modules).some(([key, value]) => !keys.includes(key) || typeof value !== 'boolean')) {
+    throw new ApiError(400, 'Module access must contain known module names with boolean values.');
+  }
+  return {...defaults, ...modules};
+}
 
-  const allow = (...keys) => {
-    const base = {
-      dashboard: false,
-      pos: false,
-      inventory: false,
-      products: false,
-      sales: false,
-      restocking: false,
-      orders: false,
-      suppliers: false,
-      report: false,
-      data: false,
-      users: false,
-      settings: false,
-    };
-    for (const key of keys) base[key] = true;
-    return base;
-  };
+async function validateAssignment(req, warehouseId) {
+ const branchId = req.body.branchId || null;
+ if (branchId) {
+  const [rows] = await pool.query('SELECT BranchID FROM Branch WHERE BranchID=:branchId AND CompanyID=:companyId', {branchId,companyId:req.user.companyId});
+  if (!rows.length) throw new ApiError(400,'Invalid branch.');
+ }
+ if (warehouseId) {
+  const [rows] = await pool.query('SELECT BranchID FROM Warehouse WHERE WarehouseID=:warehouseId AND CompanyID=:companyId',{warehouseId,companyId:req.user.companyId});
+  if (!rows.length || (rows[0].BranchID && rows[0].BranchID !== branchId)) throw new ApiError(400,'Warehouse does not belong to the selected branch.');
+ }
+ return branchId;
+}
 
-  if (role === "administrator" || role === "admin") {
-    return allow("dashboard", "pos", "inventory", "products", "sales", "restocking", "orders", "suppliers", "report", "data", "users", "settings");
+function readUserName(body) {
+  if (body.firstName !== undefined || body.lastName !== undefined) {
+    const firstName = typeof body.firstName === 'string' ? body.firstName.trim() : '';
+    const lastName = typeof body.lastName === 'string' ? body.lastName.trim() : '';
+    if (!firstName || !lastName || firstName.length > 50 || lastName.length > 50) {
+      throw new ApiError(400, 'First name and last name are required and must each be at most 50 characters.');
+    }
+    return {firstName, lastName};
   }
-  if (role === "operations supervisor") {
-    return allow("dashboard", "inventory", "products", "sales", "restocking", "suppliers", "report", "data", "users", "settings");
-  }
-  if (role === "assistant operations supervisor") {
-    return allow("dashboard", "inventory", "products", "sales", "restocking", "suppliers", "report", "data");
-  }
-  if (role === "store supervisor") {
-    return allow("dashboard", "pos", "inventory", "products", "sales", "orders", "report", "data");
-  }
-  if (role === "assistant store supervisor") {
-    return allow("dashboard", "pos", "inventory", "products", "sales", "orders");
-  }
-  if (role === "stockman" || role === "head maintenance") {
-    return allow("inventory");
-  }
-  if (role === "drivers" || role === "helpers") {
-    return allow("orders");
-  }
-
-  return allow();
+  // Retain compatibility with existing API clients that send fullName.
+  if (typeof body.fullName !== 'string' || !body.fullName.trim()) throw new ApiError(400, 'First name and last name are required.');
+  const [firstName, ...rest] = body.fullName.trim().split(/\s+/);
+  const lastName = rest.join(' ') || firstName;
+  if (firstName.length > 50 || lastName.length > 50) throw new ApiError(400, 'Names must each be at most 50 characters.');
+  return {firstName, lastName};
 }
 
 // GET /users?search=&role=&status=&branch=
@@ -108,6 +86,7 @@ router.get(
     if (status) {
       sql += ` AND u.Status = :status`;
       params.status = status;
+      if (target.Status !== status) changes.push(`Changed status from ${target.Status} to ${status}`);
     }
     if (branch) {
       sql += ` AND w.WarehouseName = :branch`;
@@ -122,33 +101,37 @@ router.get(
 // GET /users/activity-log  -- must come before /:id so it isn't swallowed by the param route
 router.get(
   "/activity-log",
+  authorize("Admin", "Manager"),
   asyncHandler(async (req, res) => {
-    const { search, role, status } = req.query;
-    const requestedPage = Math.max(1, Number(req.query.page) || 1);
-    const pageSize = Math.max(1, Math.min(100, Number(req.query.pageSize) || 7));
+    const { search, role, status, module, action } = req.query;
+    const requestedPage = Math.max(1, Math.trunc(Number(req.query.page)) || 1);
+    const pageSize = Math.max(1, Math.min(100, Math.trunc(Number(req.query.pageSize)) || 7));
 
     let whereClause = `
-      WHERE u.CompanyID = :companyId`;
+      WHERE a.CompanyID = :companyId`;
 
     const params = { companyId: req.user.companyId };
     if (search) {
-      whereClause += ` AND (u.FirstName LIKE :s OR u.LastName LIKE :s OR u.UserID LIKE :s OR a.Module LIKE :s OR a.ActivityType LIKE :s OR a.Description LIKE :s)`;
+      whereClause += ` AND (a.ActorName LIKE :s OR a.UserID LIKE :s OR a.RecordID LIKE :s OR a.Module LIKE :s OR a.ActivityType LIKE :s OR a.Description LIKE :s)`;
       params.s = `%${search}%`;
     }
     if (role) {
-      whereClause += ` AND r.RoleName = :role`;
+      whereClause += ` AND a.ActorRole = :role`;
       params.role = role;
     }
     if (status) {
       whereClause += ` AND u.Status = :status`;
       params.status = status;
+      if (target.Status !== status) changes.push(`Changed status from ${target.Status} to ${status}`);
     }
 
+    if (module) { whereClause += ` AND a.Module = :module`; params.module = module; }
+    if (action) { whereClause += ` AND a.ActivityType = :action`; params.action = action; }
     const [countRows] = await pool.query(
       `SELECT COUNT(*) AS total
        FROM UserActivity a
-       JOIN User u ON u.UserID = a.UserID
-       JOIN Role r ON r.RoleID = u.RoleID
+       LEFT JOIN User u ON u.UserID = a.UserID
+       LEFT JOIN Role r ON r.RoleID = u.RoleID
        ${whereClause}`,
       params
     );
@@ -158,14 +141,14 @@ router.get(
     const offset = (page - 1) * pageSize;
 
     const sql = `
-      SELECT a.UserActivityID AS id, u.UserID AS userId, CONCAT(u.FirstName,' ',u.LastName) AS name,
-             r.RoleName AS role, u.Status AS status, a.Module AS module, a.ActivityType AS action,
-             a.Description AS description, UNIX_TIMESTAMP(a.ActivityDate) AS datetime
+      SELECT a.UserActivityID AS id, a.UserID AS userId, a.ActorName AS name,
+             a.ActorRole AS role, u.Status AS status, a.Module AS module, a.ActivityType AS action,
+             a.RecordID AS targetId, a.Outcome AS outcome, a.Description AS description, UNIX_TIMESTAMP(a.ActivityDate) AS datetime
       FROM UserActivity a
-      JOIN User u ON u.UserID = a.UserID
-      JOIN Role r ON r.RoleID = u.RoleID
+      LEFT JOIN User u ON u.UserID = a.UserID
+      LEFT JOIN Role r ON r.RoleID = u.RoleID
       ${whereClause}
-      ORDER BY a.ActivityDate DESC
+      ORDER BY a.ActivityDate DESC, a.UserActivityID DESC
       LIMIT :limit OFFSET :offset`;
 
     params.limit = pageSize;
@@ -185,7 +168,7 @@ router.get(
 router.get(
   "/:id",
   asyncHandler(async (req, res) => {
-    const [rows] = await pool.query(LIST_SELECT + ` WHERE u.UserID = :id`, { id: req.params.id });
+    const [rows] = await pool.query(LIST_SELECT + ` WHERE u.UserID = :id AND u.CompanyID = :companyId`, { id: req.params.id, companyId: req.user.companyId });
     if (!rows[0]) throw new ApiError(404, "User not found.");
     res.json({ ...rows[0], moduleAccess: parseModules(rows[0].moduleAccess) });
   })
@@ -195,58 +178,67 @@ router.post(
   "/",
   authorize("Admin", "Manager"),
   asyncHandler(async (req, res) => {
-    const { fullName, usernameEmail, password, role, branch, status, modules } = req.body;
-    if (!fullName || !usernameEmail || !password || !role) {
-      throw new ApiError(400, "fullName, usernameEmail, password and role are required.");
+    const { usernameEmail, password, role, branch, status } = req.body;
+    const moduleAccess = readModuleOverrides(req, emptyModuleAccess());
+    if (!usernameEmail || !password || !role) {
+      throw new ApiError(400, "Email, password and role are required.");
     }
 
     const [roleRows] = await pool.query(`SELECT RoleID FROM Role WHERE RoleName = :role`, { role });
     if (!roleRows[0]) throw new ApiError(400, "Invalid role.");
+    if (!isAdministrator(req) && ['admin','administrator'].includes(String(role).trim().toLowerCase())) throw new ApiError(403, 'Only administrators can create administrator accounts.');
 
     let warehouseId = null;
     if (branch) {
-      const [whRows] = await pool.query(`SELECT WarehouseID FROM Warehouse WHERE WarehouseName = :branch`, {
-        branch,
+      const [whRows] = await pool.query(`SELECT WarehouseID FROM Warehouse WHERE WarehouseName = :branch AND CompanyID = :companyId`, {
+        branch, companyId: req.user.companyId,
       });
       if (!whRows[0]) throw new ApiError(400, "Invalid branch/warehouse.");
       warehouseId = whRows[0].WarehouseID;
     }
 
+    const branchId = await validateAssignment(req, warehouseId);
     const [existing] = await pool.query(`SELECT UserID FROM User WHERE Email = :email`, {
       email: usernameEmail,
     });
     if (existing[0]) throw new ApiError(409, "A user with this email already exists.");
 
-    const [firstName, ...rest] = fullName.trim().split(" ");
-    const lastName = rest.join(" ") || firstName;
+    const { firstName, lastName } = readUserName(req.body);
     const passwordHash = await bcrypt.hash(password, 10);
 
-    const userId = await nextId(pool, "User", "UserID", "U");
+    const conn = await pool.getConnection();
+    let userId;
+    try {
+    await conn.beginTransaction();
+    userId = await nextUserId(conn);
 
-    await pool.query(
-      `INSERT INTO User (UserID, CompanyID, RoleID, WarehouseID, FirstName, LastName, Email, PasswordHash, Status, ModuleAccess)
-       VALUES (:userId, :companyId, :roleId, :warehouseId, :firstName, :lastName, :email, :passwordHash, :status, :modules)`,
+    await conn.query(
+      `INSERT INTO User (UserID, CompanyID, RoleID, WarehouseID, BranchID, FirstName, LastName, Email, PasswordHash, Status, ModuleAccess)
+       VALUES (:userId, :companyId, :roleId, :warehouseId, :branchId, :firstName, :lastName, :email, :passwordHash, :status, :modules)`,
       {
         userId,
         companyId: req.user.companyId,
         roleId: roleRows[0].RoleID,
         warehouseId,
+        branchId,
         firstName,
         lastName,
         email: usernameEmail,
         passwordHash,
         status: status || "Active",
-        modules: JSON.stringify(modulesByRole(role)),
+        modules: JSON.stringify(moduleAccess),
       }
     );
 
-    const userActivityId = await nextId(pool, "UserActivity", "UserActivityID", "UA");
-    await pool.query(
+    const userActivityId = `AUD-${require("crypto").randomBytes(8).toString("hex")}`;
+    await conn.query(
       `INSERT INTO UserActivity (UserActivityID, UserID, ActivityType, Module, RecordID, Description)
        VALUES (:userActivityId, :userId, 'Create', 'Users — User Management', :recordId, 'Created a new user')`,
       { userActivityId, userId: req.user.userId, recordId: userId }
     );
 
+    await conn.commit();
+    } catch (error) { await conn.rollback(); throw error; } finally { conn.release(); }
     res.status(201).json({ id: userId });
   })
 );
@@ -255,30 +247,42 @@ router.put(
   "/:id",
   authorize("Admin", "Manager"),
   asyncHandler(async (req, res) => {
-    const { fullName, status, role, branch, modules, password } = req.body;
-    const params = { id: req.params.id };
+    const conn = await pool.getConnection();
+    try {
+    await conn.beginTransaction();
+    const { status, role, branch, password } = req.body;
+    const params = { id: req.params.id, companyId: req.user.companyId };
     const sets = [];
+    const [targets] = await conn.query(`SELECT u.*,r.RoleName FROM User u JOIN Role r ON r.RoleID=u.RoleID WHERE u.UserID=:id AND u.CompanyID=:companyId FOR UPDATE`, params);
+    const target = targets[0];
+    if (!target) throw new ApiError(404, 'User not found.');
+    if (!isAdministrator(req) && ['admin','administrator'].includes(String(target.RoleName).trim().toLowerCase())) throw new ApiError(403, 'Only administrators can modify administrator accounts.');
+    const changes = [];
 
-    if (fullName) {
-      const [firstName, ...rest] = fullName.trim().split(" ");
+
+    if (req.body.firstName !== undefined || req.body.lastName !== undefined || req.body.fullName !== undefined) {
+      const { firstName, lastName } = readUserName(req.body);
       sets.push(`FirstName = :firstName`, `LastName = :lastName`);
       params.firstName = firstName;
-      params.lastName = rest.join(" ") || firstName;
+      params.lastName = lastName;
+      if (target.FirstName !== firstName || target.LastName !== lastName) changes.push(`Changed name from ${target.FirstName} ${target.LastName} to ${firstName} ${lastName}`);
     }
     if (status) {
       sets.push(`Status = :status`);
       params.status = status;
+      if (target.Status !== status) changes.push(`Changed status from ${target.Status} to ${status}`);
     }
     if (role) {
-      const [roleRows] = await pool.query(`SELECT RoleID FROM Role WHERE RoleName = :role`, { role });
+      const [roleRows] = await conn.query(`SELECT RoleID FROM Role WHERE RoleName = :role`, { role });
       if (!roleRows[0]) throw new ApiError(400, "Invalid role.");
       sets.push(`RoleID = :roleId`);
       params.roleId = roleRows[0].RoleID;
+      if (target.RoleName !== role) changes.push(`Changed role from ${target.RoleName} to ${role}`);
     }
     if (branch !== undefined) {
       if (branch) {
-        const [whRows] = await pool.query(`SELECT WarehouseID FROM Warehouse WHERE WarehouseName = :branch`, {
-          branch,
+        const [whRows] = await conn.query(`SELECT WarehouseID FROM Warehouse WHERE WarehouseName = :branch AND CompanyID = :companyId`, {
+          branch, companyId: req.user.companyId,
         });
         if (!whRows[0]) throw new ApiError(400, "Invalid branch/warehouse.");
         sets.push(`WarehouseID = :warehouseId`);
@@ -287,27 +291,48 @@ router.put(
         sets.push(`WarehouseID = NULL`);
       }
     }
-    if (role || modules !== undefined) {
-      const effectiveRole = role || (await pool.query(`SELECT RoleName FROM Role WHERE RoleID = (SELECT RoleID FROM User WHERE UserID = :id)`, { id: req.params.id }))[0][0]?.RoleName;
-      sets.push(`ModuleAccess = :modules`);
-      params.modules = JSON.stringify(modulesByRole(effectiveRole));
+    if (role || req.body.modules !== undefined) {
+      const [currentRoles] = await conn.query(`SELECT r.RoleName, u.ModuleAccess FROM User u JOIN Role r ON r.RoleID=u.RoleID WHERE u.UserID=:id AND u.CompanyID=:companyId FOR UPDATE`, params);
+      if (!currentRoles[0]) throw new ApiError(404, 'User not found.');
+      const roleChanged = role && role !== currentRoles[0].RoleName;
+      if (roleChanged && !isAdministrator(req)) throw new ApiError(403, 'Only administrators can change roles and module access.');
+      if (req.body.modules !== undefined) {
+        const defaults = { ...emptyModuleAccess(), ...parseModules(currentRoles[0].ModuleAccess) };
+        params.modules = JSON.stringify(readModuleOverrides(req, defaults));
+        sets.push('ModuleAccess = :modules');
+        const nextModules = JSON.parse(params.modules);
+        for (const key of Object.keys(nextModules)) if (defaults[key] !== nextModules[key]) changes.push(`${nextModules[key] ? 'Enabled' : 'Disabled'} ${({pos:'POS Terminal',orders:'Order and Delivery',report:'Report and Compliance',data:'Data',restocking:'Restocking'})[key] || key.charAt(0).toUpperCase()+key.slice(1)} access`);
+      }
+    }
+    if (req.body.branchId !== undefined || branch !== undefined) {
+      const [current] = await conn.query("SELECT WarehouseID FROM User WHERE UserID=:id AND CompanyID=:companyId", params);
+      if (!current[0]) throw new ApiError(404, "User not found.");
+      params.branchId = await validateAssignment(req, branch !== undefined ? params.warehouseId || null : current[0].WarehouseID);
+      sets.push("BranchID = :branchId");
+      if (target.BranchID !== params.branchId) changes.push('Changed branch assignment');
+      if (branch !== undefined && target.WarehouseID !== (params.warehouseId || null)) changes.push('Changed warehouse assignment');
     }
     if (password) {
       sets.push(`PasswordHash = :passwordHash`);
       params.passwordHash = await bcrypt.hash(password, 10);
+      changes.push('Changed password');
     }
     if (!sets.length) throw new ApiError(400, "No fields provided to update.");
 
-    const [result] = await pool.query(`UPDATE User SET ${sets.join(", ")} WHERE UserID = :id`, params);
+    const [result] = await conn.query(`UPDATE User SET ${sets.join(", ")} WHERE UserID = :id AND CompanyID = :companyId`, params);
     if (!result.affectedRows) throw new ApiError(404, "User not found.");
 
-    const userActivityId = await nextId(pool, "UserActivity", "UserActivityID", "UA");
-    await pool.query(
+    if (changes.length) {
+    const userActivityId = `AUD-${require("crypto").randomBytes(8).toString("hex")}`;
+    await conn.query(
       `INSERT INTO UserActivity (UserActivityID, UserID, ActivityType, Module, RecordID, Description)
-       VALUES (:userActivityId, :userId, 'Update', 'Users — User Management', :recordId, 'Updated a user')`,
-      { userActivityId, userId: req.user.userId, recordId: req.params.id }
+       VALUES (:userActivityId, :userId, 'Update', 'Users — User Management', :recordId, :description)`,
+      { userActivityId, userId: req.user.userId, recordId: req.params.id, description: `Updated user ${target.FirstName} ${target.LastName}. ${changes.length ? changes.join('. ')+'.' : 'Saved user details.'}`.slice(0,500) }
     );
+    }
 
+    await conn.commit();
+    } catch (error) { await conn.rollback(); throw error; } finally { conn.release(); }
     res.json({ message: "User updated." });
   })
 );
@@ -317,21 +342,32 @@ router.delete(
   "/:id",
   authorize("Admin", "Manager"),
   asyncHandler(async (req, res) => {
+    const conn = await pool.getConnection();
+    try {
+    await conn.beginTransaction();
     if (String(req.params.id) === String(req.user.userId)) {
       throw new ApiError(400, "You cannot deactivate your own account.");
     }
-    const [result] = await pool.query(`UPDATE User SET Status = 'Inactive' WHERE UserID = :id`, {
-      id: req.params.id,
+    const [targets] = await conn.query(`SELECT u.FirstName,u.LastName,u.Status,r.RoleName FROM User u JOIN Role r ON r.RoleID=u.RoleID WHERE u.UserID=:id AND u.CompanyID=:companyId FOR UPDATE`, {id:req.params.id,companyId:req.user.companyId});
+    const target = targets[0];
+    if (!target) throw new ApiError(404, 'User not found.');
+    if (!isAdministrator(req) && ['admin','administrator'].includes(String(target.RoleName).trim().toLowerCase())) throw new ApiError(403, 'Only administrators can deactivate administrator accounts.');
+    const [result] = await conn.query(`UPDATE User SET Status = 'Inactive' WHERE UserID = :id AND CompanyID = :companyId`, {
+      id: req.params.id, companyId: req.user.companyId,
     });
     if (!result.affectedRows) throw new ApiError(404, "User not found.");
 
-    const userActivityId = await nextId(pool, "UserActivity", "UserActivityID", "UA");
-    await pool.query(
+    if (target.Status !== 'Inactive') {
+    const userActivityId = `AUD-${require("crypto").randomBytes(8).toString("hex")}`;
+    await conn.query(
       `INSERT INTO UserActivity (UserActivityID, UserID, ActivityType, Module, RecordID, Description)
-       VALUES (:userActivityId, :userId, 'Delete', 'Users — User Management', :recordId, 'Deactivated a user')`,
-      { userActivityId, userId: req.user.userId, recordId: req.params.id }
+       VALUES (:userActivityId, :userId, 'Delete', 'Users — User Management', :recordId, :description)`,
+      { userActivityId, userId: req.user.userId, recordId: req.params.id, description:`Deactivated user ${target.FirstName} ${target.LastName}.` }
     );
+    }
 
+    await conn.commit();
+    } catch (error) { await conn.rollback(); throw error; } finally { conn.release(); }
     res.json({ message: "User deactivated." });
   })
 );

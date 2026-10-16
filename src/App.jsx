@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useMemo } from "react";
+import React, { useState, useEffect, useLayoutEffect, useMemo } from "react";
 import Login from "./Login";
 import ResetPasswordPage from "./ResetPasswordPage";
 import Sidebar from "./Sidebar";
@@ -19,7 +19,7 @@ import Data from "./Data";
 import OrderAndDelivery from "./OrderAndDelivery";
 import LogoutModal from "./LogoutModal";
 import { apiRequest } from "./api";
-import { getAllowedNavIdsByRole } from "./rbac";
+import { getAllowedNavIds } from "./rbac";
 import "./ManagementLayout.css";
 
 const pages = {
@@ -46,6 +46,20 @@ export default function App() {
   const [activeItem, setActiveItem] = useState("dashboard");
   const [isLogoutModalOpen, setIsLogoutModalOpen] = useState(false);
   const [showResetPage, setShowResetPage] = useState(isResetPasswordRoute);
+  const [currentUser, setCurrentUser] = useState(null);
+  const [sessionReady, setSessionReady] = useState(false);
+  const [sessionError, setSessionError] = useState('');
+
+  useLayoutEffect(() => {
+    const onSessionExpired = event => {
+      setSessionError(event.detail?.message || 'Please sign in again.');
+      setIsAuthenticated(false);
+      setIsLogoutModalOpen(false);
+      setActiveItem('dashboard');
+    };
+    window.addEventListener('auth:session-expired', onSessionExpired);
+    return () => window.removeEventListener('auth:session-expired', onSessionExpired);
+  }, []);
 
   useEffect(() => {
     const handleHashChange = () => setShowResetPage(isResetPasswordRoute());
@@ -61,32 +75,43 @@ export default function App() {
 
     localStorage.setItem("token", data.token);
     localStorage.setItem("user", JSON.stringify(data.user));
+    setSessionError('');
+    setCurrentUser(data.user);
     setIsAuthenticated(true);
   };
 
   const handleRegisterSuccess = (data) => {
     localStorage.setItem("token", data.token);
     localStorage.setItem("user", JSON.stringify(data.user));
+    setSessionError('');
+    setCurrentUser(data.user);
     setIsAuthenticated(true);
   };
 
-  const handleLogout = () => {
+  const handleLogout = async () => {
+    try { await apiRequest('/auth/logout', {method:'POST'}); }
+    catch (error) { if (error.status !== 401) { setSessionError(error.message); return; } }
     setIsLogoutModalOpen(false);
-    localStorage.removeItem("token");
-    localStorage.removeItem("user");
-    setIsAuthenticated(false);
-    setActiveItem("dashboard");
+    localStorage.removeItem('token'); localStorage.removeItem('user');
+    setCurrentUser(null); setSessionReady(false); setIsAuthenticated(false); setActiveItem('dashboard');
   };
 
-  const currentUser = useMemo(() => {
-    try {
-      return JSON.parse(localStorage.getItem("user") || "null");
-    } catch {
-      return null;
-    }
+  useEffect(() => {
+    if (!isAuthenticated) { setSessionReady(false); return; }
+    let active = true;
+    const refresh = () => apiRequest('/auth/me').then(actor => {
+      if (!active) return;
+      const user = {id:actor.UserID,firstName:actor.FirstName,lastName:actor.LastName,email:actor.Email,
+        role:actor.RoleName, moduleAccess:actor.ModuleAccess};
+      localStorage.setItem('user', JSON.stringify(user)); setCurrentUser(user); setSessionReady(true); setSessionError('');
+    }).catch(error => { if (active) setSessionError(error.message); });
+    refresh();
+    const interval = setInterval(refresh, 30000);
+    window.addEventListener('focus',refresh); window.addEventListener('auth:access-updated',refresh);
+    return () => { active=false; clearInterval(interval); window.removeEventListener('focus',refresh); window.removeEventListener('auth:access-updated',refresh); };
   }, [isAuthenticated]);
 
-  const allowedNavIds = useMemo(() => getAllowedNavIdsByRole(currentUser?.role), [currentUser?.role]);
+  const allowedNavIds = useMemo(() => getAllowedNavIds(currentUser), [currentUser]);
 
   useEffect(() => {
     if (!isAuthenticated) return;
@@ -110,23 +135,26 @@ export default function App() {
   }
 
   if (!isAuthenticated) {
-    return <Login onLogin={handleLogin} onRegisterSuccess={handleRegisterSuccess} />;
+    return <Login onLogin={handleLogin} onRegisterSuccess={handleRegisterSuccess} sessionError={sessionError} />;
   }
 
   const resolvedActiveItem = allowedNavIds.includes(activeItem)
     ? activeItem
-    : (allowedNavIds[0] || "dashboard");
-  const ActivePage = pages[resolvedActiveItem] || Dashboard;
+    : (allowedNavIds[0] || null);
+  const ActivePage = pages[resolvedActiveItem];
 
   return (
     <div className="app-shell">
       <Sidebar
+        accessIds={allowedNavIds}
+        sessionUser={currentUser}
         activeItem={resolvedActiveItem}
         onNavigate={setActiveItem}
         onProfileClick={() => setIsLogoutModalOpen(true)}
       />
       <main className="app-content">
-        <ActivePage />
+        {sessionError && <p role="alert">{sessionError}</p>}
+        {!sessionReady ? <p>Verifying your account...</p> : ActivePage ? <ActivePage /> : <p>No module access is assigned to your account. Contact an administrator.</p>}
       </main>
       <LogoutModal
         isOpen={isLogoutModalOpen}

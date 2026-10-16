@@ -6,6 +6,8 @@ const pool = require("../config/db");
 const asyncHandler = require("../utils/asyncHandler");
 const ApiError = require("../utils/apiError");
 const { authenticate } = require("../middleware/auth");
+const { nextUserId } = require("../utils/userIds");
+const { normalizeModuleAccess, emptyModuleAccess } = require('../utils/moduleAccess');
 const { sendMail } = require("../config/mailer");
 
 // Helper to generate unique string primary keys within VARCHAR(20)
@@ -23,7 +25,7 @@ router.post(
 
     const [rows] = await pool.query(
       `SELECT u.UserID, u.CompanyID, u.RoleID, r.RoleName, u.FirstName, u.LastName,
-              u.Email, u.PasswordHash, u.Status
+              u.Email, u.PasswordHash, u.Status, u.ModuleAccess
        FROM User u
        JOIN Role r ON r.RoleID = u.RoleID
        WHERE u.Email = :email`,
@@ -49,13 +51,6 @@ router.post(
       { expiresIn: process.env.JWT_EXPIRES_IN || "8h" }
     );
 
-    const userActivityId = generateId("UA");
-    await pool.query(
-      `INSERT INTO UserActivity (UserActivityID, UserID, ActivityType, Module, Description)
-       VALUES (:userActivityId, :userId, 'Login', 'Users — Authentication', 'User logged in')`,
-      { userActivityId, userId: user.UserID }
-    );
-
     res.json({
       token,
       user: {
@@ -65,6 +60,7 @@ router.post(
         email: user.Email,
         role: user.RoleName,
         companyId: user.CompanyID,
+        moduleAccess: normalizeModuleAccess(user.ModuleAccess),
       },
     });
   })
@@ -130,7 +126,7 @@ router.post(
       // Generate custom primary keys
       const companyId = generateId("C");
       const warehouseId = generateId("WH");
-      const userId = generateId("U");
+      const userId = await nextUserId(conn);
       const userActivityId = generateId("UA");
 
       // 1. Insert Company
@@ -155,7 +151,7 @@ router.post(
 
       // 4. Insert User
       const passwordHash = await bcrypt.hash(password, 10);
-      const defaultModules = { dashboard: true, pos: true, inventory: true, products: true, suppliers: true, data: true };
+      const defaultModules = Object.fromEntries(Object.keys(emptyModuleAccess()).map(key => [key,true]));
 
       await conn.query(
         `INSERT INTO \`User\` (UserID, CompanyID, RoleID, WarehouseID, FirstName, LastName, Email, PasswordHash, Status, ModuleAccess)
@@ -197,7 +193,7 @@ router.post(
 
       res.status(201).json({
         token,
-        user: { id: userId, firstName, lastName, email, role: adminRole.RoleName, companyId },
+        user: { id: userId, firstName, lastName, email, role: adminRole.RoleName, companyId, moduleAccess:defaultModules },
       });
     } catch (err) {
       await conn.rollback();
@@ -359,14 +355,17 @@ router.get(
   authenticate,
   asyncHandler(async (req, res) => {
     const [rows] = await pool.query(
-      `SELECT u.UserID, u.FirstName, u.LastName, u.Email, r.RoleName, u.Status
+      `SELECT u.UserID, u.FirstName, u.LastName, u.Email, r.RoleName, u.Status, u.ModuleAccess
        FROM User u JOIN Role r ON r.RoleID = u.RoleID WHERE u.UserID = :id`,
       { id: req.user.userId }
     );
     if (!rows[0]) throw new ApiError(404, "User not found.");
-    res.json(rows[0]);
+    res.json({...rows[0], ModuleAccess:normalizeModuleAccess(rows[0].ModuleAccess)});
   })
 );
 
+router.post('/logout', authenticate, asyncHandler(async (req,res) => {
+  res.json({message:'Signed out.'});
+}));
 module.exports = router;
 

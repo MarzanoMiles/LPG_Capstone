@@ -13,6 +13,26 @@ export const MODULE_KEYS = {
   settings: "settings",
 };
 
+export function normalizeModuleAccess(raw) {
+  if (typeof raw === 'string') {
+    try { raw = JSON.parse(raw); } catch { raw = null; }
+  }
+  const aliases = {
+    'pos terminal': 'pos', 'order and delivery': 'orders', 'orders and deliveries': 'orders',
+    'report generation & compliance': 'report', 'report and compliance': 'report',
+    'report generation and compliance': 'report', 'data module': 'data',
+  };
+  const result = Object.fromEntries(Object.keys(MODULE_KEYS).map(key => [key, false]));
+  const entries = Array.isArray(raw) ? raw.map(key => [key, true])
+    : raw && typeof raw === 'object' ? Object.entries(raw) : [];
+  for (const [name, value] of entries) {
+    const label = String(name).trim().toLowerCase();
+    const key = aliases[label] || label;
+    if (Object.hasOwn(MODULE_KEYS, key)) result[key] = value === true || value === 1 || value === '1' || value === 'true';
+  }
+  return result;
+}
+
 export function canonicalRole(roleName) {
   const role = String(roleName || "").trim().toLowerCase();
   if (!role) return "";
@@ -103,3 +123,8 @@ export function buildModulesByRole(roleName) {
   };
 }
 
+
+export function getAllowedNavIds(user) {
+  const access = normalizeModuleAccess(user?.moduleAccess);
+  return Object.keys(MODULE_KEYS).filter(key => access[key]);
+}

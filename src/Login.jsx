@@ -127,7 +127,7 @@ function LegalDocumentModal({ documentKey, onClose }) {
   );
 }
 
-export default function Login({ onLogin, onRegisterSuccess }) {
+export default function Login({ onLogin, onRegisterSuccess, sessionError }) {
   // Navigation State: 'login' | 'register' | 'about' | 'contact'
   const [currentView, setCurrentView] = useState("login");
 
@@ -324,7 +324,7 @@ export default function Login({ onLogin, onRegisterSuccess }) {
                 </button>
               </div>
 
-              {error && <p className="login-error">{error}</p>}
+              {(error || sessionError) && <p className="login-error" role="alert">{error || sessionError}</p>}
 
               <div className="forgot-wrap">
                 <button

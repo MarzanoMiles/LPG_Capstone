@@ -23,5 +23,6 @@ pool.on("connection", (connection) => {
   });
 });
 
+require('../utils/databaseAudit').installDatabaseAudit(pool);
 module.exports = pool;
 

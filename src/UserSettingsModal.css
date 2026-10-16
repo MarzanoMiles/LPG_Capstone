@@ -1,0 +1,27 @@
+﻿/* Reuse the product lookup manager's card, form and button conventions. */
+.user-manage-overlay { padding: 16px; box-sizing: border-box; }
+.user-manage-card { width: 100%; max-width: 780px; box-sizing: border-box; }
+.user-manage-card.user-manage-roles { max-width: 520px; }
+.user-manage-fields { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 16px; }
+.user-manage-roles .user-manage-fields { grid-template-columns: 1fr; }
+.user-manage-fields .form-field { min-width: 0; }
+.user-manage-error { color: #dc2626; margin: 0; font-size: 0.875rem; }
+.user-manage-table-wrap { overflow-x: auto; border: 1px solid #e5e7eb; border-radius: 8px; }
+.user-manage-table { width: 100%; border-collapse: collapse; text-align: left; font-size: 0.875rem; }
+.user-manage-table th { background: #f9fafb; color: #374151; font-weight: 600; }
+.user-manage-table th, .user-manage-table td { padding: 12px 14px; vertical-align: middle; }
+.user-manage-table tbody tr { border-top: 1px solid #e5e7eb; }
+.user-manage-table td { color: #4b5563; overflow-wrap: anywhere; }
+.user-manage-table td:first-child { white-space: nowrap; }
+.user-manage-actions-heading { text-align: center; }
+.user-manage-row-actions { display: flex; justify-content: center; align-items: center; gap: 8px; }
+.user-manage-row-actions button { display: inline-flex; align-items: center; justify-content: center; width: 30px; height: 30px; padding: 0; border: 0; border-radius: 6px; background: transparent; color: #475569; cursor: pointer; }
+.user-manage-row-actions button:hover:not(:disabled) { background: #eff6ff; color: #1d6bf3; }
+.user-manage-row-actions button:last-child:hover:not(:disabled) { background: #fef2f2; color: #dc2626; }
+.user-manage-row-actions button:focus-visible { outline: 3px solid #93c5fd; outline-offset: 2px; }
+.user-manage-row-actions button:disabled { opacity: 0.6; cursor: not-allowed; }
+.user-manage-table .user-manage-empty { padding: 24px; text-align: center; color: #6b7280; }
+@media (max-width: 600px) {
+  .user-manage-card { padding: 24px 20px; }
+  .user-manage-fields { grid-template-columns: 1fr; }
+}

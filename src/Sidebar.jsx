@@ -25,7 +25,7 @@ import {
 // Import your custom logo image
 import logoImg from "./assets/logo.png";
 import { apiRequest } from "./api";
-import { getAllowedNavIdsByRole } from "./rbac";
+import { getAllowedNavIds } from "./rbac";
 import "./Sidebar.css";
 
 // ---------------------------------------------------------------------------
@@ -144,7 +144,7 @@ function NotificationModal({ isOpen, onClose, isLoading, error, overdue, dueSoon
 // Sidebar component
 // ---------------------------------------------------------------------------
 
-export default function Sidebar({ activeItem, onNavigate, onProfileClick }) {
+export default function Sidebar({ activeItem, onNavigate, onProfileClick, accessIds, sessionUser }) {
   // Falls back to internal state if the parent doesn't control activeItem
   const [internalActive, setInternalActive] = useState("dashboard");
   const [isProfileDropdownOpen, setIsProfileDropdownOpen] = useState(false);
@@ -162,18 +162,8 @@ export default function Sidebar({ activeItem, onNavigate, onProfileClick }) {
 
   const current = activeItem ?? internalActive;
 
-  const currentUser = useMemo(() => {
-    try {
-      return JSON.parse(localStorage.getItem("user") || "null");
-    } catch {
-      return null;
-    }
-  }, []);
-
-  const allowedNavIds = useMemo(
-    () => new Set(getAllowedNavIdsByRole(currentUser?.role)),
-    [currentUser?.role]
-  );
+  const currentUser = sessionUser;
+  const allowedNavIds = useMemo(() => new Set(accessIds || getAllowedNavIds(currentUser)), [accessIds,currentUser]);
 
   const visibleNavItems = useMemo(() => {
     if (!allowedNavIds.size) return [];
@@ -214,11 +204,12 @@ export default function Sidebar({ activeItem, onNavigate, onProfileClick }) {
   };
 
   useEffect(() => {
+    if (!allowedNavIds.has('report')) { setReports([]); return; }
     loadNotifications();
     // Refresh periodically so the badge count doesn't go stale during a long session.
     const interval = setInterval(loadNotifications, 5 * 60 * 1000);
     return () => clearInterval(interval);
-  }, []);
+  }, [allowedNavIds]);
 
   const { dueSoon, overdue } = useMemo(() => {
     return {
@@ -232,7 +223,7 @@ export default function Sidebar({ activeItem, onNavigate, onProfileClick }) {
   const handleNotificationClick = () => {
     setIsProfileDropdownOpen(false);
     setIsSearchOpen(false);
-    loadNotifications(); // refresh right as it opens
+    if (allowedNavIds.has('report')) loadNotifications(); // refresh right as it opens
     setIsNotifModalOpen(true);
   };
 

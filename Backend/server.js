@@ -80,6 +80,7 @@ app.use("/brands", brandRoutes);
 app.use("/suppliers", supplierRoutes);
 app.use("/inventory", inventoryRoutes);
 app.use("/warehouses", warehouseRoutes);
+app.use("/user-settings", require("./routes/userSettingsRoutes"));
 app.use("/users", userRoutes);
 app.use("/customers", customerRoutes);
 app.use("/orders", orderRoutes);

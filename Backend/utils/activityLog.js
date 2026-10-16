@@ -1,4 +1,5 @@
-﻿const MODULE_SEPARATOR = " — ";
+const {historicalDescription} = require('./activityDescriptions');
+const MODULE_SEPARATOR = " — ";
 
 function normalizeWhitespace(value) {
   return String(value || "")
@@ -56,6 +57,7 @@ function toActivityTimestamp(value) {
 function mapActivityRow(row, timestampField) {
   return {
     ...row,
+    description: historicalDescription(row.description),
     module: resolveActivityModule(row.module, row.action, row.description),
     [timestampField]: toActivityTimestamp(row[timestampField]),
   };

@@ -114,7 +114,7 @@ export default function Users() {
   const [searchTerm, setSearchTerm] = useState("");
   const [roleFilter, setRoleFilter] = useState("All Roles");
   const [statusFilter, setStatusFilter] = useState("All Status");
-  const [branchFilter, setBranchFilter] = useState("All Branch/Warehouse");
+  const [branchFilter, setBranchFilter] = useState("All Warehouse");
   const [page, setPage] = useState(1);
 
   const [showAddUserModal, setShowAddUserModal] = useState(false);
@@ -122,6 +122,8 @@ export default function Users() {
   const [viewingUser, setViewingUser] = useState(null);
 
   const [activitySearchTerm, setActivitySearchTerm] = useState("");
+  const [activityModule, setActivityModule] = useState("");
+  const [activityAction, setActivityAction] = useState("");
   const [activityPage, setActivityPage] = useState(1);
 
   const loadUsers = () => {
@@ -141,6 +143,8 @@ export default function Users() {
       pageSize: String(ACTIVITY_PAGE_SIZE),
     });
     if (search) params.set("search", search);
+    if (activityModule) params.set("module", activityModule);
+    if (activityAction) params.set("action", activityAction);
 
     apiRequest("/users/activity-log?" + params.toString())
       .then((data) => {
@@ -152,7 +156,7 @@ export default function Users() {
         }
       })
       .catch((err) => setLoadError(err.message || "Failed to load activity log."));
-  }, [activityPage, activitySearchTerm]);
+  }, [activityPage, activitySearchTerm, activityModule, activityAction]);
 
   useEffect(() => {
     loadUsers();
@@ -170,7 +174,7 @@ export default function Users() {
   const statuses = ["All Status", "Active", "Inactive"];
   const branches = useMemo(
     () => [
-      "All Branch/Warehouse",
+      "All Warehouse",
       ...new Set(users.map((u) => u.branch).filter((branch) => branch && isVisibleWarehouseName(branch))),
     ],
     [users]
@@ -182,7 +186,7 @@ export default function Users() {
       const matchesSearch = u.name.toLowerCase().includes(term) || u.email.toLowerCase().includes(term);
       const matchesRole = roleFilter === "All Roles" || u.role === roleFilter;
       const matchesStatus = statusFilter === "All Status" || u.status === statusFilter;
-      const matchesBranch = branchFilter === "All Branch/Warehouse" || u.branch === branchFilter;
+      const matchesBranch = branchFilter === "All Warehouse" || u.branch === branchFilter;
       return matchesSearch && matchesRole && matchesStatus && matchesBranch;
     });
   }, [users, searchTerm, roleFilter, statusFilter, branchFilter]);
@@ -356,34 +360,30 @@ export default function Users() {
               <div className="users-search">
                 <input
                   type="text"
-                  placeholder="Search by Full Name or User ID"
+                  placeholder="Search user, module, target or description"
                   value={activitySearchTerm}
                   onChange={(e) => { setActivitySearchTerm(e.target.value); setActivityPage(1); }}
                   className="users-search-input"
                 />
                 <Search size={16} className="users-search-icon" />
               </div>
+              <input className="filter-select" aria-label="Filter module" placeholder="Exact module" value={activityModule} onChange={e => {setActivityModule(e.target.value);setActivityPage(1);}} />
+              <select className="filter-select" aria-label="Filter action" value={activityAction} onChange={e => {setActivityAction(e.target.value);setActivityPage(1);}}><option value="">All Actions</option>{['Login','Logout','View','Preview','Create','Update','Delete','Approve','Reject','Dispatch','Complete','Failed Attempt','Settle','Cancel','Receive','Refund','Claim','Generate','Send','Send Payment','Import','Export','Access Denied','Action'].map(a => <option key={a}>{a}</option>)}</select>
             </div>
 
             {/* Table */}
             <div className="users-table-wrap">
               <div className="paginated-table-scroll">
                 <table className="users-table activity-log-table">
-                  <colgroup>
-                    <col style={{ width: "12%" }} />
-                    <col style={{ width: "18%" }} />
-                    <col style={{ width: "14%" }} />
-                    <col style={{ width: "20%" }} />
-                    <col style={{ width: "22%" }} />
-                    <col style={{ width: "14%" }} />
-                  </colgroup>
                   <thead>
                     <tr>
                       <th>User ID</th>
                       <th>Full Name</th>
-                      <th>Role</th>
+                      <th>Target Record ID</th>
                       <th>Module</th>
                       <th>Action</th>
+                      <th>Description</th>
+                      <th>Outcome</th>
                       <th>Date and Time</th>
                     </tr>
                   </thead>
@@ -392,15 +392,17 @@ export default function Users() {
                       <tr key={entry.id}>
                         <td className="activity-log-cell-id">{entry.userId}</td>
                         <td className="activity-log-cell-name">{entry.name}</td>
-                        <td className="activity-log-cell-role">{entry.role}</td>
+                        <td className="activity-log-cell-role">{entry.targetId || "?"}</td>
                         <td className="activity-log-cell-module" title={entry.module}>{entry.module}</td>
-                        <td className="activity-log-cell-action" title={`${entry.action}${entry.description ? ` — ${entry.description}` : ""}`}>{entry.action}{entry.description ? ` — ${entry.description}` : ""}</td>
+                        <td>{entry.action}</td>
+                        <td>{entry.description}</td>
+                        <td>{entry.outcome || 'Success'}</td>
                         <td className="activity-log-cell-date">{formatTimestampManila(entry.datetime)}</td>
                       </tr>
                     ))}
                     {activityLog.length === 0 && (
                       <tr>
-                        <td colSpan={6} className="no-results-cell">
+                        <td colSpan={8} className="no-results-cell">
                           No activity matches your search.
                         </td>
                       </tr>
