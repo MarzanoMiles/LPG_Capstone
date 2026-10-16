@@ -1,5 +1,7 @@
 ﻿import React, { useEffect, useState } from "react";
 import "./AddSupplierModal.css";
+import { Settings } from "lucide-react";
+import SupplierTypeSettings from "./SupplierTypeSettings";
 import { apiRequest } from "./api";
 
 const emptyForm = {
@@ -19,6 +21,22 @@ export default function AddSupplierModal({ isOpen, onClose, selectedSupplier, on
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [error, setError] = useState("");
 
+  const [supplierTypes, setSupplierTypes] = useState([]);
+  const [typesLoading, setTypesLoading] = useState(false);
+  const [typesError, setTypesError] = useState("");
+  const [showTypeSettings, setShowTypeSettings] = useState(false);
+
+  async function loadTypes() {
+    setTypesLoading(true);
+    try { setSupplierTypes(await apiRequest('/suppliers/types')); setTypesError(''); }
+    catch (err) { setTypesError(err.message || 'Could not load supplier types.'); throw err; }
+    finally { setTypesLoading(false); }
+  }
+  useEffect(() => {
+    if (isOpen) loadTypes().catch(() => {});
+    setShowTypeSettings(false);
+  }, [isOpen]);
+
   const isEditing = Boolean(selectedSupplier);
   const submitButtonLabel = isEditing ? "Save" : "Add";
 
@@ -27,7 +45,7 @@ export default function AddSupplierModal({ isOpen, onClose, selectedSupplier, on
       const [contactFirstName = "", ...lastNameParts] = (selectedSupplier.contactPerson || "").trim().split(/\s+/);
       setFormData({
         fullName: selectedSupplier.name || "",
-        supplierType: selectedSupplier.supplierType || "",
+        supplierType: selectedSupplier.supplierTypeId ? String(selectedSupplier.supplierTypeId) : "",
         defaultLeadTime: selectedSupplier.leadTime ?? "",
         status: selectedSupplier.status || "Active",
         contactFirstName,
@@ -70,6 +88,7 @@ export default function AddSupplierModal({ isOpen, onClose, selectedSupplier, on
 
     const payload = {
       fullName: formData.fullName.trim(),
+      supplierTypeId: Number(formData.supplierType),
       defaultLeadTime: leadTime,
       status: formData.status,
       contactPerson: `${formData.contactFirstName.trim()} ${formData.contactLastName.trim()}`,
@@ -135,17 +154,22 @@ export default function AddSupplierModal({ isOpen, onClose, selectedSupplier, on
 
           <div className="supplier-row-basic">
             <div className="supplier-form-field">
-              <label>Supplier Type <span className="supplier-required-mark" aria-hidden="true">*</span></label>
+              <div className="supplier-type-label">
+                <label htmlFor="supplier-type-select">Supplier Type <span className="supplier-required-mark" aria-hidden="true">*</span></label>
+                <button type="button" aria-label="Manage supplier types" title="Manage supplier types" disabled={isSubmitting || typesLoading || !!typesError} onClick={() => setShowTypeSettings(true)}><Settings size={17}/></button>
+              </div>
               <select
                 required
+                id="supplier-type-select"
+                disabled={typesLoading || !!typesError}
                 value={formData.supplierType}
                 onChange={(e) => setFormData({ ...formData, supplierType: e.target.value })}
               >
                 <option value="" disabled>Select Type</option>
-                <option value="Manufacturer">Manufacturer</option>
-                <option value="Distributor">Distributor</option>
-                <option value="Wholesaler">Wholesaler</option>
+                {supplierTypes.map(type => <option key={type.id} value={String(type.id)}>{type.name}</option>)}
               </select>
+              {typesLoading && <small>Loading supplier types...</small>}
+              {typesError && <div className="supplier-type-error" role="alert">{typesError} <button type="button" onClick={() => loadTypes().catch(() => {})}>Retry</button></div>}
             </div>
             <div className="supplier-form-field">
               <label>Lead Time (Days) <span className="supplier-required-mark" aria-hidden="true">*</span></label>
@@ -245,12 +269,17 @@ export default function AddSupplierModal({ isOpen, onClose, selectedSupplier, on
             <button type="button" className="btn-modal-cancel" onClick={onClose}>
               Cancel
             </button>
-            <button type="submit" className="btn-modal-submit" disabled={isSubmitting}>
+            <button type="submit" className="btn-modal-submit" disabled={isSubmitting || typesLoading || !!typesError}>
               {isSubmitting ? "Saving…" : submitButtonLabel}
             </button>
           </div>
         </form>
       </div>
+      {showTypeSettings && <SupplierTypeSettings types={supplierTypes} onClose={() => setShowTypeSettings(false)} onChanged={async change => {
+        await loadTypes();
+        if (change.action === 'add') setFormData(previous => ({ ...previous, supplierType: String(change.id) }));
+        if (change.action === 'delete') setFormData(previous => String(change.id) === previous.supplierType ? { ...previous, supplierType: '' } : previous);
+      }}/>}
     </div>
   );
 }

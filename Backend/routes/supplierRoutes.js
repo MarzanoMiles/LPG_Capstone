@@ -6,6 +6,52 @@ const { authenticate } = require("../middleware/auth");
 
 router.use(authenticate);
 
+// Options precede /:id so "types" cannot be interpreted as a supplier ID.
+router.get('/types', asyncHandler(async (req, res) => {
+  const [rows] = await pool.query(`SELECT t.SupplierTypeID AS id, t.TypeName AS name,
+    COUNT(a.SupplierID) AS usageCount FROM SupplierType t
+    LEFT JOIN SupplierTypeAssignment a ON a.SupplierTypeID=t.SupplierTypeID
+    GROUP BY t.SupplierTypeID,t.TypeName ORDER BY t.TypeName`);
+  res.json(rows);
+}));
+function typeName(body) {
+  if (typeof body.name !== 'string' || !body.name.trim() || body.name.trim().length > 80) {
+    throw new ApiError(400, 'Supplier type must contain 1 to 80 characters.');
+  }
+  return body.name.trim();
+}
+for (const method of ['post', 'put']) router[method](method === 'post' ? '/types' : '/types/:typeId', asyncHandler(async (req, res) => {
+  const name = typeName(req.body);
+  try {
+    const [result] = method === 'post'
+      ? await pool.query('INSERT INTO SupplierType (TypeName) VALUES (:name)', { name })
+      : await pool.query('UPDATE SupplierType SET TypeName=:name WHERE SupplierTypeID=:id', { name, id:req.params.typeId });
+    if (method === 'put' && !result.affectedRows) throw new ApiError(404, 'Supplier type not found.');
+    res.status(method === 'post' ? 201 : 200).json({ id:method === 'post' ? result.insertId : Number(req.params.typeId), name });
+  } catch (error) {
+    if (error.code === 'ER_DUP_ENTRY') throw new ApiError(409, 'A supplier type with that name already exists.');
+    throw error;
+  }
+}));
+router.delete('/types/:typeId', asyncHandler(async (req, res) => {
+  try {
+    const [result] = await pool.query('DELETE FROM SupplierType WHERE SupplierTypeID=:id', { id:req.params.typeId });
+    if (!result.affectedRows) throw new ApiError(404, 'Supplier type not found.');
+    res.json({ message:'Supplier type deleted.' });
+  } catch (error) {
+    if (error.code === 'ER_ROW_IS_REFERENCED_2') throw new ApiError(409, 'This type is assigned to a supplier. Change that supplier?s type before deleting it.');
+    throw error;
+  }
+}));
+async function saveType(conn, supplierId, typeId) {
+  if (typeId === undefined) return; // Preserve compatibility with existing API clients.
+  if (!Number.isSafeInteger(Number(typeId)) || Number(typeId) <= 0) throw new ApiError(400, 'Select a valid supplier type.');
+  const [types] = await conn.query('SELECT SupplierTypeID FROM SupplierType WHERE SupplierTypeID=:typeId FOR SHARE', {typeId});
+  if (!types.length) throw new ApiError(400, 'Supplier type no longer exists. Refresh the options.');
+  await conn.query(`INSERT INTO SupplierTypeAssignment (SupplierID,SupplierTypeID) VALUES (:supplierId,:typeId)
+    ON DUPLICATE KEY UPDATE SupplierTypeID=VALUES(SupplierTypeID)`, { supplierId,typeId });
+}
+
 // GET /suppliers?search=&status=
 router.get(
   "/",
@@ -13,7 +59,9 @@ router.get(
     const { search, status } = req.query;
     let sql = `SELECT SupplierID AS id, SupplierName AS name, ContactPerson AS contactPerson,
                       Email AS email, Address AS address, Contact AS phone,
-                      LeadTimeDays AS leadTime, Status AS status
+                      LeadTimeDays AS leadTime, Status AS status,
+                      (SELECT t.TypeName FROM SupplierTypeAssignment a JOIN SupplierType t ON t.SupplierTypeID=a.SupplierTypeID WHERE a.SupplierID=Supplier.SupplierID) AS supplierType,
+                      (SELECT a.SupplierTypeID FROM SupplierTypeAssignment a WHERE a.SupplierID=Supplier.SupplierID) AS supplierTypeId
                FROM Supplier WHERE 1=1`;
     const params = {};
     if (search) {
@@ -37,7 +85,9 @@ router.get(
     const [rows] = await pool.query(
       `SELECT SupplierID AS id, SupplierName AS name, ContactPerson AS contactPerson,
               Email AS email, Address AS address, Contact AS phone,
-              LeadTimeDays AS leadTime, Status AS status
+              LeadTimeDays AS leadTime, Status AS status,
+                      (SELECT t.TypeName FROM SupplierTypeAssignment a JOIN SupplierType t ON t.SupplierTypeID=a.SupplierTypeID WHERE a.SupplierID=Supplier.SupplierID) AS supplierType,
+                      (SELECT a.SupplierTypeID FROM SupplierTypeAssignment a WHERE a.SupplierID=Supplier.SupplierID) AS supplierTypeId
        FROM Supplier WHERE SupplierID = :id`,
       { id: req.params.id }
     );
@@ -94,12 +144,13 @@ router.get(
 router.post(
   "/",
   asyncHandler(async (req, res) => {
-    const { fullName, defaultLeadTime, status, contactPerson, email, phone, address } = req.body;
+    const { fullName, defaultLeadTime, status, contactPerson, email, phone, address, supplierTypeId } = req.body;
     if (!fullName) throw new ApiError(400, "fullName is required.");
     const conn = await pool.getConnection();
     try {
       const [[lock]] = await conn.query("SELECT GET_LOCK('gastrack_supplier_ids', 10) AS acquired");
       if (Number(lock.acquired) !== 1) throw new ApiError(503, "Supplier ID allocation busy. Please retry.");
+      await conn.beginTransaction();
       const [[row]] = await conn.query("SELECT COALESCE(MAX(CAST(SUBSTRING(SupplierID, 5) AS UNSIGNED)), 0) AS lastId FROM SupplierHistory WHERE SupplierID REGEXP '^SUP-[0-9]+$'");
       const id = `SUP-${String(Number(row.lastId) + 1).padStart(3, "0")}`;
       await conn.query(
@@ -116,7 +167,12 @@ router.post(
         status: status || "Active",
       }
     );
+      await saveType(conn, id, supplierTypeId);
+      await conn.commit();
       res.status(201).json({ id });
+    } catch (error) {
+      await conn.rollback();
+      throw error;
     } finally {
       try { await conn.query("SELECT RELEASE_LOCK('gastrack_supplier_ids')"); }
       finally { conn.release(); }
@@ -127,8 +183,11 @@ router.post(
 router.put(
   "/:id",
   asyncHandler(async (req, res) => {
-    const { fullName, status, contactPerson, email, phone, address, defaultLeadTime } = req.body;
-    const [result] = await pool.query(
+    const { fullName, status, contactPerson, email, phone, address, defaultLeadTime, supplierTypeId } = req.body;
+    const conn = await pool.getConnection();
+    try {
+    await conn.beginTransaction();
+    const [result] = await conn.query(
       `UPDATE Supplier SET
          SupplierName = COALESCE(:name, SupplierName),
          ContactPerson = COALESCE(:contactPerson, ContactPerson),
@@ -150,7 +209,11 @@ router.put(
       }
     );
     if (!result.affectedRows) throw new ApiError(404, "Supplier not found.");
+    await saveType(conn, req.params.id, supplierTypeId);
+    await conn.commit();
     res.json({ message: "Supplier updated." });
+    } catch (error) { await conn.rollback(); throw error; }
+    finally { conn.release(); }
   })
 );
 

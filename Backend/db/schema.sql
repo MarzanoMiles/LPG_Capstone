@@ -4,7 +4,7 @@ SET FOREIGN_KEY_CHECKS = 0;
 DROP TABLE IF EXISTS DeliveryAction, PickupClaim, PickupSettlement, UserActivity, DataActivityLog, Delivery, Payment, Sales,
   OrderDetails, `Order`, Customer, TransferDetail, Transfer, InventoryTransaction,
   RefundLedger, Inventory, PurchaseOrderItem, PurchaseOrder, RestockRecommendation, CompanySettings,
-  User, Warehouse, Branch, Product, Supplier, Brand, Category, Role, Company;
+  User, Warehouse, Branch, Product, SupplierTypeAssignment, SupplierType, Supplier, Brand, Category, Role, Company;
 
 CREATE TABLE Company (
   CompanyID      VARCHAR(20) PRIMARY KEY,               -- C-001
@@ -40,6 +40,19 @@ CREATE TABLE Supplier (
   LeadTimeDays   INT NOT NULL DEFAULT 0,
   Status         VARCHAR(20) NOT NULL DEFAULT 'Active',
   CreatedAt      DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP
+);
+
+CREATE TABLE SupplierType (
+  SupplierTypeID INT UNSIGNED AUTO_INCREMENT PRIMARY KEY,
+  TypeName VARCHAR(80) NOT NULL UNIQUE
+);
+INSERT INTO SupplierType (TypeName) VALUES ('Manufacturer'), ('Distributor'), ('Wholesaler');
+
+CREATE TABLE SupplierTypeAssignment (
+  SupplierID VARCHAR(20) PRIMARY KEY,
+  SupplierTypeID INT UNSIGNED NOT NULL,
+  FOREIGN KEY (SupplierID) REFERENCES Supplier(SupplierID) ON DELETE CASCADE,
+  FOREIGN KEY (SupplierTypeID) REFERENCES SupplierType(SupplierTypeID)
 );
 
 CREATE TABLE Product (
@@ -230,6 +243,10 @@ CREATE TABLE RestockRecommendation (
 );
 
 CREATE TABLE PurchaseOrder (
+  WarehouseID          VARCHAR(20) NULL,
+  PaymentMethod        VARCHAR(30) NULL,
+  PaymentReference     VARCHAR(100) NULL,
+  RequestKey           VARCHAR(64) NULL,
   PurchaseOrderID       VARCHAR(20) PRIMARY KEY,        -- PO-001
   SupplierID            VARCHAR(20) NOT NULL,
   RestockID             VARCHAR(20) NULL,
@@ -242,11 +259,13 @@ CREATE TABLE PurchaseOrder (
   Remarks               VARCHAR(255) NULL,
   CreatedAt             DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
   FOREIGN KEY (SupplierID)      REFERENCES Supplier(SupplierID),
+  FOREIGN KEY (WarehouseID)     REFERENCES Warehouse(WarehouseID),
   FOREIGN KEY (RestockID)       REFERENCES RestockRecommendation(RestockID),
   FOREIGN KEY (CreatedByUserID) REFERENCES User(UserID)
 );
 
 CREATE TABLE PurchaseOrderItem (
+  ReceivedQuantity    INT NOT NULL DEFAULT 0,
   PurchaseOrderItemID  VARCHAR(20) PRIMARY KEY,         -- POI-001
   PurchaseOrderID      VARCHAR(20) NOT NULL,
   ProductID            VARCHAR(20) NOT NULL,

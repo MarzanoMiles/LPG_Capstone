@@ -4,6 +4,8 @@
     "type":  "commonjs",
     "main":  "server.js",
     "scripts":  {
+    "migrate:supplier-types": "node db/migrate_supplier_types.js",
+    "migrate:po-workflow": "node db/migrate_po_workflow.js",
     "migrate:supplier-history": "node db/migrate_supplier_history.js",
                     "migrate:walkin-customer": "node db/migrate_walkin_customer.js",
                     "migrate:customer-history": "node db/migrate_customer_history.js",
