@@ -41,3 +41,6 @@ ML/*.pkl
 *.sw?
 .vercel
 .env*
+
+# Private current database seed (includes account hashes and business records)
+Backend/db/snapshots/

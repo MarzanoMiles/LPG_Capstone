@@ -1,9 +1,9 @@
 {
-    "name":  "gastrack-backend",
-    "version":  "1.0.0",
-    "type":  "commonjs",
-    "main":  "server.js",
-    "scripts":  {
+  "name": "gastrack-backend",
+  "version": "1.0.0",
+  "type": "commonjs",
+  "main": "server.js",
+  "scripts": {
     "migrate:user-history": "node db/migrate_user_history.js",
     "migrate:unit-values": "node db/migrate_unit_values.js",
     "migrate:entity-ids": "node db/migrate_entity_ids.js",
@@ -14,34 +14,33 @@
     "migrate:po-payment-amount": "node db/migrate_po_payment_amount.js",
     "migrate:po-workflow": "node db/migrate_po_workflow.js",
     "migrate:supplier-history": "node db/migrate_supplier_history.js",
-                    "migrate:walkin-customer": "node db/migrate_walkin_customer.js",
-                    "migrate:customer-history": "node db/migrate_customer_history.js",
-                    "migrate:delivery-lifecycle": "node db/migrate_delivery_lifecycle.js",
-                    "migrate:pickup": "node db/migrate_pickup_claim.js",
-                    "migrate:financial-rules": "node db/migrate_financial_rules.js",
-                    "migrate:business-operations": "node db/migrate_business_operations_settings.js",
-                    "migrate:product-history": "node db/migrate_product_history.js",
+    "migrate:walkin-customer": "node db/migrate_walkin_customer.js",
+    "migrate:customer-history": "node db/migrate_customer_history.js",
+    "migrate:delivery-lifecycle": "node db/migrate_delivery_lifecycle.js",
+    "migrate:pickup": "node db/migrate_pickup_claim.js",
+    "migrate:financial-rules": "node db/migrate_financial_rules.js",
+    "migrate:business-operations": "node db/migrate_business_operations_settings.js",
+    "migrate:product-history": "node db/migrate_product_history.js",
     "migrate:users-audit": "node db/migrate_users_audit.js",
-    "start":  "node server.js",
-                    "dev":  "nodemon server.js",
-                    "seed":  "node db/seed.js",
-                    "seed:products":  "node db/seedProducts.js",
-                    "seed:reports":  "node db/seedReports.js",
-                    "seed:demo:jose":  "node db/seedJoseDemo.js",
-                    "seed:dashboard:history":  "node db/seedDashboardHistory.js"
-                },
-    "dependencies":  {
-                         "bcryptjs":  "^2.4.3",
-                         "cors":  "^2.8.5",
-                         "dotenv":  "^16.4.5",
-                         "exceljs":  "^3.4.0",
-                         "express":  "^4.19.2",
-                         "jsonwebtoken":  "^9.0.2",
-                         "mysql2":  "^3.10.0",
-                         "nodemailer":  "^10.0.10",
-                         "pdfkit":  "^0.15.0"
-                     },
-    "devDependencies":  {
-                            "nodemon":  "^3.1.4"
-                        }
+    "start": "node server.js",
+    "dev": "nodemon server.js",
+    "seed": "node db/seed.js",
+    "prestart": "npm run seed",
+    "predev": "npm run seed",
+    "seed:capture": "node db/currentSnapshot.js"
+  },
+  "dependencies": {
+    "bcryptjs": "^2.4.3",
+    "cors": "^2.8.5",
+    "dotenv": "^16.4.5",
+    "exceljs": "^3.4.0",
+    "express": "^4.19.2",
+    "jsonwebtoken": "^9.0.2",
+    "mysql2": "^3.10.0",
+    "nodemailer": "^10.0.10",
+    "pdfkit": "^0.15.0"
+  },
+  "devDependencies": {
+    "nodemon": "^3.1.4"
+  }
 }
