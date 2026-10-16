@@ -28,7 +28,6 @@ const discountOptions = [
 
 const paymentMethods = ["Cash", "GCash", "Cash on Delivery", "Card", "Bank Transfer"];
 const customerTypes = ["Walk-in", "Pickup", "Delivery"];
-const vehicleTypes = ["Motor", "Tricycle", "Truck"];
 const HELD_CARTS_KEY = "gastrack_held_carts";
 const DEFAULT_WAREHOUSE_OPTION = "All Warehouses";
 
@@ -633,7 +632,16 @@ function DeliveryModal({ isOpen, onClose, onSave, initialData }) {
   const [selectedCustomer, setSelectedCustomer] = useState(null);
   const [address, setAddress] = useState("");
   const [instructions, setInstructions] = useState("");
-  const [vehicleType, setVehicleType] = useState("Motor");
+  const [vehicleType, setVehicleType] = useState("");
+  const [vehicleTypes, setVehicleTypes] = useState([]);
+  useEffect(() => {
+    if (!isOpen) return;
+    let active = true;
+    apiRequest('/settings').then(settings => {
+      if (active) setVehicleTypes((settings.vehicleRates || []).map(rate => rate.name));
+    }).catch(() => {if (active) {setVehicleTypes([]); setError('Unable to load vehicle rates. Reopen delivery details to retry.');}});
+    return () => {active = false;};
+  }, [isOpen]);
   const [assignedRiderId, setAssignedRiderId] = useState("");
   const [showAddCustomerModal, setShowAddCustomerModal] = useState(false);
 
@@ -664,7 +672,7 @@ function DeliveryModal({ isOpen, onClose, onSave, initialData }) {
       });
       setAddress(initialData.address || "");
       setInstructions(initialData.instructions || "");
-      setVehicleType(initialData.vehicleType || "Motor");
+      setVehicleType(initialData.vehicleType || "");
       setAssignedRiderId(initialData.riderId || "");
     } else {
       resetForm();
@@ -676,7 +684,7 @@ function DeliveryModal({ isOpen, onClose, onSave, initialData }) {
     setSelectedCustomer(null);
     setAddress("");
     setInstructions("");
-    setVehicleType("Motor");
+    setVehicleType("");
     setAssignedRiderId("");
     setSearchQuery("");
     setCustomerResults([]);
@@ -894,6 +902,7 @@ function DeliveryModal({ isOpen, onClose, onSave, initialData }) {
                   onChange={(e) => setVehicleType(e.target.value)}
                   style={{ width: "100%", padding: "8px 10px", borderRadius: 6, border: "1px solid #d1d5db", fontSize: "0.85rem" }}
                 >
+                  <option value="">Select a configured vehicle</option>
                   {vehicleTypes.map((v) => (
                     <option key={v} value={v}>{v}</option>
                   ))}

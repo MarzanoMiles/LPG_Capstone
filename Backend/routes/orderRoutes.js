@@ -31,6 +31,7 @@ const LIST_SELECT = `
          d.DeliveryID AS deliveryId, d.DRNo AS drNo, d.DeliveryStatus AS deliveryStatus,
          d.Remarks AS deliveryNotes, d.DeliveryDate AS deliveredAt, d.DeliveryCharge AS deliveryFee, d.DeliveryAddress AS deliveryAddress,
          d.DeliveredByUserID AS deliveryRiderId,
+         d.VehicleRateSnapshot AS vehicleRateSnapshot, JSON_UNQUOTE(JSON_EXTRACT(d.VehicleRateSnapshot, '$.name')) AS vehicleType,
          CASE WHEN rider.UserID IS NOT NULL THEN CONCAT(rider.FirstName,' ',rider.LastName) ELSE NULL END AS deliveryRiderName
   FROM \`Order\` o
   LEFT JOIN Customer c ON c.CustomerID = o.CustomerID
@@ -316,6 +317,7 @@ router.post(
            VALUES (:deliveryId, :saleId, :drNo, :fee, :address, 'Preparing', :paymentMethod)`,
           { deliveryId, saleId, drNo, fee, address: deliveryAddress, paymentMethod:paymentMethod || (markPaid ? "Cash" : "Cash on Delivery") }
         );
+        await require('../utils/deliveryVehicleSnapshot').saveVehicleSnapshot(conn,req.user.companyId,deliveryId,req.body.vehicleType || req.body.deliveryDetails?.vehicleType);
       }
 
       await conn.commit();
@@ -390,6 +392,7 @@ router.put(
                VALUES (:deliveryId, :saleId, :drNo, :fee, :address, 'Preparing', :paymentMethod)`,
               { deliveryId, saleId: saleRows[0].SaleID, drNo, fee: Number(deliveryFee) || 0, address, paymentMethod:req.body.paymentMethod || null }
             );
+            await require('../utils/deliveryVehicleSnapshot').saveVehicleSnapshot(conn,req.user.companyId,deliveryId,req.body.vehicleType || req.body.deliveryDetails?.vehicleType);
           }
         }
       }

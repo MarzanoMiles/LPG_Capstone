@@ -13,6 +13,7 @@ function toBool(v) {
 function mapRow(row) {
   return {
     companyName: row.CompanyName || "",
+    vehicleRates: typeof row.VehicleRates === "string" ? JSON.parse(row.VehicleRates) : (row.VehicleRates || []),
     address: row.Address || "",
     contactEmail: row.ContactEmail || "",
     phone: row.Phone || "",
@@ -67,6 +68,26 @@ router.get(
     res.json(mapRow(row));
   })
 );
+
+// Replace the complete matrix atomically, scoped to the authenticated company.
+// Delivery.DeliveryCharge is stored per transaction and must remain unchanged
+// when a configured rate is edited or removed from this settings matrix.
+router.put('/vehicle-rates', authorize('Admin'), asyncHandler(async (req, res) => {
+  const vehicleRates = require('../utils/vehicleRates').validateVehicleRates(req.body.vehicleRates);
+  await ensureRow(req.user.companyId);
+  const conn = await pool.getConnection();
+  try {
+    await conn.beginTransaction();
+    await conn.query('SELECT CompanyID FROM CompanySettings WHERE CompanyID=:companyId FOR UPDATE', {companyId:req.user.companyId});
+    await require('../utils/vehicleRateStorage').syncVehicleRateTable(conn,req.user.companyId,vehicleRates);
+    await conn.query('UPDATE CompanySettings SET VehicleRates = :vehicleRates WHERE CompanyID = :companyId', {
+      companyId: req.user.companyId, vehicleRates: JSON.stringify(vehicleRates),
+    });
+    await conn.commit();
+  } catch (err) {await conn.rollback(); throw err;}
+  finally {conn.release();}
+  res.json({ message: 'Delivery fee & vehicle rates saved.', vehicleRates });
+}));
 
 // PUT /settings/operations
 router.put(

@@ -22,6 +22,7 @@ function setup({ status = 'Out for Delivery', received = 0, invalidWarehouse = f
     release() {},
     async query(sql, params) {
       queries.push({ sql, params });
+      if (sql.startsWith('INSERT INTO EntityIdSequence')) return [{insertId:queries.filter(q=>q.sql.startsWith('INSERT INTO EntityIdSequence')).length}];
       if (sql.includes('SELECT Email,SupplierName FROM SupplierHistory')) return [[{ Email: 'supplier@example.test', SupplierName: 'Supplier' }]];
       if (sql.includes('SELECT WarehouseName,Location FROM Warehouse')) return [[{ WarehouseName: 'Destination', Location: 'Address' }]];
       if (sql.includes('SELECT p.ProductName,i.Quantity')) return [[{ ProductName: 'Product', Quantity: 10, UnitCost: 100, Subtotal: 1000 }]];

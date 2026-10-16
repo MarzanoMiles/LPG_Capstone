@@ -15,6 +15,7 @@ function database({status="Unclaimed",pending=1,owner=true,mismatch=false,failAt
    async rollback(){if(backup)state=backup;backup=null;if(unlock)unlock();unlock=null;},release(){},
    async query(sql,p){
     db.queries.push(sql);
+    if(sql.startsWith('INSERT INTO EntityIdSequence'))return [{insertId:db.queries.filter(q=>q.startsWith('INSERT INTO EntityIdSequence')).length}];
     if(sql.includes("SELECT o.*"))return [owner?[{OrderID:"O1",OrderNo:"ORD-2026-001",PickupStatus:status,PickupSettlementPending:state.pending,TotalAmount:200,CustomerName:"Customer"}]:[]];
     if(sql.startsWith("SELECT OrderID FROM PickupSettlement"))return [state.settlements];
     if(sql.startsWith("SELECT RefundID"))return [state.refunds];

@@ -9,6 +9,7 @@ function database({status="Ready for Pickup",paid=200,owner=true,warehouse=true,
  let gate=Promise.resolve();const db={queries:[],get state(){return state;},async getConnection(){let before,release;
   return {async beginTransaction(){const previous=gate;gate=new Promise(resolve=>{release=resolve;});await previous;before=structuredClone(state);},async commit(){before=null;release();release=null;},async rollback(){if(before)state=before;before=null;if(release)release();release=null;},release(){},async query(sql,p){
    db.queries.push({sql,p});
+   if(sql.startsWith('INSERT INTO EntityIdSequence'))return [{insertId:db.queries.filter(q=>q.sql.startsWith('INSERT INTO EntityIdSequence')).length}];
    if(sql.startsWith("SELECT o.*"))return [owner?[{OrderID:"O1",OrderType:"Pickup",PickupStatus:state.status,TotalAmount:200,PickupSettlementPending:state.pending,PickupScheduledAt:expired?"2020-01-01 10:00:00":"2099-10-16 10:00:00"}]:[]];
    if(sql.startsWith("SELECT * FROM PickupClaim"))return [state.claims];
    if(sql.startsWith("SELECT * FROM CompanySettings"))return [[{BusinessDays:"Monday,Tuesday,Wednesday,Thursday,Friday",OpeningTime:"09:00:00",ClosingTime:"17:00:00",PickupExpirationDays:2}]];

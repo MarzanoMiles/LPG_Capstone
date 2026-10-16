@@ -10,6 +10,7 @@ router.get('/',asyncHandler(async(req,res)=>{
   const [rows]=await pool.query(`SELECT d.DeliveryID AS deliveryId,d.DRNo AS drNo,o.OrderID AS orderId,o.OrderNo AS id,
     o.OrderType AS type,o.OrderStatus AS status,o.OrderDate AS date,o.TotalAmount AS totalAmount,
     o.customer_name AS customerName,d.DeliveryStatus AS deliveryStatus,d.AttemptCount AS attempts,
+    d.VehicleRateSnapshot AS vehicleRateSnapshot,JSON_UNQUOTE(JSON_EXTRACT(d.VehicleRateSnapshot, '$.name')) AS vehicleType,
     settings.MaxDeliveryAttempts AS maxAttempts,d.NextAttemptAt AS nextAttemptAt,d.DeliveryAddress AS deliveryAddress,
     d.DeliveredByUserID AS deliveryRiderId,CONCAT(rider.FirstName,' ',rider.LastName) AS deliveryRiderName,
     CASE WHEN COALESCE(pay.amount,0)>=o.TotalAmount THEN 'Paid' ELSE 'Unpaid' END AS paymentStatus,

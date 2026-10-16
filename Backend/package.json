@@ -4,6 +4,10 @@
   "type": "commonjs",
   "main": "server.js",
   "scripts": {
+    "migrate:vehicle-ids": "node db/migrate_vehicle_ids.js",
+    "migrate:activity-record-id": "node db/migrate_activity_record_id.js",
+    "migrate:delivery-vehicle-snapshot": "node db/migrate_delivery_vehicle_snapshot.js",
+    "migrate:vehicle-rates": "node db/migrate_vehicle_rates.js",
     "migrate:company-profile": "node db/migrate_company_profile.js",
     "migrate:company-registration": "node db/migrate_company_registration.js",
     "migrate:user-history": "node db/migrate_user_history.js",

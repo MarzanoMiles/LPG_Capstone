@@ -299,6 +299,7 @@ CREATE TABLE Payment (
 );
 
 CREATE TABLE Delivery (
+  VehicleRateSnapshot JSON NULL,
   historical_customer_id VARCHAR(20) NULL,
   customer_name VARCHAR(150) NULL,
   contact_number VARCHAR(30) NULL,
@@ -353,13 +354,14 @@ CREATE TABLE UserActivity (
   UserID          VARCHAR(20) NOT NULL,
   ActivityType    VARCHAR(30) NOT NULL,                 -- Login, Create, Update, Delete, Approve
   Module          VARCHAR(50) NOT NULL,
-  RecordID        VARCHAR(20) NULL,
+  RecordID        VARCHAR(100) NULL,
   Description     VARCHAR(500) NULL,
   ActivityDate    DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
   FOREIGN KEY (UserID) REFERENCES User(UserID)
 );
 
 CREATE TABLE CompanySettings (
+  VehicleRates JSON NULL,
   CompanyID          VARCHAR(20) PRIMARY KEY,
   CompanyName        VARCHAR(150) NULL,
   Address            VARCHAR(255) NULL,
@@ -497,3 +499,17 @@ END$$
 DELIMITER ;
 
 CREATE TABLE IF NOT EXISTS EntityIdSequence (Entity VARCHAR(64) PRIMARY KEY, NextValue BIGINT UNSIGNED NOT NULL);
+
+CREATE TABLE IF NOT EXISTS deliveryvehiclerate (
+  VehicleID VARCHAR(50) PRIMARY KEY,
+  CompanyID VARCHAR(20) NOT NULL,
+  VehicleName VARCHAR(100) NOT NULL,
+  CapacityLabel VARCHAR(100) NOT NULL,
+  MaxWeightKg DECIMAL(12,2) NOT NULL,
+  BaseRate DECIMAL(12,2) NOT NULL,
+  PerKm DECIMAL(12,2) NOT NULL,
+  MinSubtotalForFree DECIMAL(12,2) NOT NULL DEFAULT 0,
+  FreeDistanceKm DECIMAL(10,1) NOT NULL DEFAULT 5,
+  Enabled TINYINT(1) NOT NULL DEFAULT 1,
+  KEY (CompanyID)
+);

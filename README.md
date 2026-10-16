@@ -1,4 +1,4 @@
-﻿# GasTrack
+# GasTrack
 
 Current system: React/Vite frontend (`src`), Express API (`Backend`), MySQL,
 and the Flask restocking service (`ML`). Use Windows PowerShell commands below.
@@ -161,9 +161,9 @@ Latest local check: October 16, 2026 (Asia/Shanghai).
 | --- | --- |
 | Frontend | Port 5173 responds; production build passes. Lint exits successfully with 13 warnings. Vite reports a large JavaScript chunk. |
 | Backend | Port 4000 health responds; MySQL connection and authenticated Business Profile read pass. Profile company name, address, and email match MySQL. |
-| Backend tests | Eight failures in pickup claim, pickup settlement, and purchase-order workflow tests. Their SQL mocks do not support the current `EntityIdSequence` allocation query; the settlement concurrency assertion also fails. The suite is not fully passing. |
+| Backend tests | 120 tests pass with all database integration flags enabled and sequential execution. Includes vehicle ID allocation, physical rate deletion, historical vehicle snapshots, pickup, delivery, purchase orders, customers, and user/audit APIs. Integration fixtures roll back their business data. |
 | ML | Port 5001 health reports `model_loaded: true`; prediction and backend ML client checks pass. Python compilation, dependency checks, and MySQL connection pass. |
-| SQL snapshot | Refreshed `Backend/db/snapshots/current.sql`; export completion and current registration/profile schema verified. No restore was performed. |
+| SQL schema | Vehicle storage, delivery snapshots, and wider audit record IDs are included in migrations/schema. Apply the migrations below after restoring an older SQL snapshot. No snapshot restore was performed during these checks. |
 
 ML reads its own `.env` relative to the script and supports UTF-8 files with or
 without a byte-order mark. Restart ML after pulling this environment-loading fix.
@@ -212,3 +212,6 @@ Use `npm.cmd` if PowerShell blocks `npm.ps1`. If a port is occupied, stop the
 existing service before starting another copy. For database errors, check
 credentials, TLS support, and the selected database. For a missing ML model,
 run training once and restart ML.
+# Vehicle rate settings
+
+For an existing database, run `npm run migrate:vehicle-rates`, `npm run migrate:delivery-vehicle-snapshot`, and `npm run migrate:vehicle-ids` from `Backend`. The vehicle-rates migration also widens audit record IDs. Vehicle IDs use `V-001` format. Admin users can manage up to 100 vehicle classes; capacity is entered in kilograms. Apply each vehicle edit, then Save the matrix to persist it. Cancel discards the draft. Saving synchronizes the matrix and the `deliveryvehiclerate` table in one transaction, physically removing deleted configuration rows. New delivery transactions retain an independent copy of their selected vehicle rate; deleting an active configuration does not delete historical vehicle details or fees. Older transactions without a saved vehicle are shown as "Not recorded".

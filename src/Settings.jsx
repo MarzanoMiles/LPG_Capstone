@@ -5,6 +5,7 @@ import { clearReceiptSettingsCache, DEFAULT_RECEIPT_HEADER } from "./utils/recei
 import "./Settings.css";
 import SettingsOperations from "./SettingsOperations";
 import SettingsFinancial from "./SettingsFinancial";
+import SettingsVehicleRates from "./SettingsVehicleRates";
 
 const emptySettings = {
   companyName: "",
@@ -230,6 +231,7 @@ export default function Settings() {
       {/* Business operations and financial settings */}
       <SettingsOperations settings={settings} disabled={!!loadError} onSaved={flashSaved} />
       <SettingsFinancial settings={settings} disabled={!!loadError} onSaved={flashSaved} />
+      <SettingsVehicleRates settings={settings} disabled={!!loadError} onSaved={flashSaved} />
 
       {/* ─── RECEIPT AND POS OUTPUT ─── */}
       <div className="settings-card">

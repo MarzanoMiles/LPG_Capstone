@@ -92,6 +92,7 @@ router.get(
       `SELECT COALESCE(s.customer_name, ' \u2014 ') AS customerName, s.contact_number AS customerPhone,
               s.address AS customerAddress, s.customer_type AS customerType, o.OrderNo AS orderNo,
               d.DRNo AS deliveryNo, d.DeliveryCharge AS deliveryFee,
+              d.VehicleRateSnapshot AS vehicleRateSnapshot, JSON_UNQUOTE(JSON_EXTRACT(d.VehicleRateSnapshot, '$.name')) AS vehicleType,
               d.DeliveryAddress AS deliveryAddress, d.Remarks AS deliveryNotes,
               CONCAT(r.FirstName,' ',r.LastName) AS driverName,
               pay.PaymentMethod AS paymentMethod, pay.ReferenceNo AS referenceNo,
@@ -315,6 +316,7 @@ router.post(
         const drNo=await nextSequence(conn,'Delivery','DRNo','DEL');
         await conn.query(`INSERT INTO Delivery(DeliveryID,SaleID,DRNo,DeliveredByUserID,DeliveryAddress,DeliveryStatus,Remarks,PaymentMethod)
           VALUES(:deliveryId,:saleId,:drNo,:riderId,:address,'Preparing',:notes,:paymentMethod)`,{deliveryId,saleId,drNo,riderId:details.riderId||null,address:details.address.trim(),notes:details.instructions||null,paymentMethod});
+        await require('../utils/deliveryVehicleSnapshot').saveVehicleSnapshot(conn,req.user.companyId,deliveryId,details.vehicleType);
         await conn.query("UPDATE `Order` SET OrderStatus='Preparing' WHERE OrderID=:orderId",{orderId});
       }
       if (paymentMethod && amountCollected && !cod) {

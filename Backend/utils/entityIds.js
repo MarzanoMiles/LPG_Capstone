@@ -1,5 +1,6 @@
 // Atomic allocation shared by all application instances. Values expand beyond 999.
 const entities = {
+ deliveryvehiclerate: ['VehicleID','V'],
  Branch: ['BranchID','BRH'], Brand: ['BrandID','BD'], Category: ['CategoryID','CTRGY'],
  Company: ['CompanyID','C'], ComplianceReport: ['ReportID','REP'], Customer: ['CustomerID','CUST'],
  DataActivityLog: ['DataActivityID','DA'], Delivery: ['DeliveryID','D'], Inventory: ['InventoryID','INT'],

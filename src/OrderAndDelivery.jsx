@@ -655,6 +655,7 @@ export default function OrderAndDelivery() {
             <Field label="Delivery No."><input readOnly value={orderModal.drNo || ""} /></Field>
             <Field label="Delivery Status"><input readOnly value={orderModal.deliveryStatus || ""} /></Field>
             <Field label="Delivery Address"><input readOnly value={orderModal.deliveryAddress || ""} /></Field>
+            <Field label="Vehicle Class"><input readOnly value={orderModal.vehicleType || 'Not recorded'} /></Field>
             <Field label="Assigned Delivery Driver"><select disabled={orderModal.fromCustomerHistory || ["Delivered","Cancelled","Delivery Failed"].includes(orderModal.deliveryStatus)} value={orderModal.deliveryRiderId || ""} onChange={e=>setOrderModal({...orderModal,deliveryRiderId:e.target.value})}><option value="">Unassigned</option>{drivers.map(d=><option key={d.id} value={d.id}>{d.name}</option>)}</select></Field>
             <Field label="Notes"><textarea disabled={orderModal.fromCustomerHistory || ["Delivered","Cancelled","Delivery Failed"].includes(orderModal.deliveryStatus)} maxLength={255} value={orderModal.deliveryNotes || ""} onChange={e=>setOrderModal({...orderModal,deliveryNotes:e.target.value})} /></Field>
             {!orderModal.fromCustomerHistory && <div className="od-modal-actions">

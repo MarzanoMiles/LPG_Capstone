@@ -106,7 +106,9 @@ test('settings APIs enforce admin CRUD, duplicate names, dependency protection a
     const retainedAccess = (await call(`/users/${created.data.id}`)).data.moduleAccess;
     assert.equal(retainedAccess.inventory,true); assert.equal(retainedAccess.dashboard,false);
     assert.equal((await call(`/users/${created.data.id}`,'DELETE')).status,200);
-    assert.equal((await call('/auth/login','POST',{email,password:'Audit-test-password'})).status,403);
+    // Hard deletion removes the account; login uses the invalid-credentials
+    // response rather than the forbidden response for an inactive account.
+    assert.equal((await call('/auth/login','POST',{email,password:'Audit-test-password'})).status,401);
     assert.equal((await call(`/user-settings/branches/${branch.data.id}`,'DELETE')).status,409);
     assert.equal((await call(`/user-settings/warehouses/${warehouse.data.id}`,'DELETE')).status,200);
     assert.equal((await call(`/user-settings/branches/${branch.data.id}`,'DELETE')).status,200);

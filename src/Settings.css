@@ -338,3 +338,31 @@ input:checked + .toggle-slider:before {
  .financial-discount-editor-fields { grid-template-columns: 1fr; }
  .financial-dialog .financial-tax-row { gap: 12px; }
 }
+.vehicle-table-scroll { overflow-x: auto; }
+.vehicle-matrix-toolbar { display: flex; justify-content: flex-end; }
+.vehicle-rate-table { width: 100%; min-width: 640px; table-layout: fixed; border-collapse: collapse; font-size: 13px; }
+.vehicle-rate-table th, .vehicle-rate-table td { padding: 16px; text-align: left; vertical-align: middle; line-height: 1.5; border-bottom: 1px solid #e2e8f0; overflow-wrap: break-word; }
+.vehicle-rate-table th { background: #f8fafc; color: #475569; }
+.vehicle-rate-table td.vehicle-table-empty { text-align: center; padding: 40px 16px; color: #64748b; }
+.vehicle-rate-table td { font-variant-numeric: tabular-nums; }
+.vehicle-row-actions { display: flex; gap: 8px; }
+.vehicle-row-actions .btn { min-width: 36px; width: 36px; height: 36px; padding: 8px; }
+.vehicle-rate-dialog { box-sizing: border-box; width: min(1000px, calc(100% - 48px)); max-width: 1000px; }
+.vehicle-rate-dialog h2, .vehicle-editor-dialog h2 { margin: 0 0 12px; font-size: 22px; }
+.vehicle-rate-dialog > .operations-help, .vehicle-editor-dialog > .operations-help { margin-bottom: 24px; }
+.vehicle-editor-dialog { box-sizing: border-box; width: min(560px, calc(100% - 32px)); }
+.vehicle-editor-dialog::backdrop { background: rgba(15, 23, 42, .18); }
+.vehicle-delete-dialog { box-sizing: border-box; width: min(460px, calc(100% - 32px)); }
+.vehicle-delete-dialog h2 { margin: 0 0 16px; font-size: 22px; }
+.vehicle-delete-dialog p { line-height: 1.6; overflow-wrap: anywhere; }
+.vehicle-delete-dialog::backdrop { background: rgba(15, 23, 42, .18); }
+.vehicle-delete-confirm { background: #dc2626; color: #fff; }
+.vehicle-editor-form { min-width: 0; }
+.vehicle-editor-fields { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 20px; }
+.vehicle-editor-fields .form-group:first-child { grid-column: 1 / -1; }
+.vehicle-editor-fields .form-group { min-width: 0; margin: 0; }
+.vehicle-editor-fields .form-control { box-sizing: border-box; width: 100%; }
+.vehicle-draft-help { margin-top: 20px; }
+@media (max-width: 600px) {
+  .vehicle-editor-fields { grid-template-columns: 1fr; }
+}
