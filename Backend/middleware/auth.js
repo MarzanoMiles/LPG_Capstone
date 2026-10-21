@@ -91,7 +91,7 @@ function allowedModules(req, pathname) {
     brands: write ? ['products'] : ['products','inventory','pos','restocking','report','data'],
     categories: write ? ['products'] : ['products','inventory','pos','restocking'],
     sales: write ? (pathname === '/sales' ? ['pos'] : ['sales']) : ['sales','pos','orders','report'],
-    payments:['pos','orders','restocking'], customers:['orders','pos'],
+    payments:['pos','orders','restocking'], customers:['orders','pos'], 'delivery-fee':['pos','orders'],
     orders: write ? ['orders','pos'] : ['orders','pos','sales'], deliveries: pathname === '/deliveries/drivers' && !write ? ['orders','pos'] : ['orders'],
     suppliers: write ? ['suppliers'] : ['suppliers','products','restocking'],
     restocking:['restocking'], 'purchase-orders':['restocking'], reports:['report'], data:['data'],

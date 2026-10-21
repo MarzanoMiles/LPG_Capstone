@@ -2,7 +2,8 @@ import PageLayout, { PageHeader } from "./PageLayout";
 import Pagination from "./Pagination";
 import React, { useEffect, useMemo, useRef, useState } from "react";
 import { ChevronDown, Download, FileSearch, Printer, Trash2, Upload } from "lucide-react";
-import SalesInfoModal from "./SalesInfoModal";
+import SalesReceiptModal from "./SalesReceiptModal";
+import { buildSaleReceipt } from "./utils/saleReceipt";
 import { apiRequest } from "./api";
 import { printReceipt } from "./utils/receipt";
 import "./Sales.css";
@@ -157,8 +158,8 @@ export default function Sales() {
 
     const adjustInventory = window.confirm(
       "Should this import also deduct current stock levels for the imported items?\n\n" +
-        "Click OK to deduct stock (use this if these sales haven't been recorded in inventory yet).\n" +
-        "Click Cancel to skip stock changes (use this for backfilling old historical records)."
+      "Click OK to deduct stock (use this if these sales haven't been recorded in inventory yet).\n" +
+      "Click Cancel to skip stock changes (use this for backfilling old historical records)."
     );
 
     setIsImporting(true);
@@ -187,7 +188,7 @@ export default function Sales() {
     setIsSaleLoading(true);
     try {
       const full = await apiRequest(`/sales/${sale.id}`);
-      setSelectedSale(full);
+      setSelectedSale(buildSaleReceipt(full));
     } catch (err) {
       setActionError(err.message || "Failed to load sale details.");
     } finally {
@@ -200,24 +201,7 @@ export default function Sales() {
     setPrintingId(sale.id);
     try {
       const full = await apiRequest(`/sales/${sale.id}`);
-      const items = (full.items || []).map((it) => ({
-        name: it.name,
-        qty: it.qty,
-        unitPrice: Number(it.costPrice),
-        subtotal: Number(it.subtotal),
-      }));
-      const subtotal = items.reduce((s, it) => s + it.subtotal, 0);
-      const discount = Number(full.discount || 0);
-      const totalAmount = Number(full.amount || 0);
-      await printReceipt({
-        ...full,
-        orderType: full.type,
-        completed: true,
-        items,
-        subtotal,
-        discount,
-        totalAmount,
-      });
+      await printReceipt(buildSaleReceipt(full));
     } catch (err) {
       setActionError(err.message || "Failed to load sale for printing.");
     } finally {
@@ -246,145 +230,128 @@ export default function Sales() {
   return (
     <PageLayout className="sales-page" contentClassName="sales-inner">
 
-        <PageHeader title="Sales" />
+      <PageHeader title="Sales" />
 
-        {loadError && <p style={{ color: "#dc2626", fontWeight: 600 }}>{loadError}</p>}
-        {actionError && <p style={{ color: "#dc2626", fontWeight: 600 }}>{actionError}</p>}
-        {importMessage && <p style={{ color: "#16a34a", fontWeight: 600 }}>{importMessage}</p>}
+      {loadError && <p style={{ color: "#dc2626", fontWeight: 600 }}>{loadError}</p>}
+      {actionError && <p style={{ color: "#dc2626", fontWeight: 600 }}>{actionError}</p>}
+      {importMessage && <p style={{ color: "#16a34a", fontWeight: 600 }}>{importMessage}</p>}
 
-        <div className="sales-stat-grid">
-          {statCards.map((card) => (
-            <StatCard key={card.label} {...card} />
-          ))}
-        </div>
+      <div className="sales-stat-grid">
+        {statCards.map((card) => (
+          <StatCard key={card.label} {...card} />
+        ))}
+      </div>
 
-        <div className="sales-toolbar">
-          <input
-            type="text"
-            placeholder="Search By Sales ID"
-            value={searchTerm}
-            onChange={(e) => setSearchTerm(e.target.value)}
-            className="sales-search-input"
-          />
+      <div className="sales-toolbar">
+        <input
+          type="text"
+          placeholder="Search By Sales ID"
+          value={searchTerm}
+          onChange={(e) => setSearchTerm(e.target.value)}
+          className="sales-search-input"
+        />
 
-          <FilterSelect value={cashierFilter} onChange={setCashierFilter} options={cashiers} />
-          <FilterSelect value={statusFilter} onChange={setStatusFilter} options={statuses} />
+        <FilterSelect value={cashierFilter} onChange={setCashierFilter} options={cashiers} />
+        <FilterSelect value={statusFilter} onChange={setStatusFilter} options={statuses} />
 
-          <button type="button" className="import-btn" onClick={downloadCsvTemplate} style={{ marginLeft: 0, background: "#6b7280" }}>
-            <Download size={16} />
-            CSV Template
-          </button>
+        <button type="button" className="import-btn" onClick={downloadCsvTemplate} style={{ marginLeft: 0, background: "#6b7280" }}>
+          <Download size={16} />
+          CSV Template
+        </button>
 
-          <input
-            ref={fileInputRef}
-            type="file"
-            accept=".csv"
-            style={{ display: "none" }}
-            onChange={handleFileSelected}
-          />
-          <button type="button" className="import-btn" onClick={handleImportClick} disabled={isImporting}>
-            <Upload size={16} />
-            {isImporting ? "Importing…" : "Import Sales Data"}
-          </button>
-        </div>
+        <input
+          ref={fileInputRef}
+          type="file"
+          accept=".csv"
+          style={{ display: "none" }}
+          onChange={handleFileSelected}
+        />
+        <button type="button" className="import-btn" onClick={handleImportClick} disabled={isImporting}>
+          <Upload size={16} />
+          {isImporting ? "Importing…" : "Import Sales Data"}
+        </button>
+      </div>
 
-        <div className="sales-table-wrap">
-          <div className="paginated-table-scroll">
-            <table className="sales-table">
-              <thead>
-                <tr>
-                  <th>Sales ID</th>
-                  <th>Date and Time</th>
-                  <th>Cashier</th>
-                  <th>Order ID</th>
-                  <th>Type</th>
-                  <th>Amount</th>
-                  <th>Actions</th>
-                </tr>
-              </thead>
-              <tbody>
-                {isLoading && (
-                  <tr><td colSpan={7} style={{ textAlign: "center", padding: 24 }}>Loading…</td></tr>
-                )}
-                {!isLoading &&
-                  paginatedSales.map((sale) => (
-                    <tr key={sale.id}>
-                      <td>{sale.saleNo}</td>
-                      <td>{new Date(sale.datetime).toLocaleString()}</td>
-                      <td>{sale.cashierName || sale.cashier}</td>
-                      <td>{sale.orderId}</td>
-                      <td>{sale.type || "—"}</td>
-                      <td>{formatPeso(sale.amount)}</td>
-                      <td>
-                        <div className="sales-action-icons">
-                          <button
-                            type="button"
-                            className="sales-action-icon view"
-                            aria-label={`View ${sale.saleNo}`}
-                            onClick={() => handleView(sale)}
-                            disabled={isSaleLoading}
-                          >
-                            <FileSearch size={16} />
-                          </button>
-                          <button
-                            type="button"
-                            className="sales-action-icon print"
-                            aria-label={`Print receipt for ${sale.saleNo}`}
-                            onClick={() => handlePrint(sale)}
-                            disabled={printingId === sale.id}
-                          >
-                            <Printer size={16} />
-                          </button>
-                          <button
-                            type="button"
-                            className="sales-action-icon delete"
-                            aria-label={`Void ${sale.saleNo}`}
-                            onClick={() => handleDelete(sale)}
-                            disabled={deletingId === sale.id}
-                          >
-                            <Trash2 size={16} />
-                          </button>
-                        </div>
-                      </td>
-                    </tr>
-                  ))}
-                {!isLoading && filteredSales.length === 0 && (
-                  <tr>
-                    <td colSpan={7} className="no-results-cell">
-                      No sales match your filters.
+      <div className="sales-table-wrap">
+        <div className="paginated-table-scroll">
+          <table className="sales-table">
+            <thead>
+              <tr>
+                <th>Sales ID</th>
+                <th>Date and Time</th>
+                <th>Cashier</th>
+                <th>Order ID</th>
+                <th>Type</th>
+                <th>Amount</th>
+                <th>Actions</th>
+              </tr>
+            </thead>
+            <tbody>
+              {isLoading && (
+                <tr><td colSpan={7} style={{ textAlign: "center", padding: 24 }}>Loading…</td></tr>
+              )}
+              {!isLoading &&
+                paginatedSales.map((sale) => (
+                  <tr key={sale.id}>
+                    <td>{sale.saleNo}</td>
+                    <td>{new Date(sale.datetime).toLocaleString()}</td>
+                    <td>{sale.cashierName || sale.cashier}</td>
+                    <td>{sale.orderId}</td>
+                    <td>{sale.type || "—"}</td>
+                    <td>{formatPeso(sale.amount)}</td>
+                    <td>
+                      <div className="sales-action-icons">
+                        <button
+                          type="button"
+                          className="sales-action-icon view"
+                          aria-label={`View ${sale.saleNo}`}
+                          onClick={() => handleView(sale)}
+                          disabled={isSaleLoading}
+                        >
+                          <FileSearch size={16} />
+                        </button>
+                        <button
+                          type="button"
+                          className="sales-action-icon print"
+                          aria-label={`Print receipt for ${sale.saleNo}`}
+                          onClick={() => handlePrint(sale)}
+                          disabled={printingId === sale.id}
+                        >
+                          <Printer size={16} />
+                        </button>
+                        <button
+                          type="button"
+                          className="sales-action-icon delete"
+                          aria-label={`Void ${sale.saleNo}`}
+                          onClick={() => handleDelete(sale)}
+                          disabled={deletingId === sale.id}
+                        >
+                          <Trash2 size={16} />
+                        </button>
+                      </div>
                     </td>
                   </tr>
-                )}
-              </tbody>
-            </table>
-          </div>
-
-          {!isLoading && (
-            <Pagination currentPage={validatedCurrentPage} totalPages={totalPages} onPageChange={goToPage} />
-          )}
+                ))}
+              {!isLoading && filteredSales.length === 0 && (
+                <tr>
+                  <td colSpan={7} className="no-results-cell">
+                    No sales match your filters.
+                  </td>
+                </tr>
+              )}
+            </tbody>
+          </table>
         </div>
 
+        {!isLoading && (
+          <Pagination currentPage={validatedCurrentPage} totalPages={totalPages} onPageChange={goToPage} />
+        )}
+      </div>
 
-      <SalesInfoModal
+
+      <SalesReceiptModal
         isOpen={!!selectedSale}
-        sale={
-          selectedSale
-            ? {
-                id: selectedSale.saleNo,
-                datetime: new Date(selectedSale.datetime).toLocaleString(),
-                cashier: selectedSale.cashier,
-                cashierName: selectedSale.cashierName,
-                orderId: selectedSale.orderId,
-                discount: Number(selectedSale.discount),
-                items: (selectedSale.items || []).map((it) => ({
-                  name: it.name,
-                  qty: it.qty,
-                  costPrice: Number(it.costPrice),
-                })),
-              }
-            : null
-        }
-        storeName="GasTrack Store"
+        sale={selectedSale}
         onClose={() => setSelectedSale(null)}
       />
     </PageLayout>

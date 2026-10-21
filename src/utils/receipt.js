@@ -76,12 +76,13 @@ export function buildReceiptHtml(sale, settings = {}) {
   ${type === "Walk-in" ? (sale.customerId == null ? row("Customer Name :", " \u2014 ", "meta") : blankRow("Customer Name :")) : row("Customer Name :", sale.customerName || details.customerName || "?", "meta")}
   ${type !== "Walk-in" ? row("Contact No :", sale.customerPhone || details.contactNumber || "?", "meta") : ""}
   ${type === "Walk-in" ? blankRow("Address :") : row(delivery ? "Delivery Address:" : "Address :", sale.deliveryAddress || sale.customerAddress || details.address || "?", "meta")}
-  ${delivery ? row("Delivery Notes :", sale.deliveryNotes || details.notes || "", "meta") : ""}<hr class="customer-divider">
+  ${delivery ? row("Delivery Notes :", sale.deliveryNotes || details.notes || details.instructions || "", "meta") : ""}
+  ${delivery && sale.deliveryDistanceKm != null ? row("Distance :", `${sale.deliveryDistanceKm} km`, "meta") : ""}<hr class="customer-divider">
   <table><thead><tr><th>Item</th><th>Qty</th><th>Unit Price</th><th>Total</th></tr></thead><tbody>${items.map(it => `<tr><td>${esc(it.name)}</td><td>${esc(it.qty)}</td><td>${money(it.unitPrice ?? it.costPrice)}</td><td>${money(it.subtotal ?? it.qty * (it.unitPrice ?? it.costPrice))}</td></tr>`).join("")}</tbody></table>
   <hr>${row("Items Purchased:", items.reduce((sum, it) => sum + Number(it.qty || 0), 0))}<hr>
   ${amount("Subtotal (VAT Inclusive)", subtotal)}${amount("Less: Discount", discount)}${amount("Total Sales (VAT Inclusive)", totalSales)}
   ${settings.showTaxBreakdown !== false ? `${amount(`Less: VAT (${Math.round(rate * 100)}%)`, vat)}${amount("Amount Net of VAT", totalSales - vat)}` : ""}
-  ${delivery ? amount("Delivery Fee", fee) : ""}<hr>${amount("TOTAL AMOUNT DUE", total, "strong")}<hr>
+  ${delivery ? row("Delivery Fee", fee > 0 ? `PHP ${money(fee)}` : "PHP 0.00 (FREE)") : ""}<hr>${amount("TOTAL AMOUNT DUE", total, "strong")}<hr>
   ${row("Payment Method", cod ? "Cash on Delivery (COD)" : method)}
   ${["GCash", "Card", "Bank Transfer"].includes(method) ? row("Reference No.", sale.referenceNo || "?") : ""}
   ${cod ? amount("Amount to Collect", total) : `${amount("Amount Paid", paid ?? total)}${amount("Change", sale.changeDue ?? Math.max(0, Number(paid ?? total) - total))}`}<hr>
@@ -168,20 +169,24 @@ function printViaIframe(html) {
  *                          items: [{ name, qty, unitPrice, subtotal }],
  *                          subtotal, discount, vat, taxRate, deliveryFee, totalAmount }
  */
-export async function printReceipt(sale) {
+export async function getReceiptHtml(sale) {
   const settings = await getSettings({ forceRefresh: true });
-  const html = buildReceiptHtml(sale, settings);
+  return buildReceiptHtml(sale, settings);
+}
 
+export async function printReceiptHtml(html) {
   try {
     await printViaIframe(html);
   } catch (err) {
     console.error("In-page print failed, falling back to a new tab:", err);
-    // Last-resort fallback: open a real tab with the receipt so the person can
-    // still use their browser/OS's own print or share/PDF option manually.
     const blob = new Blob([html], { type: "text/html" });
     const url = URL.createObjectURL(blob);
     window.open(url, "_blank");
     setTimeout(() => URL.revokeObjectURL(url), 60000);
   }
+}
+
+export async function printReceipt(sale) {
+  return printReceiptHtml(await getReceiptHtml(sale));
 }
 

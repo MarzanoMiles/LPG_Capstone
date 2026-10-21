@@ -19,6 +19,7 @@ import { apiRequest } from "./api";
 import { printReceipt } from "./utils/receipt";
 import { filterVisibleWarehouses } from "./utils/warehouseFilters";
 import { resolveProductImage, productImagePlaceholder } from "./utils/productImages";
+import { calculateDeliveryFee, round2 } from "./utils/deliveryFee";
 import "./PosTerminal.css";
 
 const discountOptions = [
@@ -622,7 +623,7 @@ function PickupModal({ isOpen, onClose, onSave, initialData }) {
 // ---------------------------------------------------------------------------
 // Delivery Details Modal
 // ---------------------------------------------------------------------------
-function DeliveryModal({ isOpen, onClose, onSave, initialData }) {
+function DeliveryModal({ isOpen, onClose, onSave, initialData, orderTotal = 0 }) {
   const [searchQuery, setSearchQuery] = useState("");
   const [customerResults, setCustomerResults] = useState([]);
   const [isSearching, setIsSearching] = useState(false);
@@ -635,20 +636,22 @@ function DeliveryModal({ isOpen, onClose, onSave, initialData }) {
   const [instructions, setInstructions] = useState("");
   const [vehicleType, setVehicleType] = useState("");
   const [vehicleTypes, setVehicleTypes] = useState([]);
-  useEffect(() => {
-    if (!isOpen) return;
-    let active = true;
-    apiRequest('/settings').then(settings => {
-      if (active) setVehicleTypes((settings.vehicleRates || []).map(rate => rate.name));
-    }).catch(() => {if (active) {setVehicleTypes([]); setError('Unable to load vehicle rates. Reopen delivery details to retry.');}});
-    return () => {active = false;};
-  }, [isOpen]);
+  const [estimate, setEstimate] = useState(null); // { distanceKm, estimateToken, rate, storeAddress }
+  const [isEstimating, setIsEstimating] = useState(false);
   const [assignedRiderId, setAssignedRiderId] = useState("");
   const [showAddCustomerModal, setShowAddCustomerModal] = useState(false);
 
   useEffect(() => {
     if (!isOpen) return;
+    let active = true;
+    apiRequest('/settings').then(settings => {
+      if (active) setVehicleTypes((settings.vehicleRates || []).map(rate => rate.name));
+    }).catch(() => { if (active) { setVehicleTypes([]); setError('Unable to load vehicle rates. Reopen delivery details to retry.'); } });
+    return () => { active = false; };
+  }, [isOpen]);
 
+  useEffect(() => {
+    if (!isOpen) return;
     const fetchRiders = async () => {
       setIsLoadingRiders(true);
       try {
@@ -660,7 +663,6 @@ function DeliveryModal({ isOpen, onClose, onSave, initialData }) {
         setIsLoadingRiders(false);
       }
     };
-
     fetchRiders();
   }, [isOpen]);
 
@@ -675,6 +677,11 @@ function DeliveryModal({ isOpen, onClose, onSave, initialData }) {
       setInstructions(initialData.instructions || "");
       setVehicleType(initialData.vehicleType || "");
       setAssignedRiderId(initialData.riderId || "");
+      setEstimate(
+        initialData.estimateToken
+          ? { distanceKm: initialData.distanceKm, estimateToken: initialData.estimateToken, rate: initialData.rate }
+          : null
+      );
     } else {
       resetForm();
     }
@@ -687,6 +694,7 @@ function DeliveryModal({ isOpen, onClose, onSave, initialData }) {
     setInstructions("");
     setVehicleType("");
     setAssignedRiderId("");
+    setEstimate(null);
     setSearchQuery("");
     setCustomerResults([]);
   };
@@ -696,7 +704,6 @@ function DeliveryModal({ isOpen, onClose, onSave, initialData }) {
       setCustomerResults([]);
       return;
     }
-
     const timer = setTimeout(async () => {
       setIsSearching(true);
       try {
@@ -708,7 +715,6 @@ function DeliveryModal({ isOpen, onClose, onSave, initialData }) {
         setIsSearching(false);
       }
     }, 300);
-
     return () => clearTimeout(timer);
   }, [searchQuery]);
 
@@ -721,8 +727,28 @@ function DeliveryModal({ isOpen, onClose, onSave, initialData }) {
       contactNumber: cust.contactNumber || cust.phone || cust.ContactNo || "",
     });
     setAddress(cust.address || cust.Address || "");
+    setEstimate(null);
     setCustomerResults([]);
     setSearchQuery("");
+  };
+
+  const handleEstimate = async () => {
+    if (!address.trim()) return setError("Enter the complete delivery address first.");
+    if (!vehicleType) return setError("Select a vehicle type first.");
+    setIsEstimating(true);
+    setError("");
+    try {
+      const data = await apiRequest("/delivery-fee/estimate", {
+        method: "POST",
+        body: JSON.stringify({ address: address.trim(), vehicleType }),
+      });
+      setEstimate(data);
+    } catch (err) {
+      setEstimate(null);
+      setError(err.message || "Failed to estimate the delivery distance.");
+    } finally {
+      setIsEstimating(false);
+    }
   };
 
   const handleSaveModal = (e) => {
@@ -732,14 +758,20 @@ function DeliveryModal({ isOpen, onClose, onSave, initialData }) {
       setError("Please search and select a customer.");
       return;
     }
-
     if (!address.trim()) {
       setError("Complete Address is required.");
       return;
     }
+    if (!vehicleType) {
+      setError("Select a vehicle type.");
+      return;
+    }
+    if (!estimate?.estimateToken) {
+      setError("Calculate the delivery distance and fee before saving.");
+      return;
+    }
 
     setError("");
-
     const assignedRider = riders.find((r) => String(r.id || r.UserID) === String(assignedRiderId));
 
     onSave({
@@ -749,59 +781,36 @@ function DeliveryModal({ isOpen, onClose, onSave, initialData }) {
       address: address.trim(),
       instructions: instructions.trim(),
       vehicleType,
+      distanceKm: estimate.distanceKm,
+      estimateToken: estimate.estimateToken,
+      rate: estimate.rate,
       riderId: assignedRiderId,
       riderName: assignedRider ? assignedRider.name || assignedRider.FullName : "Unassigned",
     });
   };
 
+  const previewFee = estimate ? calculateDeliveryFee(estimate.rate, estimate.distanceKm, orderTotal) : 0;
+  const fieldStyle = { width: "100%", padding: "8px 10px", borderRadius: 6, border: "1px solid #d1d5db", fontSize: "0.85rem" };
+  const labelStyle = { fontSize: "0.8rem", fontWeight: 700, color: "#374151", display: "block", marginBottom: 4 };
+
   return (
     <>
       <div
-        style={{
-          position: "fixed",
-          inset: 0,
-          background: "rgba(17,24,39,0.55)",
-          display: "flex",
-          alignItems: "center",
-          justifyContent: "center",
-          zIndex: 9999,
-          padding: 16,
-        }}
+        style={{ position: "fixed", inset: 0, background: "rgba(17,24,39,0.55)", display: "flex", alignItems: "center", justifyContent: "center", zIndex: 9999, padding: 16 }}
         onClick={onClose}
       >
         <div
-          style={{
-            background: "#fff",
-            borderRadius: 12,
-            padding: "24px 28px",
-            width: "100%",
-            maxWidth: 520,
-            boxShadow: "0 20px 50px rgba(0,0,0,0.3)",
-          }}
+          style={{ background: "#fff", borderRadius: 12, padding: "24px 28px", width: "100%", maxWidth: 520, maxHeight: "92vh", overflowY: "auto", boxShadow: "0 20px 50px rgba(0,0,0,0.3)" }}
           onClick={(e) => e.stopPropagation()}
         >
           <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 16 }}>
             <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
               <Truck size={20} style={{ color: "#1d6bf3" }} />
-              <h2 style={{ fontSize: "1.2rem", fontWeight: 800, margin: 0, color: "#111827" }}>
-                Delivery Details
-              </h2>
+              <h2 style={{ fontSize: "1.2rem", fontWeight: 800, margin: 0, color: "#111827" }}>Delivery Details</h2>
               <button
                 type="button"
                 onClick={() => setShowAddCustomerModal(true)}
-                style={{
-                  display: "flex",
-                  alignItems: "center",
-                  gap: 4,
-                  padding: "5px 10px",
-                  borderRadius: 6,
-                  border: "none",
-                  background: "#1d6bf3",
-                  color: "#fff",
-                  fontSize: "0.78rem",
-                  fontWeight: 600,
-                  cursor: "pointer",
-                }}
+                style={{ display: "flex", alignItems: "center", gap: 4, padding: "5px 10px", borderRadius: 6, border: "none", background: "#1d6bf3", color: "#fff", fontSize: "0.78rem", fontWeight: 600, cursor: "pointer" }}
               >
                 <UserPlus size={14} /> Add New Customer
               </button>
@@ -819,9 +828,7 @@ function DeliveryModal({ isOpen, onClose, onSave, initialData }) {
 
           <div style={{ display: "flex", flexDirection: "column", gap: 12, marginBottom: 18 }}>
             <div>
-              <label style={{ fontSize: "0.8rem", fontWeight: 700, color: "#374151", display: "block", marginBottom: 4 }}>
-                Search Customer
-              </label>
+              <label style={labelStyle}>Search Customer</label>
               <div style={{ position: "relative" }}>
                 <Search size={16} style={{ position: "absolute", left: 10, top: "50%", transform: "translateY(-50%)", color: "#9ca3af" }} />
                 <input
@@ -829,7 +836,7 @@ function DeliveryModal({ isOpen, onClose, onSave, initialData }) {
                   placeholder="Type name or phone number..."
                   value={searchQuery}
                   onChange={(e) => setSearchQuery(e.target.value)}
-                  style={{ width: "100%", padding: "8px 12px 8px 34px", borderRadius: 6, border: "1px solid #d1d5db", fontSize: "0.85rem" }}
+                  style={{ ...fieldStyle, padding: "8px 12px 8px 34px" }}
                 />
               </div>
 
@@ -868,40 +875,38 @@ function DeliveryModal({ isOpen, onClose, onSave, initialData }) {
             </div>
 
             <div>
-              <label style={{ fontSize: "0.8rem", fontWeight: 700, color: "#374151", display: "block", marginBottom: 4 }}>
+              <label style={labelStyle}>
                 Complete Address <span style={{ color: "#dc2626" }}>*</span>
               </label>
               <textarea
                 rows={2}
-                placeholder="House No., Street, Barangay, City, Landmark"
+                placeholder="House No., Street, Barangay, City, Province"
                 value={address}
-                onChange={(e) => setAddress(e.target.value)}
-                style={{ width: "100%", padding: "8px 10px", borderRadius: 6, border: "1px solid #d1d5db", fontSize: "0.85rem", resize: "none" }}
+                onChange={(e) => { setAddress(e.target.value); setEstimate(null); }}
+                style={{ ...fieldStyle, resize: "none" }}
               />
             </div>
 
             <div>
-              <label style={{ fontSize: "0.8rem", fontWeight: 700, color: "#374151", display: "block", marginBottom: 4 }}>
-                Delivery Instructions (Optional)
-              </label>
+              <label style={labelStyle}>Delivery Instructions (Optional)</label>
               <input
                 type="text"
                 placeholder="e.g. Leave at guard house, call upon arrival"
                 value={instructions}
                 onChange={(e) => setInstructions(e.target.value)}
-                style={{ width: "100%", padding: "8px 10px", borderRadius: 6, border: "1px solid #d1d5db", fontSize: "0.85rem" }}
+                style={fieldStyle}
               />
             </div>
 
             <div style={{ display: "flex", gap: 10 }}>
               <div style={{ flex: 1 }}>
-                <label style={{ fontSize: "0.8rem", fontWeight: 700, color: "#374151", display: "block", marginBottom: 4 }}>
-                  Vehicle Type
+                <label style={labelStyle}>
+                  Vehicle Type <span style={{ color: "#dc2626" }}>*</span>
                 </label>
                 <select
                   value={vehicleType}
-                  onChange={(e) => setVehicleType(e.target.value)}
-                  style={{ width: "100%", padding: "8px 10px", borderRadius: 6, border: "1px solid #d1d5db", fontSize: "0.85rem" }}
+                  onChange={(e) => { setVehicleType(e.target.value); setEstimate(null); }}
+                  style={fieldStyle}
                 >
                   <option value="">Select a configured vehicle</option>
                   {vehicleTypes.map((v) => (
@@ -911,14 +916,8 @@ function DeliveryModal({ isOpen, onClose, onSave, initialData }) {
               </div>
 
               <div style={{ flex: 1 }}>
-                <label style={{ fontSize: "0.8rem", fontWeight: 700, color: "#374151", display: "block", marginBottom: 4 }}>
-                  Assign Driver
-                </label>
-                <select
-                  value={assignedRiderId}
-                  onChange={(e) => setAssignedRiderId(e.target.value)}
-                  style={{ width: "100%", padding: "8px 10px", borderRadius: 6, border: "1px solid #d1d5db", fontSize: "0.85rem" }}
-                >
+                <label style={labelStyle}>Assign Driver</label>
+                <select value={assignedRiderId} onChange={(e) => setAssignedRiderId(e.target.value)} style={fieldStyle}>
                   <option value="">Unassigned</option>
                   {isLoadingRiders && <option disabled>Loading drivers...</option>}
                   {riders.map((r) => (
@@ -928,6 +927,38 @@ function DeliveryModal({ isOpen, onClose, onSave, initialData }) {
                   ))}
                 </select>
               </div>
+            </div>
+
+            {/* Distance & fee estimate */}
+            <div style={{ border: "1px solid #bfdbfe", background: "#eff6ff", borderRadius: 8, padding: "12px" }}>
+              <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 10 }}>
+                <span style={{ fontSize: "0.8rem", fontWeight: 700, color: "#1e40af" }}>Delivery Distance &amp; Fee</span>
+                <button
+                  type="button"
+                  onClick={handleEstimate}
+                  disabled={isEstimating}
+                  style={{ padding: "6px 12px", borderRadius: 6, border: "none", background: "#1d6bf3", color: "#fff", fontWeight: 700, fontSize: "0.78rem", cursor: "pointer", opacity: isEstimating ? 0.6 : 1 }}
+                >
+                  {isEstimating ? "Calculating…" : estimate ? "Recalculate" : "Calculate Distance & Fee"}
+                </button>
+              </div>
+              {estimate ? (
+                <div style={{ marginTop: 8, fontSize: "0.82rem", color: "#1e3a8a", lineHeight: 1.6 }}>
+                  {estimate.storeAddress && <div>From: {estimate.storeAddress}</div>}
+                  <div>Driving distance: <strong>{estimate.distanceKm} km</strong></div>
+                  <div>
+                    Delivery fee: <strong>{previewFee === 0 ? "FREE" : formatPeso(previewFee)}</strong>
+                    {previewFee === 0 && " (order qualifies for free delivery)"}
+                  </div>
+                  <div style={{ color: "#64748b", fontSize: "0.75rem" }}>
+                    {formatPeso(estimate.rate.baseRate)} base + {formatPeso(estimate.rate.perKmRate)}/km. Free at {formatPeso(estimate.rate.freeDeliverySubtotal)} order total.
+                  </div>
+                </div>
+              ) : (
+                <p style={{ margin: "8px 0 0", fontSize: "0.78rem", color: "#64748b" }}>
+                  Enter the address and vehicle, then calculate the distance from the store.
+                </p>
+              )}
             </div>
           </div>
 
@@ -960,6 +991,7 @@ function DeliveryModal({ isOpen, onClose, onSave, initialData }) {
             contactNumber: newCust.contactNumber,
           });
           setAddress(newCust.address || "");
+          setEstimate(null);
         }}
       />
     </>
@@ -987,7 +1019,7 @@ export default function PosTerminal() {
   const [referenceNo, setReferenceNo] = useState("");
   const availablePaymentMethods = paymentMethods.filter((method) =>
     customerType === "Walk-in" ? method !== "Cash on Delivery" :
-    customerType === "Pickup" ? !["Cash", "Cash on Delivery"].includes(method) : method !== "Cash"
+      customerType === "Pickup" ? !["Cash", "Cash on Delivery"].includes(method) : method !== "Cash"
   );
   useEffect(() => {
     setPaymentMethod("");
@@ -1052,8 +1084,9 @@ export default function PosTerminal() {
         );
         setWarehouses(activeWarehouses);
 
-        const nextWarehouseId = selectedWarehouseId || activeWarehouses[0]?.id || "";
-        if (!selectedWarehouseId && nextWarehouseId) {
+        const stillValid = activeWarehouses.some((w) => w.id === selectedWarehouseId);
+        const nextWarehouseId = stillValid ? selectedWarehouseId : activeWarehouses[0]?.id || "";
+        if (nextWarehouseId !== selectedWarehouseId) {
           setSelectedWarehouseId(nextWarehouseId);
           return;
         }
@@ -1211,7 +1244,11 @@ export default function PosTerminal() {
   const totalSalesInclusive = subtotalInclusive - discount;
   const vatAmount = totalSalesInclusive * (0.12 / 1.12);
   const amountNetOfVat = totalSalesInclusive - vatAmount;
-  const totalAmountDue = totalSalesInclusive;
+  const deliveryFee =
+    customerType === "Delivery" && deliveryDetails?.rate
+      ? calculateDeliveryFee(deliveryDetails.rate, deliveryDetails.distanceKm, totalSalesInclusive)
+      : 0;
+  const totalAmountDue = round2(totalSalesInclusive + deliveryFee);
 
   const handlePay = () => {
     if (cart.length === 0) return;
@@ -1304,7 +1341,7 @@ export default function PosTerminal() {
       clearCart();
       setCompletedSale({ saleNo: response.saleNo, changeDue: response.changeDue });
 
-      refreshProducts().catch(() => {});
+      refreshProducts().catch(() => { });
     } catch (err) {
       setPosError(err.message || "Failed to process payment. Please try again.");
     } finally {
@@ -1315,264 +1352,279 @@ export default function PosTerminal() {
   return (
     <PageLayout className="pos" contentClassName="pos-inner">
 
-        <PageHeader title="POS Terminal" />
+      <PageHeader title="POS Terminal" />
 
-        {posError && (
-          <p style={{ color: "#dc2626", fontWeight: 600, margin: "0 0 8px 0" }}>{posError}</p>
-        )}
+      {posError && (
+        <p style={{ color: "#dc2626", fontWeight: 600, margin: "0 0 8px 0" }}>{posError}</p>
+      )}
 
-        <div className="pos-tabs">
-          <span className="pos-tab active">Cart</span>
+      <div className="pos-tabs">
+        <span className="pos-tab active">Cart</span>
+      </div>
+
+      <div className="pos-layout">
+        <div className="pos-main">
+          <div className="pos-toolbar">
+            <div className="pos-search">
+              <Search size={16} className="pos-search-icon" />
+              <input
+                type="text"
+                placeholder="Search Product"
+                value={searchTerm}
+                onChange={(e) => setSearchTerm(e.target.value)}
+                className="pos-search-input"
+              />
+            </div>
+            <div className="pos-select-wrap">
+              <select
+                className="pos-select"
+                value={selectedWarehouseId}
+                onChange={(e) => setSelectedWarehouseId(e.target.value)}
+              >
+                <option value="">{DEFAULT_WAREHOUSE_OPTION}</option>
+                {warehouses.map((warehouse) => (
+                  <option key={warehouse.id} value={warehouse.id}>{warehouse.name}</option>
+                ))}
+              </select>
+              <ChevronDown size={16} className="pos-select-icon" />
+            </div>
+            <div className="pos-select-wrap">
+              <select
+                className="pos-select"
+                value={category}
+                onChange={(e) => setCategory(e.target.value)}
+              >
+                {categories.map((c) => (
+                  <option key={c} value={c}>{c}</option>
+                ))}
+              </select>
+              <ChevronDown size={16} className="pos-select-icon" />
+            </div>
+          </div>
+
+          <div className="product-grid">
+            {isLoadingProducts && <p className="no-results">Loading products…</p>}
+            {!isLoadingProducts && loadError && (
+              <p className="no-results" style={{ color: "#dc2626" }}>{loadError}</p>
+            )}
+            {!isLoadingProducts &&
+              !loadError &&
+              filteredProducts.map((product) => (
+                <ProductCard key={product.id} product={product} onAdd={addToCart} />
+              ))}
+            {!isLoadingProducts && !loadError && filteredProducts.length === 0 && (
+              <p className="no-results">No products match your search.</p>
+            )}
+          </div>
         </div>
 
-        <div className="pos-layout">
-          <div className="pos-main">
-            <div className="pos-toolbar">
-              <div className="pos-search">
-                <Search size={16} className="pos-search-icon" />
-                <input
-                  type="text"
-                  placeholder="Search Product"
-                  value={searchTerm}
-                  onChange={(e) => setSearchTerm(e.target.value)}
-                  className="pos-search-input"
-                />
+        <div className="pos-sidebar">
+          <div className="pos-panel">
+            <div className="pos-panel-header">
+              <ShoppingCart size={16} />
+              <span>Cart Summary</span>
+            </div>
+            <div className="pos-panel-body">
+              <div className="cart-actions">
+                <button type="button" className="cart-action-btn" onClick={holdCart}>
+                  Hold
+                </button>
+                <button
+                  type="button"
+                  className="cart-action-btn"
+                  onClick={() => setShowHeldModal(true)}
+                  style={{ position: "relative" }}
+                >
+                  <PauseCircle size={14} style={{ marginRight: 4, verticalAlign: "-2px" }} />
+                  Restore
+                  {heldCarts.length > 0 && (
+                    <span
+                      style={{
+                        position: "absolute", top: -6, right: -6, background: "#ef4444", color: "#fff",
+                        fontSize: "0.65rem", fontWeight: 700, borderRadius: 999, minWidth: 16, height: 16,
+                        display: "flex", alignItems: "center", justifyContent: "center", padding: "0 3px",
+                      }}
+                    >
+                      {heldCarts.length}
+                    </span>
+                  )}
+                </button>
+                <button type="button" className="cart-action-btn" onClick={clearCart}>
+                  Clear
+                </button>
               </div>
-              <div className="pos-select-wrap">
+
+              <div className="cart-items">
+                {cart.length === 0 ? (
+                  <p className="cart-empty">Cart is empty. Tap a product to add it.</p>
+                ) : (
+                  cart.map((item) => (
+                    <CartItem
+                      key={item.id}
+                      item={item}
+                      onIncrement={incrementItem}
+                      onDecrement={decrementItem}
+                      onUpdateQuantity={updateQuantity}
+                      onRemove={removeItem}
+                    />
+                  ))
+                )}
+              </div>
+            </div>
+          </div>
+
+          <div className="pos-panel">
+            <div className="pos-panel-header">
+              <Wallet size={16} />
+              <span>Checkout</span>
+            </div>
+            <div className="pos-panel-body">
+              <div className="pos-select-wrap full-width">
                 <select
                   className="pos-select"
-                  value={selectedWarehouseId}
-                  onChange={(e) => setSelectedWarehouseId(e.target.value)}
+                  value={customerType}
+                  onChange={handleCustomerTypeChange}
                 >
-                  <option value="">{DEFAULT_WAREHOUSE_OPTION}</option>
-                  {warehouses.map((warehouse) => (
-                    <option key={warehouse.id} value={warehouse.id}>{warehouse.name}</option>
-                  ))}
-                </select>
-                <ChevronDown size={16} className="pos-select-icon" />
-              </div>
-              <div className="pos-select-wrap">
-                <select
-                  className="pos-select"
-                  value={category}
-                  onChange={(e) => setCategory(e.target.value)}
-                >
-                  {categories.map((c) => (
+                  {customerTypes.map((c) => (
                     <option key={c} value={c}>{c}</option>
                   ))}
                 </select>
                 <ChevronDown size={16} className="pos-select-icon" />
               </div>
-            </div>
 
-            <div className="product-grid">
-              {isLoadingProducts && <p className="no-results">Loading products…</p>}
-              {!isLoadingProducts && loadError && (
-                <p className="no-results" style={{ color: "#dc2626" }}>{loadError}</p>
-              )}
-              {!isLoadingProducts &&
-                !loadError &&
-                filteredProducts.map((product) => (
-                  <ProductCard key={product.id} product={product} onAdd={addToCart} />
-                ))}
-              {!isLoadingProducts && !loadError && filteredProducts.length === 0 && (
-                <p className="no-results">No products match your search.</p>
-              )}
-            </div>
-          </div>
-
-          <div className="pos-sidebar">
-            <div className="pos-panel">
-              <div className="pos-panel-header">
-                <ShoppingCart size={16} />
-                <span>Cart Summary</span>
-              </div>
-              <div className="pos-panel-body">
-                <div className="cart-actions">
-                  <button type="button" className="cart-action-btn" onClick={holdCart}>
-                    Hold
-                  </button>
-                  <button
-                    type="button"
-                    className="cart-action-btn"
-                    onClick={() => setShowHeldModal(true)}
-                    style={{ position: "relative" }}
-                  >
-                    <PauseCircle size={14} style={{ marginRight: 4, verticalAlign: "-2px" }} />
-                    Restore
-                    {heldCarts.length > 0 && (
-                      <span
-                        style={{
-                          position: "absolute", top: -6, right: -6, background: "#ef4444", color: "#fff",
-                          fontSize: "0.65rem", fontWeight: 700, borderRadius: 999, minWidth: 16, height: 16,
-                          display: "flex", alignItems: "center", justifyContent: "center", padding: "0 3px",
-                        }}
-                      >
-                        {heldCarts.length}
-                      </span>
-                    )}
-                  </button>
-                  <button type="button" className="cart-action-btn" onClick={clearCart}>
-                    Clear
-                  </button>
-                </div>
-
-                <div className="cart-items">
-                  {cart.length === 0 ? (
-                    <p className="cart-empty">Cart is empty. Tap a product to add it.</p>
+              {customerType === "Pickup" && (
+                <div style={{ background: "#eff6ff", border: "1px solid #bfdbfe", borderRadius: 8, padding: "8px 12px", marginBottom: 10, fontSize: "0.8rem", color: "#1e40af" }}>
+                  <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", fontWeight: 700, marginBottom: 4 }}>
+                    <span>Pickup Schedule</span>
+                    <button
+                      type="button"
+                      onClick={() => setShowPickupModal(true)}
+                      style={{ background: "none", border: "none", color: "#2563eb", cursor: "pointer", textDecoration: "underline", fontSize: "0.75rem" }}
+                    >
+                      {pickupDetails ? "Edit" : "Set Details"}
+                    </button>
+                  </div>
+                  {pickupDetails ? (
+                    <>
+                      <div>Customer: {pickupDetails.customerName} ({pickupDetails.contactNumber})</div>
+                      <div>Schedule: {pickupDetails.pickupDate} at {pickupDetails.pickupTime}</div>
+                    </>
                   ) : (
-                    cart.map((item) => (
-                      <CartItem
-                        key={item.id}
-                        item={item}
-                        onIncrement={incrementItem}
-                        onDecrement={decrementItem}
-                        onUpdateQuantity={updateQuantity}
-                        onRemove={removeItem}
-                      />
-                    ))
+                    <span style={{ color: "#dc2626", fontWeight: 600 }}>Details pending</span>
                   )}
                 </div>
-              </div>
-            </div>
+              )}
 
-            <div className="pos-panel">
-              <div className="pos-panel-header">
-                <Wallet size={16} />
-                <span>Checkout</span>
-              </div>
-              <div className="pos-panel-body">
-                <div className="pos-select-wrap full-width">
+              {customerType === "Delivery" && (
+                <div style={{ background: "#eff6ff", border: "1px solid #bfdbfe", borderRadius: 8, padding: "8px 12px", marginBottom: 10, fontSize: "0.8rem", color: "#1e40af" }}>
+                  <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", fontWeight: 700, marginBottom: 4 }}>
+                    <span>Delivery Details</span>
+                    <button
+                      type="button"
+                      onClick={() => setShowDeliveryModal(true)}
+                      style={{ background: "none", border: "none", color: "#2563eb", cursor: "pointer", textDecoration: "underline", fontSize: "0.75rem" }}
+                    >
+                      {deliveryDetails ? "Edit" : "Set Details"}
+                    </button>
+                  </div>
+                  {deliveryDetails ? (
+                    <>
+                      <div>Customer: {deliveryDetails.customerName} ({deliveryDetails.contactNumber})</div>
+                      <div>Address: {deliveryDetails.address}</div>
+                      <div>Vehicle: {deliveryDetails.vehicleType} | Driver: {deliveryDetails.riderName}</div>
+                      {deliveryDetails.distanceKm != null && <div>Distance: {deliveryDetails.distanceKm} km</div>}
+                    </>
+                  ) : (
+                    <span style={{ color: "#dc2626", fontWeight: 600 }}>Details pending</span>
+                  )}
+                </div>
+              )}
+
+              <div className="checkout-row-selects">
+                <div className="pos-select-wrap">
                   <select
                     className="pos-select"
-                    value={customerType}
-                    onChange={handleCustomerTypeChange}
+                    value={discountValue}
+                    onChange={(e) => setDiscountValue(Number(e.target.value))}
                   >
-                    {customerTypes.map((c) => (
-                      <option key={c} value={c}>{c}</option>
+                    {discountOptions.map((d) => (
+                      <option key={d.label} value={d.value}>{d.label}</option>
                     ))}
                   </select>
                   <ChevronDown size={16} className="pos-select-icon" />
                 </div>
 
-                {customerType === "Pickup" && (
-                  <div style={{ background: "#eff6ff", border: "1px solid #bfdbfe", borderRadius: 8, padding: "8px 12px", marginBottom: 10, fontSize: "0.8rem", color: "#1e40af" }}>
-                    <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", fontWeight: 700, marginBottom: 4 }}>
-                      <span>Pickup Schedule</span>
-                      <button
-                        type="button"
-                        onClick={() => setShowPickupModal(true)}
-                        style={{ background: "none", border: "none", color: "#2563eb", cursor: "pointer", textDecoration: "underline", fontSize: "0.75rem" }}
-                      >
-                        {pickupDetails ? "Edit" : "Set Details"}
-                      </button>
-                    </div>
-                    {pickupDetails ? (
-                      <>
-                        <div>Customer: {pickupDetails.customerName} ({pickupDetails.contactNumber})</div>
-                        <div>Schedule: {pickupDetails.pickupDate} at {pickupDetails.pickupTime}</div>
-                      </>
-                    ) : (
-                      <span style={{ color: "#dc2626", fontWeight: 600 }}>Details pending</span>
-                    )}
-                  </div>
-                )}
-
-                {customerType === "Delivery" && (
-                  <div style={{ background: "#eff6ff", border: "1px solid #bfdbfe", borderRadius: 8, padding: "8px 12px", marginBottom: 10, fontSize: "0.8rem", color: "#1e40af" }}>
-                    <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", fontWeight: 700, marginBottom: 4 }}>
-                      <span>Delivery Details</span>
-                      <button
-                        type="button"
-                        onClick={() => setShowDeliveryModal(true)}
-                        style={{ background: "none", border: "none", color: "#2563eb", cursor: "pointer", textDecoration: "underline", fontSize: "0.75rem" }}
-                      >
-                        {deliveryDetails ? "Edit" : "Set Details"}
-                      </button>
-                    </div>
-                    {deliveryDetails ? (
-                      <>
-                        <div>Customer: {deliveryDetails.customerName} ({deliveryDetails.contactNumber})</div>
-                        <div>Address: {deliveryDetails.address}</div>
-                        <div>Vehicle: {deliveryDetails.vehicleType} | Driver: {deliveryDetails.riderName}</div>
-                      </>
-                    ) : (
-                      <span style={{ color: "#dc2626", fontWeight: 600 }}>Details pending</span>
-                    )}
-                  </div>
-                )}
-
-                <div className="checkout-row-selects">
-                  <div className="pos-select-wrap">
-                    <select
-                      className="pos-select"
-                      value={discountValue}
-                      onChange={(e) => setDiscountValue(Number(e.target.value))}
-                    >
-                      {discountOptions.map((d) => (
-                        <option key={d.label} value={d.value}>{d.label}</option>
-                      ))}
-                    </select>
-                    <ChevronDown size={16} className="pos-select-icon" />
-                  </div>
-
-                  <div className="pos-select-wrap">
-                    <select
-                      className="pos-select"
-                      value={paymentMethod}
-                      onChange={(e) => {
-                        setPaymentMethod(e.target.value);
-                        setReferenceNo("");
-                      }}
-                    >
-                      <option value="">Select Payment Method</option>
-                      {availablePaymentMethods.map((m) => (
-                        <option key={m} value={m}>{m}</option>
-                      ))}
-                    </select>
-                    <ChevronDown size={16} className="pos-select-icon" />
-                  </div>
+                <div className="pos-select-wrap">
+                  <select
+                    className="pos-select"
+                    value={paymentMethod}
+                    onChange={(e) => {
+                      setPaymentMethod(e.target.value);
+                      setReferenceNo("");
+                    }}
+                  >
+                    <option value="">Select Payment Method</option>
+                    {availablePaymentMethods.map((m) => (
+                      <option key={m} value={m}>{m}</option>
+                    ))}
+                  </select>
+                  <ChevronDown size={16} className="pos-select-icon" />
                 </div>
-
-                <div className="checkout-summary">
-                  <div className="checkout-line">
-                    <span>Subtotal (VAT Inclusive):</span>
-                    <span>{formatPeso(subtotalInclusive)}</span>
-                  </div>
-                  <div className="checkout-line">
-                    <span>Less: Discount:</span>
-                    <span>{formatPeso(discount)}</span>
-                  </div>
-                  <div className="checkout-line">
-                    <span>Total Sales (VAT Inclusive):</span>
-                    <span>{formatPeso(totalSalesInclusive)}</span>
-                  </div>
-                  <div className="checkout-line">
-                    <span>Less: VAT:</span>
-                    <span>{formatPeso(vatAmount)}</span>
-                  </div>
-                  <div className="checkout-line">
-                    <span>Amount Net of VAT:</span>
-                    <span>{formatPeso(amountNetOfVat)}</span>
-                  </div>
-                  <div className="checkout-line checkout-total">
-                    <span>TOTAL AMOUNT DUE:</span>
-                    <span>{formatPeso(totalAmountDue)}</span>
-                  </div>
-                </div>
-
-                <button
-                  type="button"
-                  className="pay-btn"
-                  onClick={handlePay}
-                  disabled={cart.length === 0 || isProcessing}
-                >
-                  {isProcessing ? "Processing…" : "Pay"}
-                </button>
               </div>
+
+              <div className="checkout-summary">
+                <div className="checkout-line">
+                  <span>Subtotal (VAT Inclusive):</span>
+                  <span>{formatPeso(subtotalInclusive)}</span>
+                </div>
+                <div className="checkout-line">
+                  <span>Less: Discount:</span>
+                  <span>{formatPeso(discount)}</span>
+                </div>
+                <div className="checkout-line">
+                  <span>Total Sales (VAT Inclusive):</span>
+                  <span>{formatPeso(totalSalesInclusive)}</span>
+                </div>
+                <div className="checkout-line">
+                  <span>Less: VAT:</span>
+                  <span>{formatPeso(vatAmount)}</span>
+                </div>
+                <div className="checkout-line">
+                  <span>Amount Net of VAT:</span>
+                  <span>{formatPeso(amountNetOfVat)}</span>
+                </div>
+                {customerType === "Delivery" && (
+                  <div className="checkout-line">
+                    <span>
+                      Delivery Fee{deliveryDetails?.distanceKm != null ? ` (${deliveryDetails.distanceKm} km)` : ""}:
+                    </span>
+                    <span>
+                      {!deliveryDetails?.estimateToken
+                        ? "Pending"
+                        : deliveryFee === 0
+                          ? "FREE (₱0.00)"
+                          : formatPeso(deliveryFee)}
+                    </span>
+                  </div>
+                )}
+                <div className="checkout-line checkout-total">
+                  <span>TOTAL AMOUNT DUE:</span>
+                  <span>{formatPeso(totalAmountDue)}</span>
+                </div>
+              </div>
+
+              <button
+                type="button"
+                className="pay-btn"
+                onClick={handlePay}
+                disabled={cart.length === 0 || isProcessing}
+              >
+                {isProcessing ? "Processing…" : "Pay"}
+              </button>
             </div>
           </div>
         </div>
+      </div>
 
 
       <SaleCompletedModal sale={completedSale} onClose={() => setCompletedSale(null)} />
@@ -1604,6 +1656,7 @@ export default function PosTerminal() {
       />
 
       <DeliveryModal
+        orderTotal={totalSalesInclusive}
         isOpen={showDeliveryModal}
         onClose={() => setShowDeliveryModal(false)}
         initialData={deliveryDetails}

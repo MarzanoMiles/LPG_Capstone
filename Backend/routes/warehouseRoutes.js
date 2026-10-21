@@ -7,7 +7,11 @@ router.use(authenticate);
 
 router.get("/", asyncHandler(async (req, res) => {
   const [rows] = await pool.query(
-    `SELECT WarehouseID AS id, WarehouseName AS name, Location AS location, Status AS status FROM Warehouse`
+    `SELECT WarehouseID AS id, WarehouseName AS name, Location AS location, Status AS status
+     FROM Warehouse
+     WHERE CompanyID = :companyId
+     ORDER BY WarehouseName`,
+    { companyId: req.user.companyId }
   );
   res.json(rows);
 }));

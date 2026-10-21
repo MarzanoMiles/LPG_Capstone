@@ -6,7 +6,7 @@ const ApiError = require("../utils/apiError");
 const { authenticate } = require("../middleware/auth");
 const { nextSequence } = require("../utils/generateNumbers");
 const { parseCsv } = require("../utils/csv");
-
+const { calculateDeliveryFee, findVehicleRate, verifyEstimate } = require("../utils/deliveryFee");
 async function nextId(conn, table) { return require('../utils/entityIds').nextEntityId(conn, table); }
 
 const DEFAULT_WAREHOUSE_ID = "WH-001"; // fallback when an explicit warehouse is provided by callers
@@ -165,13 +165,13 @@ router.post(
 
       if (orderType === "Pickup") customerId = await require("../utils/pickupCustomer").resolvePickupCustomer(conn, req.body);
       if (orderType === "Delivery") {
-        customerId=await require("../utils/pickupCustomer").resolvePickupCustomer(conn,{customerId:req.body.customerId,pickupDetails:req.body.deliveryDetails});
-        const details=req.body.deliveryDetails;
-        if(typeof details?.address!=="string" || !details.address.trim() || details.address.length>255) throw new ApiError(400,"Enter a delivery address (maximum 255 characters).");
-        if(details.instructions && (typeof details.instructions!=="string" || details.instructions.length>255)) throw new ApiError(400,"Delivery notes must be at most 255 characters.");
-        if(details.riderId) {
-          const [drivers]=await conn.query("SELECT u.UserID FROM User u JOIN Role r ON r.RoleID=u.RoleID WHERE u.UserID=:id AND u.CompanyID=:companyId AND u.Status='Active' AND LOWER(r.RoleName) IN ('driver','drivers') FOR UPDATE",{id:details.riderId,companyId:req.user.companyId});
-          if(!drivers.length)throw new ApiError(400,"Select an active delivery driver in your company.");
+        customerId = await require("../utils/pickupCustomer").resolvePickupCustomer(conn, { customerId: req.body.customerId, pickupDetails: req.body.deliveryDetails });
+        const details = req.body.deliveryDetails;
+        if (typeof details?.address !== "string" || !details.address.trim() || details.address.length > 255) throw new ApiError(400, "Enter a delivery address (maximum 255 characters).");
+        if (details.instructions && (typeof details.instructions !== "string" || details.instructions.length > 255)) throw new ApiError(400, "Delivery notes must be at most 255 characters.");
+        if (details.riderId) {
+          const [drivers] = await conn.query("SELECT u.UserID FROM User u JOIN Role r ON r.RoleID=u.RoleID WHERE u.UserID=:id AND u.CompanyID=:companyId AND u.Status='Active' AND LOWER(r.RoleName) IN ('driver','drivers') FOR UPDATE", { id: details.riderId, companyId: req.user.companyId });
+          if (!drivers.length) throw new ApiError(400, "Select an active delivery driver in your company.");
         }
       }
 
@@ -182,8 +182,23 @@ router.post(
       const subtotal = items.reduce((sum, it) => sum + it.qty * it.unitPrice, 0);
       const discountAmount = discount || 0;
       const vat = taxEnabled ? (subtotal - discountAmount) * taxRate / (1 + taxRate) : 0;
-      const totalAmount = subtotal - discountAmount;
-      const cod=orderType==='Delivery' && paymentMethod==='Cash on Delivery';
+
+      // Delivery fee is recomputed server-side from the signed distance estimate.
+      let deliveryFee = 0;
+      let deliveryDistanceKm = null;
+      if (orderType === "Delivery") {
+        const details = req.body.deliveryDetails;
+        const estimate = verifyEstimate(details.estimateToken, {
+          companyId: req.user.companyId,
+          address: details.address.trim(),
+          vehicleType: details.vehicleType,
+        });
+        const rate = await findVehicleRate(conn, req.user.companyId, details.vehicleType);
+        deliveryDistanceKm = estimate.distanceKm;
+        deliveryFee = calculateDeliveryFee(rate, deliveryDistanceKm, subtotal - discountAmount);
+      }
+      const totalAmount = Math.round((subtotal - discountAmount + deliveryFee) * 100) / 100;
+      const cod = orderType === 'Delivery' && paymentMethod === 'Cash on Delivery';
       if ((!cod && (!Number.isFinite(Number(amountCollected)) || Number(amountCollected) < totalAmount)) || totalAmount <= 0) throw new ApiError(400, "Amount collected must cover the total due.");
       const hasExplicitWarehouse = !!warehouseId;
       const wid = hasExplicitWarehouse ? warehouseId : DEFAULT_WAREHOUSE_ID;
@@ -197,10 +212,10 @@ router.post(
       );
 
       if (orderType === "Pickup") {
-        const [settings] = await conn.query("SELECT * FROM CompanySettings WHERE CompanyID=:companyId", {companyId:req.user.companyId});
-        if (!settings[0]) throw new ApiError(409,"Configure pickup policies in Settings.");
+        const [settings] = await conn.query("SELECT * FROM CompanySettings WHERE CompanyID=:companyId", { companyId: req.user.companyId });
+        if (!settings[0]) throw new ApiError(409, "Configure pickup policies in Settings.");
         const schedule = require("../utils/pickupLifecycle").validateSchedule(req.body.pickupDetails, settings[0]);
-        await conn.query("UPDATE `Order` SET OrderStatus='Preparing', PickupStatus='Preparing', PickupScheduledAt=:schedule WHERE OrderID=:id", {id:orderId,schedule});
+        await conn.query("UPDATE `Order` SET OrderStatus='Preparing', PickupStatus='Preparing', PickupScheduledAt=:schedule WHERE OrderID=:id", { id: orderId, schedule });
       }
 
       for (const item of items) {
@@ -310,14 +325,14 @@ router.post(
         }
       );
 
-      if(orderType==='Delivery') {
-        const details=req.body.deliveryDetails;
-        const deliveryId=await nextId(conn,'Delivery','DeliveryID','D');
-        const drNo=await nextSequence(conn,'Delivery','DRNo','DEL');
-        await conn.query(`INSERT INTO Delivery(DeliveryID,SaleID,DRNo,DeliveredByUserID,DeliveryAddress,DeliveryStatus,Remarks,PaymentMethod)
-          VALUES(:deliveryId,:saleId,:drNo,:riderId,:address,'Preparing',:notes,:paymentMethod)`,{deliveryId,saleId,drNo,riderId:details.riderId||null,address:details.address.trim(),notes:details.instructions||null,paymentMethod});
-        await require('../utils/deliveryVehicleSnapshot').saveVehicleSnapshot(conn,req.user.companyId,deliveryId,details.vehicleType);
-        await conn.query("UPDATE `Order` SET OrderStatus='Preparing' WHERE OrderID=:orderId",{orderId});
+      if (orderType === 'Delivery') {
+        const details = req.body.deliveryDetails;
+        const deliveryId = await nextId(conn, 'Delivery', 'DeliveryID', 'D');
+        const drNo = await nextSequence(conn, 'Delivery', 'DRNo', 'DEL');
+        await conn.query(`INSERT INTO Delivery(DeliveryID,SaleID,DRNo,DeliveredByUserID,DeliveryAddress,DeliveryStatus,Remarks,PaymentMethod,DeliveryCharge)
+          VALUES(:deliveryId,:saleId,:drNo,:riderId,:address,'Preparing',:notes,:paymentMethod,:deliveryFee)`, { deliveryId, saleId, drNo, riderId: details.riderId || null, address: details.address.trim(), notes: details.instructions || null, paymentMethod, deliveryFee });
+        await require('../utils/deliveryVehicleSnapshot').saveVehicleSnapshot(conn, req.user.companyId, deliveryId, details.vehicleType);
+        await conn.query("UPDATE `Order` SET OrderStatus='Preparing' WHERE OrderID=:orderId", { orderId });
       }
       if (paymentMethod && amountCollected && !cod) {
         const paymentId = await nextId(conn, "Payment", "PaymentID", "PAY");
@@ -334,7 +349,7 @@ router.post(
         const [eligible] = await conn.query("SELECT p.ProductID FROM Product p JOIN Category c ON c.CategoryID=p.CategoryID WHERE p.ProductID IN (?) AND c.Category IN ('Cylinder', 'Gasul LPG')", [items.map((item) => item.productId)]);
         if (!eligible.length) throw new ApiError(400, "Cylinder returns require a Gasul LPG or Cylinder purchase.");
         emptyCylinderReference = await require("../utils/inventoryMovements").receiveEmptyCylinders(conn, {
-          companyId:req.user.companyId,userId:req.user.userId,warehouseId,items:returnedCylinders
+          companyId: req.user.companyId, userId: req.user.userId, warehouseId, items: returnedCylinders
         });
       }
       const [[cashier]] = await conn.query("SELECT CONCAT(FirstName,' ',LastName) AS name FROM User WHERE UserID=?", [req.user.userId]);
@@ -348,6 +363,8 @@ router.post(
         vat,
         taxRate: taxEnabled ? taxRate : 0,
         discount: discountAmount,
+        deliveryFee,
+        deliveryDistanceKm,
         totalAmount,
         changeDue: amountCollected ? amountCollected - totalAmount : null,
       });
@@ -567,8 +584,8 @@ router.delete(
       );
       if (!saleRows[0]) throw new ApiError(404, "Sale not found.");
       const { OrderID: orderId } = saleRows[0];
-      const [pickupRows] = await conn.query("SELECT OrderType FROM `Order` WHERE OrderID=:id FOR UPDATE", {id:orderId});
-      if (pickupRows[0]?.OrderType === "Pickup") throw new ApiError(409,"Use pickup status actions; pickup settlement is deferred to Stage 2.");
+      const [pickupRows] = await conn.query("SELECT OrderType FROM `Order` WHERE OrderID=:id FOR UPDATE", { id: orderId });
+      if (pickupRows[0]?.OrderType === "Pickup") throw new ApiError(409, "Use pickup status actions; pickup settlement is deferred to Stage 2.");
 
       const [deliveryRows] = await conn.query(
         `SELECT DeliveryID FROM Delivery WHERE SaleID = :id`,

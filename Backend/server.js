@@ -94,6 +94,7 @@ app.use("/dashboard", dashboardRoutes);
 app.use("/reports", reportRoutes);
 app.use("/roles", roleRoutes);
 app.use("/settings", settingsRoutes);
+app.use("/delivery-fee", require("./routes/deliveryFeeRoutes"));
 
 app.use(notFound);
 app.use(errorHandler);
