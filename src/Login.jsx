@@ -154,6 +154,8 @@ export default function Login({ onLogin, onRegisterSuccess, sessionError }) {
   const [regSubmitted, setRegSubmitted] = useState(false);
   const [regServerError, setRegServerError] = useState("");
   const [isRegSubmitting, setIsRegSubmitting] = useState(false);
+  const [showRegPassword, setShowRegPassword] = useState(false);
+  const [showRegConfirm, setShowRegConfirm] = useState(false);
 
   // Contact Form State
   const [contactForm, setContactForm] = useState({
@@ -494,28 +496,50 @@ export default function Login({ onLogin, onRegisterSuccess, sessionError }) {
                   <div className="reg-grid two-col">
                     <div className="reg-field">
                       <label className="reg-label">Password</label>
-                      <input
-                        type="password"
-                        name="regPassword"
-                        placeholder="Min. 8 characters"
-                        value={regForm.regPassword}
-                        onChange={handleRegChange}
-                        className="reg-input"
-                        required
-                      />
+                      <div className="reg-password-wrap">
+                        <input
+                          type={showRegPassword ? "text" : "password"}
+                          name="regPassword"
+                          placeholder="Min. 8 characters"
+                          value={regForm.regPassword}
+                          onChange={handleRegChange}
+                          className="reg-input has-toggle"
+                          autoComplete="new-password"
+                          required
+                        />
+                        <button
+                          type="button"
+                          className="reg-password-toggle"
+                          onClick={() => setShowRegPassword((prev) => !prev)}
+                          aria-label={showRegPassword ? "Hide password" : "Show password"}
+                        >
+                          {showRegPassword ? <EyeOff size={18} /> : <Eye size={18} />}
+                        </button>
+                      </div>
                       <FieldError message={regErrors.regPassword} />
                     </div>
                     <div className="reg-field">
                       <label className="reg-label">Confirm password</label>
-                      <input
-                        type="password"
-                        name="confirmPassword"
-                        placeholder="Re-enter password"
-                        value={regForm.confirmPassword}
-                        onChange={handleRegChange}
-                        className="reg-input"
-                        required
-                      />
+                      <div className="reg-password-wrap">
+                        <input
+                          type={showRegConfirm ? "text" : "password"}
+                          name="confirmPassword"
+                          placeholder="Re-enter password"
+                          value={regForm.confirmPassword}
+                          onChange={handleRegChange}
+                          className="reg-input has-toggle"
+                          autoComplete="new-password"
+                          required
+                        />
+                        <button
+                          type="button"
+                          className="reg-password-toggle"
+                          onClick={() => setShowRegConfirm((prev) => !prev)}
+                          aria-label={showRegConfirm ? "Hide confirm password" : "Show confirm password"}
+                        >
+                          {showRegConfirm ? <EyeOff size={18} /> : <Eye size={18} />}
+                        </button>
+                      </div>
                       <FieldError message={regErrors.confirmPassword} />
                     </div>
                   </div>
