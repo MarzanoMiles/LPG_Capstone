@@ -42,10 +42,10 @@ router.get('/options',asyncHandler(async(req,res)=>{
 }));
 router.get('/',asyncHandler(async(req,res)=>{
   const [rows] = await pool.query(`SELECT po.PurchaseOrderID AS id,po.PONo AS poNo,s.SupplierName AS supplier,po.OrderDate AS orderDate,
-    po.Status AS status,po.TotalAmount AS totalAmount,po.PaymentEmailSentAt AS paymentEmailSentAt,(po.PaymentMethod IS NOT NULL AND NULLIF(po.PaymentReference,'') IS NOT NULL) AS paymentRecorded,COUNT(DISTINCT i.ProductID) AS itemCount,COALESCE(SUM(i.Quantity),0) AS totalQty
+    po.Status AS status,po.TotalAmount AS totalAmount,po.PaymentEmailSentAt AS paymentEmailSentAt,(po.PaymentMethod IS NOT NULL AND NULLIF(po.PaymentReference,'') IS NOT NULL AND po.AmountPaid IS NOT NULL) AS paymentRecorded,COUNT(DISTINCT i.ProductID) AS itemCount,COALESCE(SUM(i.Quantity),0) AS totalQty
     FROM PurchaseOrder po ${scope} JOIN SupplierHistory s ON s.SupplierID=po.SupplierID
     LEFT JOIN PurchaseOrderItem i ON i.PurchaseOrderID=po.PurchaseOrderID WHERE owner.CompanyID=:companyId
-    GROUP BY po.PurchaseOrderID,po.PONo,s.SupplierName,po.OrderDate,po.Status,po.TotalAmount,po.PaymentMethod,po.PaymentReference,po.PaymentEmailSentAt ORDER BY po.OrderDate DESC`,{companyId:req.user.companyId});
+    GROUP BY po.PurchaseOrderID,po.PONo,s.SupplierName,po.OrderDate,po.Status,po.TotalAmount,po.PaymentMethod,po.PaymentReference,po.AmountPaid,po.PaymentEmailSentAt ORDER BY po.OrderDate DESC`,{companyId:req.user.companyId});
   res.json(rows);
 }));
 async function supplierDocument(conn, po, companyId) {
@@ -164,8 +164,8 @@ async function sendPO(req) {
   });
 }
 router.put('/:id/send',asyncHandler(async(req,res)=>res.json(await sendPO(req))));
-for(const [action,from,to] of [['confirm','Sent','Approved'],['reject','Sent','Rejected'],['dispatch','Approved','Out for Delivery']]) router.put(`/:id/${action}`,asyncHandler(async(req,res)=>{
-  res.json(await transaction(async conn=>{const po=await lockedPO(conn,req);if(po.Status!==from) throw new ApiError(409,`Only ${from} orders can become ${to}.`);
+for(const [action,from,to] of [['confirm',['Sent'],'Approved'],['reject',['Sent'],'Rejected'],['dispatch',['Approved','Paid'],'Out for Delivery']]) router.put(`/:id/${action}`,asyncHandler(async(req,res)=>{
+  res.json(await transaction(async conn=>{const po=await lockedPO(conn,req);if(!from.includes(po.Status)) throw new ApiError(409,`Only ${from.join(' or ')} orders can become ${to}.`);
     await conn.query('UPDATE PurchaseOrder SET Status=:to WHERE PurchaseOrderID=:id',{to,id:po.PurchaseOrderID});return {status:to};}));
 }));
 router.put('/:id/payment', asyncHandler(async (req, res) => {
@@ -186,7 +186,7 @@ router.put('/:id/send-payment', asyncHandler(async (req, res) => {
   res.json(await transaction(async conn => {
     const po = await lockedPO(conn, req);
     if (po.PaymentEmailSentAt) return {message:'Payment document already sent to supplier.'};
-    if (!['Approved','Paid','Out for Delivery','Received'].includes(po.Status) || !po.PaymentMethod || !po.PaymentReference) throw new ApiError(409, 'Record payment for an accepted purchase order before sending its acknowledgment.');
+    if (!['Approved','Paid','Out for Delivery','Received'].includes(po.Status) || !po.PaymentMethod || !po.PaymentReference || po.AmountPaid == null) throw new ApiError(409, 'Record payment for an accepted purchase order before sending its acknowledgment.');
     const document = await supplierDocument(conn, po, req.user.companyId);
     if (!document.supplier?.Email) throw new ApiError(400, 'Supplier must have a saved email address.');
     try {
@@ -205,7 +205,7 @@ router.put('/:id/send-payment', asyncHandler(async (req, res) => {
 router.get('/:id/payment-document', asyncHandler(async (req, res) => {
   const [rows] = await pool.query(`SELECT po.* FROM PurchaseOrder po ${scope} WHERE po.PurchaseOrderID=:id AND owner.CompanyID=:companyId`, {id:req.params.id,companyId:req.user.companyId});
   if (!rows[0]) throw new ApiError(404, 'Purchase order not found.');
-  if (!['Approved','Paid','Out for Delivery','Received'].includes(rows[0].Status) || !rows[0].PaymentMethod || !rows[0].PaymentReference) throw new ApiError(409, 'Confirm supplier acceptance and record payment before viewing the payment document.');
+  if (!['Approved','Paid','Out for Delivery','Received'].includes(rows[0].Status) || !rows[0].PaymentMethod || !rows[0].PaymentReference || rows[0].AmountPaid == null) throw new ApiError(409, 'Confirm supplier acceptance and record payment before viewing the payment document.');
   const document = await supplierDocument(pool, rows[0], req.user.companyId);
   respondPDF(res, await purchaseOrderPDF({...document, paymentReceipt:true}), `${rows[0].PONo}-payment`);
 }));

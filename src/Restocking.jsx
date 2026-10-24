@@ -35,6 +35,7 @@ export default function Restocking() {
   const [selectedPriority, setSelectedPriority] = useState("All Priority");
   const [selectedRows, setSelectedRows] = useState([]); // restockIds
 
+
   // Modal States
   const [isCustomizeOpen, setIsCustomizeOpen] = useState(false);
   const [isSingleCustomizeOpen, setIsSingleCustomizeOpen] = useState(false);
@@ -43,6 +44,10 @@ export default function Restocking() {
   // Draft Purchase Order (built from checked restocking rows, not yet saved to backend)
   const [poDraft, setPoDraft] = useState(null); // { supplierId, supplierName, restockIds, items: [...] }
   const [restockingPage, setRestockingPage] = useState(1);
+  const [stockView, setStockView] = useState("recommendations");
+  const [deadStock, setDeadStock] = useState([]);
+  const [isDeadLoading, setIsDeadLoading] = useState(false);
+  const [deadPage, setDeadPage] = useState(1);
   const loadRecommendations = () => {
     setIsLoading(true);
     apiRequest("/restocking")
@@ -65,15 +70,27 @@ export default function Restocking() {
       .finally(() => setIsHistoryLoading(false));
   };
 
+  const loadDeadStock = () => {
+    setIsDeadLoading(true);
+    apiRequest("/restocking?deadStock=true")
+      .then(setDeadStock)
+      .catch((err) => setLoadError(err.message || "Failed to load dead stock."))
+      .finally(() => setIsDeadLoading(false));
+  };
+
+  useEffect(() => {
+    if (stockView === "deadStock") loadDeadStock();
+  }, [stockView]);
+
   useEffect(() => {
     loadRecommendations();
     loadPurchaseOrderHistory();
   }, []);
 
-  const suppliers = useMemo(
-    () => ["All Supplier", ...new Set(recommendations.map((r) => r.supplierName))],
-    [recommendations]
-  );
+  const suppliers = useMemo(() => {
+    const source = stockView === "deadStock" ? deadStock : recommendations;
+    return ["All Supplier", ...new Set(source.map((r) => r.supplierName).filter(Boolean))];
+  }, [recommendations, deadStock, stockView]);
 
   const filteredData = useMemo(() => {
     return recommendations.filter((item) => {
@@ -91,6 +108,29 @@ export default function Restocking() {
     (restockingCurrentPage - 1) * PAGE_SIZE,
     restockingCurrentPage * PAGE_SIZE
   );
+
+  const filteredDeadStock = useMemo(() => {
+    const q = searchQuery.trim().toLowerCase();
+    return deadStock.filter((item) => {
+      const matchesSearch =
+        !q ||
+        String(item.productName || "").toLowerCase().includes(q) ||
+        String(item.productId || "").toLowerCase().includes(q);
+      const matchesSupplier = selectedSupplier === "All Supplier" || item.supplierName === selectedSupplier;
+      return matchesSearch && matchesSupplier;
+    });
+  }, [deadStock, searchQuery, selectedSupplier]);
+
+  const deadTotalPages = Math.max(1, Math.ceil(filteredDeadStock.length / PAGE_SIZE));
+  const deadCurrentPage = Math.min(deadPage, deadTotalPages);
+  const paginatedDeadStock = filteredDeadStock.slice(
+    (deadCurrentPage - 1) * PAGE_SIZE,
+    deadCurrentPage * PAGE_SIZE
+  );
+
+  useEffect(() => {
+    setDeadPage(1);
+  }, [searchQuery, selectedSupplier]);
 
   useEffect(() => {
     setRestockingPage(1);
@@ -191,91 +231,91 @@ export default function Restocking() {
   return (
     <PageLayout className="restocking-page" contentClassName="restocking-inner">
 
-        <PageHeader title="Restocking Assistant" />
+      <PageHeader title="Restocking Assistant" />
 
-        {loadError && <p style={{ color: "#dc2626", fontWeight: 600 }}>{loadError}</p>}
-        {historyLoadError && <p style={{ color: "#dc2626", fontWeight: 600 }}>{historyLoadError}</p>}
-        {actionError && <p style={{ color: "#dc2626", fontWeight: 600 }}>{actionError}</p>}
+      {loadError && <p style={{ color: "#dc2626", fontWeight: 600 }}>{loadError}</p>}
+      {historyLoadError && <p style={{ color: "#dc2626", fontWeight: 600 }}>{historyLoadError}</p>}
+      {actionError && <p style={{ color: "#dc2626", fontWeight: 600 }}>{actionError}</p>}
 
-        {/* Metric Cards */}
-        <div className="restocking-cards-grid">
-          <div className="restocking-card">
-            <div className="restocking-card-label">Critical Urgencies</div>
-            <div className="restocking-card-value">{criticalCount} Products</div>
-          </div>
-          <div className="restocking-card">
-            <div className="restocking-card-label">Restocking Cost</div>
-            <div className="restocking-card-value">
-              ₱ {estimatedCost.toLocaleString("en-US", { minimumFractionDigits: 2 })}
-            </div>
-          </div>
-          <div className="restocking-card">
-            <div className="restocking-card-label">Open Recommendations</div>
-            <div className="restocking-card-value">{recommendations.length}</div>
+      {/* Metric Cards */}
+      <div className="restocking-cards-grid">
+        <div className="restocking-card">
+          <div className="restocking-card-label">Critical Urgencies</div>
+          <div className="restocking-card-value">{criticalCount} Products</div>
+        </div>
+        <div className="restocking-card">
+          <div className="restocking-card-label">Restocking Cost</div>
+          <div className="restocking-card-value">
+            ₱ {estimatedCost.toLocaleString("en-US", { minimumFractionDigits: 2 })}
           </div>
         </div>
+        <div className="restocking-card">
+          <div className="restocking-card-label">Open Recommendations</div>
+          <div className="restocking-card-value">{recommendations.length}</div>
+        </div>
+      </div>
 
-        {/* Navigation Tabs & Actions */}
-        <div className="restocking-tabs-action-bar">
-          <div className="restocking-tabs">
-            <button
-              className={`restocking-tab ${activeTab === "restocking" ? "active" : ""}`}
-              onClick={() => setActiveTab("restocking")}
-            >
-              Restocking
-            </button>
-            <button
-              className={`restocking-tab ${activeTab === "purchaseOrder" ? "active" : ""}`}
-              onClick={() => setActiveTab("purchaseOrder")}
-            >
-              Purchase Order <span className="po-tab-badge">{purchaseOrderHistory.filter(po => !["Received", "Cancelled", "Rejected"].includes(po.status)).length}</span>
-            </button>
-          </div>
-
-          {activeTab === "restocking" && (
-            <div className="restocking-actions">
-              <button className="btn-customize" onClick={handleGenerate} disabled={isGenerating}>
-                <RefreshCw size={16} /> {isGenerating ? "Generating…" : "Generate Recommendations"}
-              </button>
-              <button className="btn-purchase-order" onClick={handleBuildFromSelection}>
-                <Box size={16} /> Purchase Order ({selectedRows.length})
-              </button>
-              <button className="btn-customize" onClick={() => setIsCustomizeOpen(true)}>
-                <Sliders size={16} /> Customize Selected
-              </button>
-            </div>
-          )}
+      {/* Navigation Tabs & Actions */}
+      <div className="restocking-tabs-action-bar">
+        <div className="restocking-tabs">
+          <button
+            className={`restocking-tab ${activeTab === "restocking" ? "active" : ""}`}
+            onClick={() => setActiveTab("restocking")}
+          >
+            Restocking
+          </button>
+          <button
+            className={`restocking-tab ${activeTab === "purchaseOrder" ? "active" : ""}`}
+            onClick={() => setActiveTab("purchaseOrder")}
+          >
+            Purchase Order <span className="po-tab-badge">{purchaseOrderHistory.filter(po => !["Received", "Cancelled", "Rejected"].includes(po.status)).length}</span>
+          </button>
         </div>
 
-        {/* TAB 1: RESTOCKING TABLE VIEW */}
         {activeTab === "restocking" && (
-          <>
-            {/* Search & Filters Toolbar */}
-            <div className="restocking-toolbar">
-              <div className="restocking-search">
-                <input
-                  type="text"
-                  placeholder="Search by Product"
-                  className="restocking-search-input"
-                  value={searchQuery}
-                  onChange={(e) => setSearchQuery(e.target.value)}
-                />
-                <Search size={16} className="restocking-search-icon" />
-              </div>
+          <div className="restocking-actions">
+            <button className="btn-customize" onClick={handleGenerate} disabled={isGenerating}>
+              <RefreshCw size={16} /> {isGenerating ? "Generating…" : "Generate Recommendations"}
+            </button>
+            <button className="btn-purchase-order" onClick={handleBuildFromSelection}>
+              <Box size={16} /> Purchase Order ({selectedRows.length})
+            </button>
+            <button className="btn-customize" onClick={() => setIsCustomizeOpen(true)}>
+              <Sliders size={16} /> Customize Selected
+            </button>
+          </div>
+        )}
+      </div>
 
-              <div className="restocking-select-wrap">
-                <select
-                  className="restocking-select"
-                  value={selectedSupplier}
-                  onChange={(e) => setSelectedSupplier(e.target.value)}
-                >
-                  {suppliers.map((s) => (
-                    <option key={s} value={s}>{s}</option>
-                  ))}
-                </select>
-                <ChevronDown size={16} className="restocking-select-icon" />
-              </div>
+      {/* TAB 1: RESTOCKING TABLE VIEW */}
+      {activeTab === "restocking" && (
+        <>
+          {/* Search & Filters Toolbar */}
+          <div className="restocking-toolbar">
+            <div className="restocking-search">
+              <input
+                type="text"
+                placeholder="Search by Product"
+                className="restocking-search-input"
+                value={searchQuery}
+                onChange={(e) => setSearchQuery(e.target.value)}
+              />
+              <Search size={16} className="restocking-search-icon" />
+            </div>
 
+            <div className="restocking-select-wrap">
+              <select
+                className="restocking-select"
+                value={selectedSupplier}
+                onChange={(e) => setSelectedSupplier(e.target.value)}
+              >
+                {suppliers.map((s) => (
+                  <option key={s} value={s}>{s}</option>
+                ))}
+              </select>
+              <ChevronDown size={16} className="restocking-select-icon" />
+            </div>
+            {stockView === "recommendations" && (
               <div className="restocking-select-wrap">
                 <select
                   className="restocking-select"
@@ -288,12 +328,26 @@ export default function Restocking() {
                 </select>
                 <ChevronDown size={16} className="restocking-select-icon" />
               </div>
+            )}
+            <div className="restocking-select-wrap">
+              <select
+                className="restocking-select"
+                aria-label="Stock view"
+                value={stockView}
+                onChange={(e) => { setStockView(e.target.value); setSelectedSupplier("All Supplier"); setSearchQuery(""); }}
+              >
+                <option value="recommendations">Recommendations</option>
+                <option value="deadStock">Dead Stock</option>
+              </select>
+              <ChevronDown size={16} className="restocking-select-icon" />
             </div>
+          </div>
 
-            {/* Table Structure */}
+          {/* Table Structure */}
+          {stockView === "recommendations" ? (
             <div className="restocking-table-wrap">
               <div className="paginated-table-scroll">
-                <table className="restocking-table">
+                <table className="restocking-table restocking-recs-table">
                   <thead>
                     <tr>
                       <th>
@@ -310,6 +364,8 @@ export default function Restocking() {
                       <th>Current Stock</th>
                       <th>Reorder Level</th>
                       <th>Suggested Qty</th>
+                      <th>Predicted Demand</th>
+                      <th>Safety Stock</th>
                       <th>Confidence</th>
                       <th>Priority</th>
                       <th>Actions</th>
@@ -317,11 +373,11 @@ export default function Restocking() {
                   </thead>
                   <tbody>
                     {isLoading && (
-                      <tr><td colSpan={10} style={{ textAlign: "center", padding: 24 }}>Loading…</td></tr>
+                      <tr><td colSpan={12} style={{ textAlign: "center", padding: 24 }}>Loading…</td></tr>
                     )}
                     {!isLoading && filteredData.length === 0 && (
                       <tr>
-                        <td colSpan={10} style={{ textAlign: "center", padding: 24 }}>
+                        <td colSpan={12} style={{ textAlign: "center", padding: 24 }}>
                           No open recommendations. Click "Generate Recommendations" to scan for low stock.
                         </td>
                       </tr>
@@ -339,12 +395,31 @@ export default function Restocking() {
                                 onChange={() => toggleRowSelect(item.restockId)}
                               />
                             </td>
-                            <td>{item.restockId}</td>
+                            <td>
+                              <button
+                                type="button"
+                                className="restocking-id-link"
+                                title="Create purchase order for this item"
+                                onClick={() => handlePackageSingle(item)}
+                              >
+                                {item.restockId}
+                              </button>
+                            </td>
                             <td>{item.productId}</td>
-                            <td>{item.productName || "—"}</td>
+                            <td title={item.budgetCapped ? "Reduced to fit the budget cap" : undefined}>
+                              {item.suggestedQty}
+                              {item.budgetCapped ? <span className="restocking-capped"> capped</span> : null}
+                            </td>
+                            <td>{item.predictedDemand ?? "—"}</td>
+                            <td>{item.safetyStock ?? "—"}</td>
                             <td>{item.currentStock}</td>
                             <td>{item.reorderLevel}</td>
-                            <td>{item.suggestedQty}</td>
+                            <td title={item.budgetCapped ? "Reduced to fit the budget cap" : undefined}>
+                              {item.suggestedQty}
+                              {item.budgetCapped ? <span className="restocking-capped"> capped</span> : null}
+                            </td>
+                            <td>{item.predictedDemand ?? "—"}</td>
+                            <td>{item.safetyStock ?? "—"}</td>
                             <td>{item.confidence != null ? `${Number(item.confidence).toFixed(0)}%` : "—"}</td>
                             <td>
                               <span className={`restocking-priority-pill ${item.priority.toLowerCase()}`}>
@@ -386,11 +461,46 @@ export default function Restocking() {
                 <Pagination currentPage={restockingCurrentPage} totalPages={restockingTotalPages} onPageChange={setRestockingPage} />
               )}
             </div>
-          </>
-        )}
+          ) : (
+            <div className="restocking-table-wrap">
+              <div className="paginated-table-scroll">
+                <table className="restocking-table restocking-dead-table">
+                  <thead>
+                    <tr>
+                      <th>Product ID</th><th>Product Name</th><th>Supplier</th><th>Current Stock</th>
+                      <th>Sales (90d)</th><th>Days of Cover</th><th>Stock Value</th><th>Reason</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {isDeadLoading && <tr><td colSpan={8} style={{ textAlign: "center", padding: 24 }}>Loading…</td></tr>}
+                    {!isDeadLoading && filteredDeadStock.length === 0 && (
+                      <tr><td colSpan={8} style={{ textAlign: "center", padding: 24 }}>No dead-stock products match your filters.</td></tr>
+                    )}
+                    {!isDeadLoading && paginatedDeadStock.map((item) => (
+                      <tr key={item.productId}>
+                        <td>{item.productId}</td>
+                        <td>{item.productName}</td>
+                        <td>{item.supplierName}</td>
+                        <td>{item.currentStock}</td>
+                        <td>{item.sales90d}</td>
+                        <td>{item.daysOfCover == null ? "∞" : item.daysOfCover}</td>
+                        <td>₱ {Number(item.stockValue).toLocaleString("en-US", { minimumFractionDigits: 2 })}</td>
+                        <td>{item.reason}</td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+              {!isDeadLoading && (
+                <Pagination currentPage={deadCurrentPage} totalPages={deadTotalPages} onPageChange={setDeadPage} />
+              )}
+            </div>
+          )}
+        </>
+      )}
 
-        {activeTab === "purchaseOrder" && <POTable orders={purchaseOrderHistory.filter(po => !["Received", "Cancelled", "Rejected"].includes(po.status))} loading={isHistoryLoading} onRefresh={() => { loadPurchaseOrderHistory(); loadRecommendations(); }} />}
-        {poDraft && <POCreationModal draft={poDraft} onClose={() => { setPoDraft(null); loadPurchaseOrderHistory(); loadRecommendations(); }} onSaved={() => { setPoDraft(null); setSelectedRows([]); loadRecommendations(); loadPurchaseOrderHistory(); }} />}
+      {activeTab === "purchaseOrder" && <POTable orders={purchaseOrderHistory.filter(po => !["Received", "Cancelled", "Rejected"].includes(po.status))} loading={isHistoryLoading} onRefresh={() => { loadPurchaseOrderHistory(); loadRecommendations(); }} />}
+      {poDraft && <POCreationModal draft={poDraft} onClose={() => { setPoDraft(null); loadPurchaseOrderHistory(); loadRecommendations(); }} onSaved={() => { setPoDraft(null); setSelectedRows([]); loadRecommendations(); loadPurchaseOrderHistory(); }} />}
 
       {/* Bulk Customize Modal — edits the currently checked rows */}
       <CustomizeRestockModal

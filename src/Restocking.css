@@ -237,16 +237,7 @@
   accent-color: #1e3a5f;
 }
 
-/* Column Widths */
-.restocking-table th:nth-child(1), .restocking-table td:nth-child(1) { width: 4%; }
-.restocking-table th:nth-child(2), .restocking-table td:nth-child(2) { width: 12%; }
-.restocking-table th:nth-child(3), .restocking-table td:nth-child(3) { width: 12%; }
-.restocking-table th:nth-child(4), .restocking-table td:nth-child(4) { width: 12%; }
-.restocking-table th:nth-child(5), .restocking-table td:nth-child(5) { width: 12%; }
-.restocking-table th:nth-child(6), .restocking-table td:nth-child(6) { width: 14%; }
-.restocking-table th:nth-child(7), .restocking-table td:nth-child(7) { width: 12%; }
-.restocking-table th:nth-child(8), .restocking-table td:nth-child(8) { width: 12%; }
-.restocking-table th:nth-child(9), .restocking-table td:nth-child(9) { width: 12%; }
+
 
 /* Priority Pills */
 .restocking-priority-pill {
@@ -970,3 +961,45 @@
 .po-delivery-time { color: #64748b; font-size: 12px; margin-top: 3px; }
 .po-delivery-empty { margin: 0; padding: 24px 16px; text-align: center; border: 1px dashed #cbd5e1; border-radius: 8px; color: #64748b; font-size: 14px; }
 @media (max-width: 480px) { .po-delivery-info { grid-template-columns: 1fr; padding: 14px; } }
+
+.restocking-id-link { background: none; border: none; padding: 0; color: #1d4ed8; font: inherit; font-weight: 600; text-decoration: underline; cursor: pointer; }
+.restocking-tag-high { display: inline-block; margin-left: 8px; padding: 2px 8px; border-radius: 999px; background: #fee2e2; color: #991b1b; font-size: 0.7rem; font-weight: 700; }
+.restocking-capped { color: #b45309; font-size: 0.7rem; font-weight: 700; }
+
+
+/* Recommendations table: checkbox + 11 data columns */
+.restocking-table.restocking-recs-table { min-width: 1280px; table-layout: auto; width: 100%; }
+.restocking-table.restocking-recs-table > thead > tr > th,
+.restocking-table.restocking-recs-table > tbody > tr > td {
+  padding: 12px 14px;
+  text-align: center;
+  white-space: nowrap;
+  overflow-wrap: normal;
+  vertical-align: middle;
+}
+.restocking-table.restocking-recs-table > thead > tr > th:nth-child(1),
+.restocking-table.restocking-recs-table > tbody > tr > td:nth-child(1) { width: 44px; padding-inline: 10px; }
+/* Product Name: left-aligned and allowed to wrap */
+.restocking-table.restocking-recs-table > thead > tr > th:nth-child(4),
+.restocking-table.restocking-recs-table > tbody > tr > td:nth-child(4) {
+  text-align: left;
+  min-width: 220px;
+  white-space: normal;
+  overflow-wrap: break-word;
+}
+.restocking-table.restocking-recs-table .restocking-priority-pill { min-width: 76px; padding: 4px 12px; }
+.restocking-table.restocking-recs-table .restocking-action-icons { justify-content: center; flex-wrap: nowrap; }
+.restocking-table.restocking-recs-table .restocking-action-icon { flex: 0 0 auto; }
+
+/* Dead-stock table */
+.restocking-table.restocking-dead-table { min-width: 1000px; table-layout: auto; width: 100%; }
+.restocking-table.restocking-dead-table > thead > tr > th,
+.restocking-table.restocking-dead-table > tbody > tr > td {
+  padding: 12px 14px; text-align: center; white-space: nowrap; overflow-wrap: normal; vertical-align: middle;
+}
+.restocking-table.restocking-dead-table > thead > tr > th:nth-child(2),
+.restocking-table.restocking-dead-table > tbody > tr > td:nth-child(2),
+.restocking-table.restocking-dead-table > thead > tr > th:nth-child(8),
+.restocking-table.restocking-dead-table > tbody > tr > td:nth-child(8) {
+  text-align: left; white-space: normal; min-width: 180px;
+}

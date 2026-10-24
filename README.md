@@ -146,6 +146,7 @@ cd ML
 python -m venv venv
 .\venv\Scripts\python.exe -m pip install -r requirements.txt
 .\venv\Scripts\python.exe train_model.py
+.\venv\Scripts\python.exe serve.py
 ```
 
 Training creates `ML/restock_model.pkl`; reuse it on subsequent launches.

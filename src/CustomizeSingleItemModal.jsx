@@ -6,11 +6,13 @@ export default function CustomizeSingleItemModal({ isOpen, onClose, selectedItem
   const [preferredQty, setPreferredQty] = useState("");
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [error, setError] = useState("");
+  const [overrideReason, setOverrideReason] = useState("");
 
   useEffect(() => {
     if (selectedItem) {
       setPreferredQty(selectedItem.suggestedQty);
       setError("");
+      setOverrideReason("");
     }
   }, [selectedItem]);
 
@@ -24,12 +26,17 @@ export default function CustomizeSingleItemModal({ isOpen, onClose, selectedItem
       return;
     }
 
+    const changed = qty !== Number(selectedItem.suggestedQty);
+    if (changed && !overrideReason.trim()) {
+      setError("Enter a reason for changing the suggested quantity.");
+      return;
+    }
     setIsSubmitting(true);
     setError("");
     try {
       await apiRequest(`/restocking/${selectedItem.restockId}`, {
         method: "PUT",
-        body: JSON.stringify({ recommendedQuantity: qty }),
+        body: JSON.stringify({ recommendedQuantity: qty, overrideReason: overrideReason.trim() }),
       });
       onSaved?.();
       onClose();
@@ -80,6 +87,13 @@ export default function CustomizeSingleItemModal({ isOpen, onClose, selectedItem
               placeholder="Enter Number"
             />
           </div>
+          {Number(preferredQty) !== Number(selectedItem.suggestedQty) && (
+            <div className="single-item-field">
+              <label>Reason for change</label>
+              <input type="text" maxLength={255} value={overrideReason}
+                onChange={(e) => setOverrideReason(e.target.value)} placeholder="e.g. Supplier promo, seasonal demand" />
+            </div>
+          )}
 
           {/* Footer Actions */}
           <div className="single-item-modal-actions">

@@ -1,5 +1,5 @@
 import { numericUnitValue } from "./utils/unitValue.js";
-﻿import React, { useEffect, useState } from "react";
+import React, { useEffect, useState } from "react";
 import "./AddProductModal.css";
 import { Settings } from "lucide-react";
 import ManageProductLookup from "./ManageProductLookup";
@@ -15,6 +15,9 @@ const emptyForm = {
   unitPrice: "",
   costPrice: "",
   reorderLevel: "",
+  minOrderQuantity: "1",
+  budgetCap: "",
+  priorityTag: "Normal",
   imageUrl: "",
   arModelUrl: "",
   status: "Active",
@@ -67,6 +70,9 @@ export default function AddProductModal({ isOpen, onClose, onSaved, selectedProd
         unitPrice: selectedProduct.unitPrice ?? "",
         costPrice: selectedProduct.costPrice ?? "",
         reorderLevel: selectedProduct.reorderLevel ?? "",
+        minOrderQuantity: String(selectedProduct.minOrderQuantity ?? 1),
+        budgetCap: selectedProduct.budgetCap ?? "",
+        priorityTag: selectedProduct.priorityTag || "Normal",
         imageUrl: selectedProduct.imageUrl || "",
         arModelUrl: selectedProduct.arModelUrl || "",
         status: selectedProduct.status || "Active",
@@ -99,6 +105,11 @@ export default function AddProductModal({ isOpen, onClose, onSaved, selectedProd
       return;
     }
 
+    if (!Number.isInteger(Number(form.minOrderQuantity)) || Number(form.minOrderQuantity) < 1) {
+      setError("Minimum order quantity must be a whole number of at least 1.");
+      return;
+    }
+
     const payload = {
       productName: productName.trim(),
       categoryId: String(form.categoryId),
@@ -109,6 +120,9 @@ export default function AddProductModal({ isOpen, onClose, onSaved, selectedProd
       unitPrice: Number(form.unitPrice) || 0,
       costPrice: Number(form.costPrice) || 0,
       reorderLevel: Number(form.reorderLevel) || 0,
+      minOrderQuantity: Number(form.minOrderQuantity),
+      budgetCap: form.budgetCap === "" ? null : Number(form.budgetCap),
+      priorityTag: form.priorityTag,
       imageUrl: form.imageUrl || null,
       arModelUrl: form.arModelUrl || null,
       status: form.status,
@@ -176,7 +190,7 @@ export default function AddProductModal({ isOpen, onClose, onSaved, selectedProd
           <div className="form-row-2">
             {[['Brand', 'brandId', brands, 'brands'], ['Category', 'categoryId', categories, 'categories']].map(([label, field, options, endpoint]) => (
               <div className="form-field" key={field}>
-                <label htmlFor={field}>{label} <button type="button" className="lookup-settings" aria-label={`Manage ${label}`} onClick={() => setManager({label, endpoint})}><Settings size={16} /></button></label>
+                <label htmlFor={field}>{label} <button type="button" className="lookup-settings" aria-label={`Manage ${label}`} onClick={() => setManager({ label, endpoint })}><Settings size={16} /></button></label>
                 <select id={field} required value={form[field]} onChange={e => updateField(field, e.target.value)}>
                   <option value="">Select {label}</option>
                   {options.map(option => <option key={option.id} value={option.id}>{option.name}</option>)}
@@ -237,6 +251,27 @@ export default function AddProductModal({ isOpen, onClose, onSaved, selectedProd
                 value={form.reorderLevel}
                 onChange={(e) => updateField("reorderLevel", e.target.value)}
               />
+            </div>
+          </div>
+
+          <div className="form-row-3">
+            <div className="form-field">
+              <label>Min Order Qty</label>
+              <input type="number" min="1" step="1" value={form.minOrderQuantity}
+                onChange={(e) => updateField("minOrderQuantity", e.target.value)} />
+            </div>
+            <div className="form-field">
+              <label>Budget Cap (₱)</label>
+              <input type="number" min="0" step="0.01" placeholder="No cap" value={form.budgetCap}
+                onChange={(e) => updateField("budgetCap", e.target.value)} />
+            </div>
+            <div className="form-field">
+              <label>Restock Priority</label>
+              <select value={form.priorityTag} onChange={(e) => updateField("priorityTag", e.target.value)}>
+                <option value="High">High</option>
+                <option value="Normal">Normal</option>
+                <option value="Low">Low</option>
+              </select>
             </div>
           </div>
 

@@ -1,44 +1,44 @@
 """
-Trains an XGBoost classifier that predicts the CONFIDENCE (0-100%) that a
-product genuinely needs restocking now, based on its stock level, sales
-velocity, and how long it's been since it was last restocked.
+Trains an XGBoost REGRESSOR that forecasts total units sold per product during
+its supplier lead-time window.
 
-Label definition (used for training): a product-snapshot is labeled "needs
-restocking" (1) if, going forward from that snapshot, it actually ran at or
-below its reorder level within the next 14 days — i.e., we're training the
-model to recognize the pattern that historically preceded a real stockout
-risk, not just "is it currently low" (which the existing heuristic already
-does fine on its own).
-
-Two data sources, used together:
-  1. Real historical data pulled from your MySQL InventoryTransaction ledger,
-     if there's enough of it.
-  2. A synthetic bootstrap dataset, so the model trains and is genuinely
-     useful even on a brand-new install with little sales history yet. As
-     real data accumulates, re-running this script will lean more on it.
+Data pipeline fixes:
+  * Sales come from OrderDetails JOIN Order with the same status filter that
+    Backend/routes/restockRoutes.js uses at inference.
+  * days_since_last_restock is evaluated as of each snapshot date (only restocks
+    BEFORE the snapshot are visible) and clipped at 0, so there is no leakage.
+  * Features for snapshot d use only days < d; the target uses days [d, d+lead).
+  * Validation is temporal. Train: windows that end 6+ months ago. Validate: the
+    most recent 6 months. Windows straddling the cutoff are dropped.
+  * Daily series are turned into cumulative sums, so each snapshot is O(1)
+    (no nested date scans).
 
 Run:
     cd ML
-    pip install -r requirements.txt --break-system-packages
     python train_model.py
 """
-
+import math
 import os
 import random
+from datetime import date, timedelta
+
+import joblib
+import mysql.connector
 import numpy as np
 import pandas as pd
-import mysql.connector
-from xgboost import XGBClassifier
-from sklearn.model_selection import train_test_split
-from sklearn.metrics import accuracy_score, roc_auc_score
-import joblib
 from dotenv import load_dotenv
+from sklearn.metrics import mean_absolute_error, mean_squared_error
+from xgboost import XGBRegressor
 
-from features import FEATURE_NAMES, build_feature_vector, vector_to_row
+from features import FEATURE_NAMES, build_feature_vector
 
-load_dotenv(os.path.join(os.path.dirname(__file__), '.env'), encoding='utf-8-sig')
+load_dotenv(os.path.join(os.path.dirname(__file__), ".env"), encoding="utf-8-sig")
 
 MODEL_PATH = os.path.join(os.path.dirname(__file__), "restock_model.pkl")
+VALIDATION_DAYS = 183
+SNAPSHOT_STEP_DAYS = 7
+MIN_HISTORY_DAYS = 35
+SYNTHETIC_WEIGHT = 0.25
 
 
 def get_db_connection():
@@ -51,173 +51,161 @@ def get_db_connection():
     )
 
 
-def load_real_training_data():
-    """
-    Pulls every InventoryTransaction for every product and reconstructs daily
-    stock levels + sales, then builds labeled (features, label) rows: for
-    each day, does stock fall to/below reorder level within the next 14 days?
-    """
+def load_real_rows():
     try:
         conn = get_db_connection()
     except Exception as e:
         print(f"Could not connect to MySQL ({e}); skipping real data.")
         return pd.DataFrame()
 
-    cursor = conn.cursor(dictionary=True)
-    cursor.execute("""
-        SELECT i.ProductID AS product_id, p.ReorderLevel AS reorder_level,
-               t.TransactionType AS type, t.Quantity AS qty, t.Reason AS reason,
-               t.TransactionDate AS date
-        FROM InventoryTransaction t
-        JOIN Inventory i ON i.InventoryID = t.InventoryID
-        JOIN Product p ON p.ProductID = i.ProductID
-        ORDER BY i.ProductID, t.TransactionDate
+    cur = conn.cursor(dictionary=True)
+    cur.execute("""
+        SELECT od.ProductID AS product_id, DATE(o.OrderDate) AS sale_day, SUM(od.Quantity) AS qty
+        FROM OrderDetails od JOIN `Order` o ON o.OrderID = od.OrderID
+        WHERE o.OrderDate < CURDATE()
+          AND o.OrderStatus NOT IN ('Cancelled','Unclaimed','Delivery Failed')
+        GROUP BY od.ProductID, DATE(o.OrderDate)
     """)
-    tx_rows = cursor.fetchall()
-    cursor.execute("SELECT ProductID, SupplierID FROM Product")
-    product_supplier = {r["ProductID"]: r["SupplierID"] for r in cursor.fetchall()}
-    cursor.execute("SELECT SupplierID, LeadTimeDays FROM Supplier")
-    supplier_lead_time = {r["SupplierID"]: r["LeadTimeDays"] or 3 for r in cursor.fetchall()}
+    sales_rows = cur.fetchall()
+    cur.execute("""
+        SELECT DISTINCT i.ProductID AS product_id, DATE(t.TransactionDate) AS restock_day
+        FROM InventoryTransaction t JOIN Inventory i ON i.InventoryID = t.InventoryID
+        WHERE t.TransactionType = 'Stock In' AND t.Reason IN ('Purchase','Supplier Delivery')
+          AND t.TransactionDate < CURDATE()
+    """)
+    restock_rows = cur.fetchall()
+    cur.execute("""
+        SELECT p.ProductID AS product_id, COALESCE(s.LeadTimeDays, 3) AS lead_days
+        FROM Product p LEFT JOIN Supplier s ON s.SupplierID = p.SupplierID
+    """)
+    lead_by_product = {r["product_id"]: max(int(r["lead_days"] or 3), 1) for r in cur.fetchall()}
     conn.close()
 
-    if len(tx_rows) < 30:
-        print(f"Only {len(tx_rows)} real transactions found — too little history to train on alone.")
+    if not sales_rows:
+        print("No sales history found.")
         return pd.DataFrame()
 
-    df = pd.DataFrame(tx_rows)
-    df["date"] = pd.to_datetime(df["date"]).dt.date
-    df["signed_qty"] = df.apply(lambda r: r["qty"] if r["type"] == "Stock In" else -r["qty"], axis=1)
-    df["sale_qty"] = df.apply(lambda r: r["qty"] if r["reason"] == "Sale" else 0, axis=1)
-    df["restock_qty"] = df.apply(lambda r: r["qty"] if (r["type"] == "Stock In" and r["reason"] == "Purchase") else 0, axis=1)
+    restocks = {}
+    for r in restock_rows:
+        restocks.setdefault(r["product_id"], []).append(r["restock_day"])
+
+    sales = pd.DataFrame(sales_rows)
+    sales["sale_day"] = pd.to_datetime(sales["sale_day"])
+    sales["qty"] = sales["qty"].astype(float)
+    last_day = pd.Timestamp(date.today() - timedelta(days=1))
+    first_day = sales["sale_day"].min()
 
     records = []
-    for product_id, group in df.groupby("product_id"):
-        group = group.sort_values("date")
-        reorder_level = group["reorder_level"].iloc[0]
-        lead_time = supplier_lead_time.get(product_supplier.get(product_id), 3)
+    for pid, grp in sales.groupby("product_id"):
+        idx = pd.date_range(first_day, last_day, freq="D")
+        if len(idx) < MIN_HISTORY_DAYS + 2:
+            continue
+        series = grp.set_index("sale_day")["qty"].reindex(idx, fill_value=0.0).to_numpy()
+        lead = lead_by_product.get(pid, 3)
+        cs = np.concatenate(([0.0], np.cumsum(series)))  # cs[k] = sum(series[:k])
+        n = len(series)
+        snapshots = np.arange(MIN_HISTORY_DAYS, n - lead + 1, SNAPSHOT_STEP_DAYS)
+        if snapshots.size == 0:
+            continue
+        restock_days = np.array(sorted(restocks.get(pid, [])), dtype="datetime64[D]")
 
-        # Reconstruct a running stock balance ending at the last known transaction (approximate — good enough for training signal)
-        running_stock = 0
-        daily = {}
-        last_restock_date = None
-        for _, row in group.iterrows():
-            running_stock += row["signed_qty"]
-            d = row["date"]
-            daily.setdefault(d, {"stock": running_stock, "sale": 0, "restock": 0})
-            daily[d]["stock"] = running_stock
-            daily[d]["sale"] += row["sale_qty"]
-            if row["restock_qty"] > 0:
-                last_restock_date = d
-
-        dates_sorted = sorted(daily.keys())
-        for idx, d in enumerate(dates_sorted):
-            future_dates = [fd for fd in dates_sorted if idx < dates_sorted.index(fd) <= idx + 14] if False else None
-            # 14-day-forward label: did stock hit/go below reorder level in the next 14 calendar days?
-            future_window = [
-                daily[fd]["stock"] for fd in dates_sorted
-                if 0 < (fd - d).days <= 14
-            ]
-            label = 1 if any(s <= reorder_level for s in future_window) else 0
-
-            sales_7d = sum(daily[fd]["sale"] for fd in dates_sorted if 0 <= (d - fd).days < 7)
-            sales_30d = sum(daily[fd]["sale"] for fd in dates_sorted if 0 <= (d - fd).days < 30)
-            sales_90d = sum(daily[fd]["sale"] for fd in dates_sorted if 0 <= (d - fd).days < 90)
-            days_since_restock = (d - last_restock_date).days if last_restock_date else 30
-
+        for i in snapshots:
+            d = idx[i].date()
+            if restock_days.size:
+                pos = int(np.searchsorted(restock_days, np.datetime64(d), side="left"))
+                days_since = max((d - restock_days[pos - 1].astype(object)).days, 0) if pos > 0 else 30
+            else:
+                days_since = 30
             vec = build_feature_vector({
-                "current_stock": daily[d]["stock"],
-                "reorder_level": reorder_level,
-                "sales_7d": sales_7d,
-                "sales_30d": sales_30d,
-                "sales_90d": sales_90d,
-                "lead_time_days": lead_time,
-                "days_since_last_restock": days_since_restock,
-            })
-            vec["label"] = label
+                "sales_7d": cs[i] - cs[i - 7],
+                "lag_1wk": cs[i - 7] - cs[i - 14],
+                "lag_2wk": cs[i - 14] - cs[i - 21],
+                "lag_4wk": cs[i - 28] - cs[i - 35],
+                "sales_30d": cs[i] - cs[max(i - 30, 0)],
+                "sales_90d": cs[i] - cs[max(i - 90, 0)],
+                "lead_time_days": lead,
+                "days_since_last_restock": days_since,
+            }, as_of=d)
+            vec["target"] = float(cs[i + lead] - cs[i])
+            vec["snapshot"] = pd.Timestamp(d)
+            vec["target_end"] = pd.Timestamp(d) + pd.Timedelta(days=lead)
+            vec["weight"] = 1.0
             records.append(vec)
-
     return pd.DataFrame(records)
 
 
-def generate_synthetic_data(n=4000, seed=42):
-    """
-    Bootstraps a plausible training set so the model is useful even before
-    real sales history accumulates. Encodes the same intuitive pattern a
-    human inventory manager would recognize: low days-of-cover relative to
-    lead time + an accelerating sales trend = high confidence restocking is
-    needed soon.
-    """
+def generate_synthetic_data(n=3000, seed=42):
+    """Bootstrap rows so a young database still trains a usable model (train-only, low weight)."""
     rng = random.Random(seed)
     records = []
     for _ in range(n):
-        reorder_level = rng.choice([5, 10, 15, 20, 30])
-        avg_daily = rng.uniform(0.1, 5.0)
-        days_of_cover_target = rng.uniform(0, 40)
-        current_stock = max(0.0, avg_daily * days_of_cover_target + rng.uniform(-3, 3))
-        lead_time = rng.choice([1, 2, 3, 5, 7, 10])
-        days_since_restock = rng.uniform(0, 60)
-        trend_factor = rng.uniform(-0.5, 1.5)  # >1 means accelerating sales
+        avg_daily = rng.uniform(0.05, 6.0)
+        lead = rng.choice([1, 2, 3, 5, 7, 10, 14])
+        trend = rng.uniform(-0.4, 0.8)
+        as_of = date(2025, 1, 1) + timedelta(days=rng.randint(0, 700))
+        season = 1 + 0.15 * math.sin(2 * math.pi * as_of.timetuple().tm_yday / 365)
 
-        sales_30d = avg_daily * 30
-        sales_7d = avg_daily * 7 * (1 + trend_factor * 0.3)
-        sales_90d = avg_daily * 90 * rng.uniform(0.85, 1.15)
+        def week():
+            return max(0.0, avg_daily * 7 * season * rng.uniform(0.7, 1.3))
 
         vec = build_feature_vector({
-            "current_stock": current_stock,
-            "reorder_level": reorder_level,
-            "sales_7d": max(sales_7d, 0),
-            "sales_30d": max(sales_30d, 0),
-            "sales_90d": max(sales_90d, 0),
-            "lead_time_days": lead_time,
-            "days_since_last_restock": days_since_restock,
-        })
-
-        # Ground truth rule the synthetic label follows: will days_of_cover
-        # run out before restocking + lead time can realistically save it?
-        buffer_days = vec["days_of_cover"] - lead_time
-        will_need_restock = buffer_days < 5 or vec["stock_to_reorder_ratio"] < 1.3
-        # add some label noise so the model doesn't just memorize a hard rule
-        if rng.random() < 0.06:
-            will_need_restock = not will_need_restock
-
-        vec["label"] = 1 if will_need_restock else 0
+            "sales_7d": week() * (1 + 0.3 * trend),
+            "lag_1wk": week(), "lag_2wk": week(), "lag_4wk": week(),
+            "sales_30d": avg_daily * 30 * rng.uniform(0.85, 1.15),
+            "sales_90d": avg_daily * 90 * rng.uniform(0.8, 1.2),
+            "lead_time_days": lead,
+            "days_since_last_restock": rng.uniform(0, 60),
+        }, as_of=as_of)
+        expected = avg_daily * lead * season * (1 + 0.2 * trend)
+        vec["target"] = max(0.0, rng.gauss(expected, 0.2 * expected + 0.5))
+        vec["snapshot"] = pd.Timestamp(as_of)
+        vec["target_end"] = pd.Timestamp(as_of) + pd.Timedelta(days=lead)
+        vec["weight"] = SYNTHETIC_WEIGHT
         records.append(vec)
-
     return pd.DataFrame(records)
 
 
 def main():
-    print("Loading real historical data from MySQL (if available)...")
-    real_df = load_real_training_data()
-    print(f"Real rows: {len(real_df)}")
+    print("Loading real sales history...")
+    real = load_real_rows()
+    print(f"Real snapshot rows: {len(real)}")
+    synthetic = generate_synthetic_data()
+    print(f"Synthetic bootstrap rows: {len(synthetic)}")
 
-    print("Generating synthetic bootstrap data...")
-    synthetic_df = generate_synthetic_data(n=4000)
-    print(f"Synthetic rows: {len(synthetic_df)}")
+    valid = pd.DataFrame()
+    if real.empty:
+        print("WARNING: no usable real history; training on synthetic data only.")
+        train = synthetic
+    else:
+        cutoff = pd.Timestamp(date.today()) - pd.Timedelta(days=VALIDATION_DAYS)
+        real_train = real[real["target_end"] <= cutoff]
+        valid = real[real["snapshot"] >= cutoff]
+        if real_train.empty or valid.empty:
+            print("WARNING: under ~7 months of history; no temporal split possible. "
+                  "Training on everything without validation.")
+            train, valid = pd.concat([real, synthetic], ignore_index=True), pd.DataFrame()
+        else:
+            train = pd.concat([real_train, synthetic], ignore_index=True)
+            print(f"Temporal split at {cutoff.date()}: train={len(train)} "
+                  f"(real {len(real_train)}), validation={len(valid)}")
 
-    df = pd.concat([real_df, synthetic_df], ignore_index=True) if len(real_df) else synthetic_df
-    print(f"Total training rows: {len(df)}")
-
-    X = df[FEATURE_NAMES]
-    y = df["label"]
-
-    X_train, X_test, y_train, y_test = train_test_split(X, y, test_size=0.2, random_state=42, stratify=y)
-
-    model = XGBClassifier(
-        n_estimators=200,
-        max_depth=4,
-        learning_rate=0.08,
-        subsample=0.85,
-        colsample_bytree=0.85,
-        eval_metric="logloss",
-        random_state=42,
+    model = XGBRegressor(
+        objective="count:poisson",
+        n_estimators=400, max_depth=4, learning_rate=0.05,
+        subsample=0.85, colsample_bytree=0.85, random_state=42,
+        early_stopping_rounds=30 if len(valid) else None,
     )
-    model.fit(X_train, y_train)
+    fit_args = {"sample_weight": train["weight"], "verbose": False}
+    if len(valid):
+        fit_args["eval_set"] = [(valid[FEATURE_NAMES], valid["target"])]
+    model.fit(train[FEATURE_NAMES], train["target"], **fit_args)
 
-    preds = model.predict(X_test)
-    probs = model.predict_proba(X_test)[:, 1]
-    print(f"Test accuracy: {accuracy_score(y_test, preds):.3f}")
-    print(f"Test ROC-AUC:  {roc_auc_score(y_test, probs):.3f}")
+    if len(valid):
+        pred = np.clip(model.predict(valid[FEATURE_NAMES]), 0, None)
+        baseline = valid["roll_avg_30d"] / 7.0 * valid["lead_time_days"]
+        print(f"Validation MAE:  {mean_absolute_error(valid['target'], pred):.3f} units")
+        print(f"Validation RMSE: {math.sqrt(mean_squared_error(valid['target'], pred)):.3f} units")
+        print(f"Naive 30d-average baseline MAE: {mean_absolute_error(valid['target'], baseline):.3f} units")
 
     joblib.dump(model, MODEL_PATH)
     print(f"Model saved to {MODEL_PATH}")

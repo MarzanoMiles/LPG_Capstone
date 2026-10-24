@@ -152,6 +152,9 @@ export default function Products() {
         unitPrice: full.UnitPrice,
         costPrice: full.CostPrice,
         reorderLevel: full.ReorderLevel,
+        minOrderQuantity: full.MinOrderQuantity,
+        budgetCap: full.BudgetCap,
+        priorityTag: full.PriorityTag,
         imageUrl: full.ImageURL,
         arModelUrl: full.ARModelURL,
         status: full.Status,
@@ -187,120 +190,120 @@ export default function Products() {
   return (
     <PageLayout className="products-page" contentClassName="products-inner">
 
-        <PageHeader title="Products" />
-        {loadError && <p className="products-error" style={{ color: "#dc2626" }}>{loadError}</p>}
-        {actionError && <p className="products-error" style={{ color: "#dc2626" }}>{actionError}</p>}
+      <PageHeader title="Products" />
+      {loadError && <p className="products-error" style={{ color: "#dc2626" }}>{loadError}</p>}
+      {actionError && <p className="products-error" style={{ color: "#dc2626" }}>{actionError}</p>}
 
-        <div className="products-toolbar">
-          <div className="products-search">
-            <input
-              type="text"
-              placeholder="Search Product"
-              className="products-search-input"
-              value={searchQuery}
-              onChange={(e) => setSearchQuery(e.target.value)}
-            />
-            <Search size={16} className="products-search-icon" />
-          </div>
-
-          <div className="products-select-wrap">
-            <select
-              className="products-select"
-              value={selectedCategory}
-              onChange={(e) => setSelectedCategory(e.target.value)}
-            >
-              <option value="All Categories">All Categories</option>
-              <option value="Gasul LPG">Gasul LPG</option>
-              <option value="Cylinder">Cylinder</option>
-              <option value="Accessories">Accessories</option>
-            </select>
-            <ChevronDown size={16} className="products-select-icon" />
-          </div>
-
-          <div className="products-select-wrap">
-            <select
-              className="products-select"
-              value={selectedStatus}
-              onChange={(e) => setSelectedStatus(e.target.value)}
-            >
-              <option value="All Status">All Status</option>
-              <option value="Active">Active</option>
-              <option value="Inactive">Inactive</option>
-            </select>
-            <ChevronDown size={16} className="products-select-icon" />
-          </div>
-
-          <button className="add-product-btn" onClick={handleOpenAdd}>
-            <Plus size={16} /> Add Product
-          </button>
+      <div className="products-toolbar">
+        <div className="products-search">
+          <input
+            type="text"
+            placeholder="Search Product"
+            className="products-search-input"
+            value={searchQuery}
+            onChange={(e) => setSearchQuery(e.target.value)}
+          />
+          <Search size={16} className="products-search-icon" />
         </div>
 
-        <div className="products-table-wrap">
-          <div className="paginated-table-scroll">
-            <table className="products-table">
-              <thead>
-                <tr>
-                  <th>Product ID</th>
-                  <th>Product Name</th>
-                  <th>Category</th>
-                  <th>Supplier</th>
-                  <th>Cost Price</th>
-                  <th>Status</th>
-                  <th>Actions</th>
-                </tr>
-              </thead>
-              <tbody>
-                {isLoading && (
-                  <tr><td colSpan={7} style={{ textAlign: "center", padding: 24 }}>Loading…</td></tr>
-                )}
-                {!isLoading && productRows.length === 0 && (
-                  <tr><td colSpan={7} style={{ textAlign: "center", padding: 24 }}>No products found.</td></tr>
-                )}
-                {!isLoading &&
-                  paginatedRows.map((product) => (
-                    <tr key={product.productId}>
-                      <td>{product.productId}</td>
-                      <td>{product.productName}</td>
-                      <td>{product.category}</td>
-                      <td>{product.supplier}</td>
-                      <td>{product.costPrice}</td>
-                      <td>
-                        <span className={`products-status-pill ${product.status.toLowerCase()}`}>
-                          {product.status}
-                        </span>
-                      </td>
-                      <td>
-                        <div className="products-action-icons">
-                          <button
-                            className="products-action-icon view"
-                            title="View"
-                            onClick={() => handleView(product.productId)}
-                          >
-                            <FileText size={16} />
-                          </button>
-                          <button
-                            className="products-action-icon edit"
-                            title="Edit"
-                            onClick={() => handleOpenEdit(product.productId)}
-                          >
-                            <Pencil size={16} />
-                          </button>
-                          <button
-                            className="products-action-icon delete"
-                            title="Delete"
-                            onClick={() => { setActionError(""); setDeleteTarget(product); }}
-                          >
-                            <Trash2 size={16} />
-                          </button>
-                        </div>
-                      </td>
-                    </tr>
-                  ))}
-              </tbody>
-            </table>
-          </div>
-          <Pagination currentPage={currentPage} totalPages={totalPages} onPageChange={setPage} />
+        <div className="products-select-wrap">
+          <select
+            className="products-select"
+            value={selectedCategory}
+            onChange={(e) => setSelectedCategory(e.target.value)}
+          >
+            <option value="All Categories">All Categories</option>
+            <option value="Gasul LPG">Gasul LPG</option>
+            <option value="Cylinder">Cylinder</option>
+            <option value="Accessories">Accessories</option>
+          </select>
+          <ChevronDown size={16} className="products-select-icon" />
         </div>
+
+        <div className="products-select-wrap">
+          <select
+            className="products-select"
+            value={selectedStatus}
+            onChange={(e) => setSelectedStatus(e.target.value)}
+          >
+            <option value="All Status">All Status</option>
+            <option value="Active">Active</option>
+            <option value="Inactive">Inactive</option>
+          </select>
+          <ChevronDown size={16} className="products-select-icon" />
+        </div>
+
+        <button className="add-product-btn" onClick={handleOpenAdd}>
+          <Plus size={16} /> Add Product
+        </button>
+      </div>
+
+      <div className="products-table-wrap">
+        <div className="paginated-table-scroll">
+          <table className="products-table">
+            <thead>
+              <tr>
+                <th>Product ID</th>
+                <th>Product Name</th>
+                <th>Category</th>
+                <th>Supplier</th>
+                <th>Cost Price</th>
+                <th>Status</th>
+                <th>Actions</th>
+              </tr>
+            </thead>
+            <tbody>
+              {isLoading && (
+                <tr><td colSpan={7} style={{ textAlign: "center", padding: 24 }}>Loading…</td></tr>
+              )}
+              {!isLoading && productRows.length === 0 && (
+                <tr><td colSpan={7} style={{ textAlign: "center", padding: 24 }}>No products found.</td></tr>
+              )}
+              {!isLoading &&
+                paginatedRows.map((product) => (
+                  <tr key={product.productId}>
+                    <td>{product.productId}</td>
+                    <td>{product.productName}</td>
+                    <td>{product.category}</td>
+                    <td>{product.supplier}</td>
+                    <td>{product.costPrice}</td>
+                    <td>
+                      <span className={`products-status-pill ${product.status.toLowerCase()}`}>
+                        {product.status}
+                      </span>
+                    </td>
+                    <td>
+                      <div className="products-action-icons">
+                        <button
+                          className="products-action-icon view"
+                          title="View"
+                          onClick={() => handleView(product.productId)}
+                        >
+                          <FileText size={16} />
+                        </button>
+                        <button
+                          className="products-action-icon edit"
+                          title="Edit"
+                          onClick={() => handleOpenEdit(product.productId)}
+                        >
+                          <Pencil size={16} />
+                        </button>
+                        <button
+                          className="products-action-icon delete"
+                          title="Delete"
+                          onClick={() => { setActionError(""); setDeleteTarget(product); }}
+                        >
+                          <Trash2 size={16} />
+                        </button>
+                      </div>
+                    </td>
+                  </tr>
+                ))}
+            </tbody>
+          </table>
+        </div>
+        <Pagination currentPage={currentPage} totalPages={totalPages} onPageChange={setPage} />
+      </div>
 
 
       <AddProductModal
@@ -317,7 +320,7 @@ export default function Products() {
         <div className="add-product-modal-card" role="alertdialog" aria-modal="true" aria-labelledby="delete-product-title">
           <h2 id="delete-product-title">Delete Product</h2>
           <p>Delete "{deleteTarget.productName}"? The product will be removed from the catalog. Existing transaction history will remain available.</p>
-          {actionError && <p role="alert" style={{color: '#dc2626'}}>{actionError}</p>}
+          {actionError && <p role="alert" style={{ color: '#dc2626' }}>{actionError}</p>}
           <div className="add-product-modal-actions">
             <button className="btn-modal-cancel" disabled={deleting} onClick={() => setDeleteTarget(null)}>Cancel</button>
             <button className="btn-modal-add" disabled={deleting} onClick={() => handleDelete(deleteTarget.productId)}>{deleting ? 'Deleting?' : 'Delete'}</button>

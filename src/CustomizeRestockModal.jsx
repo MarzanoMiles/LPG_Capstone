@@ -6,6 +6,7 @@ export default function CustomizeRestockModal({ isOpen, onClose, items, onApplie
   const [rows, setRows] = useState([]); // [{restockId, productId, productName, suggestedQty, preferredQty, costPrice}]
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [error, setError] = useState("");
+  const [overrideReason, setOverrideReason] = useState("");
 
   useEffect(() => {
     if (isOpen) {
@@ -20,6 +21,7 @@ export default function CustomizeRestockModal({ isOpen, onClose, items, onApplie
         }))
       );
       setError("");
+      setOverrideReason("");
     }
   }, [isOpen, items]);
 
@@ -30,6 +32,11 @@ export default function CustomizeRestockModal({ isOpen, onClose, items, onApplie
   };
 
   const handleApply = async () => {
+    const anyChanged = rows.some((r) => Number(r.preferredQty) !== r.suggestedQty);
+    if (anyChanged && !overrideReason.trim()) {
+      setError("Enter a reason for changing the suggested quantities.");
+      return;
+    }
     setIsSubmitting(true);
     setError("");
     try {
@@ -39,7 +46,7 @@ export default function CustomizeRestockModal({ isOpen, onClose, items, onApplie
           .map((r) =>
             apiRequest(`/restocking/${r.restockId}`, {
               method: "PUT",
-              body: JSON.stringify({ recommendedQuantity: Number(r.preferredQty) }),
+              body: JSON.stringify({ recommendedQuantity: Number(r.preferredQty), overrideReason: overrideReason.trim() }),
             })
           )
       );
@@ -102,6 +109,12 @@ export default function CustomizeRestockModal({ isOpen, onClose, items, onApplie
           </table>
         </div>
 
+        <input
+          type="text" maxLength={255} value={overrideReason}
+          onChange={(e) => setOverrideReason(e.target.value)}
+          placeholder="Reason for changing quantities (required if any changed)"
+          style={{ border: "1px solid #d1d5db", borderRadius: 8, padding: "8px 12px", fontSize: "0.875rem" }}
+        />
         <hr className="customize-divider" />
 
         <div className="modal-summary" style={{ padding: 0 }}>

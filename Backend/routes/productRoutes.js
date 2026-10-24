@@ -71,7 +71,30 @@ async function productIdentity(body) {
   const name = suppliedName || (body.productName === undefined && canDeriveName ? `${rows[0].Brand} ${rows[0].Category} ${Number(value)} ${body.unit}` : '');
   if (!name) throw new ApiError(400, 'Product name is required.');
   if (name.length > 150) throw new ApiError(400, 'Product name exceeds 150 characters.');
-  return {name, value: String(Number(value))};
+  return { name, value: String(Number(value)) };
+}
+
+
+function restockSettings(body) {
+  const out = {};
+  if (body.minOrderQuantity !== undefined) {
+    const v = Number(body.minOrderQuantity);
+    if (!Number.isInteger(v) || v < 1 || v > 1000000) throw new ApiError(400, "Minimum order quantity must be a whole number of at least 1.");
+    out.MinOrderQuantity = v;
+  }
+  if (body.budgetCap !== undefined) {
+    if (body.budgetCap === null || body.budgetCap === "" || Number(body.budgetCap) === 0) out.BudgetCap = null;
+    else {
+      const v = Number(body.budgetCap);
+      if (!Number.isFinite(v) || v < 0 || v > 9999999999.99 || Math.abs(v * 100 - Math.round(v * 100)) > 0.0001) throw new ApiError(400, "Budget cap must be a positive amount with at most two decimals.");
+      out.BudgetCap = v;
+    }
+  }
+  if (body.priorityTag !== undefined) {
+    if (!["High", "Normal", "Low"].includes(body.priorityTag)) throw new ApiError(400, "Priority must be High, Normal or Low.");
+    out.PriorityTag = body.priorityTag;
+  }
+  return out;
 }
 
 router.use(authenticate);
@@ -140,7 +163,7 @@ router.get(
 router.post(
   "/",
   asyncHandler(async (req, res) => {
-    const {name: productName, value: normalizedValue} = await productIdentity(req.body);
+    const { name: productName, value: normalizedValue } = await productIdentity(req.body);
     const {
       categoryId, brandId, supplierId, unit, unitValue,
       unitPrice, costPrice, reorderLevel, imageUrl, arModelUrl, status,
@@ -153,11 +176,12 @@ router.post(
     if (unitValue != null && String(unitValue).trim().length > 50) throw new ApiError(400, "Unit Value must be at most 50 characters.");
     const productId = await nextProductId(pool);
 
+    const restock = restockSettings(req.body);
     await pool.query(
       `INSERT INTO Product
-        (ProductID, ProductName, CategoryID, BrandID, SupplierID, Unit, UnitValue, UnitPrice, CostPrice, ReorderLevel, ImageURL, ARModelURL, Status)
+        (ProductID, ProductName, CategoryID, BrandID, SupplierID, Unit, UnitValue, UnitPrice, CostPrice, ReorderLevel, MinOrderQuantity, BudgetCap, PriorityTag, ImageURL, ARModelURL, Status)
        VALUES
-        (:productId, :productName, :categoryId, :brandId, :supplierId, :unit, :unitValue, :unitPrice, :costPrice, :reorderLevel, :imageUrl, :arModelUrl, :status)`,
+        (:productId, :productName, :categoryId, :brandId, :supplierId, :unit, :unitValue, :unitPrice, :costPrice, :reorderLevel, :minOrderQuantity, :budgetCap, :priorityTag, :imageUrl, :arModelUrl, :status)`,
       {
         productId,
         productName, categoryId, brandId, supplierId, unit,
@@ -165,6 +189,9 @@ router.post(
         unitPrice: unitPrice || 0,
         costPrice: costPrice || 0,
         reorderLevel: reorderLevel || 0,
+        minOrderQuantity: restock.MinOrderQuantity ?? 1,
+        budgetCap: restock.BudgetCap ?? null,
+        priorityTag: restock.PriorityTag ?? "Normal",
         imageUrl: imageUrl || null,
         arModelUrl: arModelUrl || null,
         status: status || "Active",
@@ -191,15 +218,17 @@ router.put(
       "ProductName", "CategoryID", "BrandID", "SupplierID", "Unit", "UnitValue",
       "UnitPrice", "CostPrice", "ReorderLevel", "ImageURL", "ARModelURL", "Status",
     ];
-    const [existing] = await pool.query('SELECT * FROM Product WHERE ProductID = :id', {id: req.params.id});
+    const [existing] = await pool.query('SELECT * FROM Product WHERE ProductID = :id', { id: req.params.id });
     if (!existing[0]) throw new ApiError(404, 'Product not found.');
     const row = existing[0];
-    const body = {...{brandId: row.BrandID, categoryId: row.CategoryID, supplierId: row.SupplierID, productName: row.ProductName, unit: row.Unit, unitValue: row.UnitValue}, ...req.body};
+    const body = { ...{ brandId: row.BrandID, categoryId: row.CategoryID, supplierId: row.SupplierID, productName: row.ProductName, unit: row.Unit, unitValue: row.UnitValue }, ...req.body };
     const identity = await productIdentity(body);
     body.productName = identity.name;
     body.unitValue = identity.value;
     if (body.unitValue != null && String(body.unitValue).trim().length > 50) throw new ApiError(400, "Unit Value must be at most 50 characters.");
+    const restock = restockSettings(req.body);
     const map = {
+      MinOrderQuantity: restock.MinOrderQuantity, BudgetCap: restock.BudgetCap, PriorityTag: restock.PriorityTag,
       ProductName: body.productName, CategoryID: body.categoryId, BrandID: body.brandId,
       SupplierID: body.supplierId, Unit: body.unit, UnitValue: body.unitValue === undefined ? undefined : body.unitValue == null ? null : String(body.unitValue).trim(), UnitPrice: body.unitPrice,
       CostPrice: body.costPrice, ReorderLevel: body.reorderLevel, ImageURL: body.imageUrl,
