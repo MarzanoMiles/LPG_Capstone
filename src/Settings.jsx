@@ -30,8 +30,7 @@ const emptySettings = {
   autoLogoutMinutes: 30,
   systemTimezone: "Asia/Manila",
   dateFormat: "MM/DD/YYYY",
-  language: "en",
-  theme: "light",
+  language: "en"
 };
 
 export default function Settings() {
@@ -364,19 +363,7 @@ export default function Settings() {
             </div>
           </div>
 
-          <div className="input-column" style={{ justifyContent: "space-between" }}>
-            <div className="form-group">
-              <label>Theme</label>
-              <select
-                className="form-control"
-                value={settings.theme}
-                onChange={(e) => updateField("theme", e.target.value)}
-              >
-                <option value="light">Light</option>
-                <option value="dark">Dark</option>
-              </select>
-            </div>
-
+          <div className="input-column" style={{ justifyContent: "flex-end" }}>
             <div className="card-actions-inline">
               <button
                 className="btn btn-primary"
@@ -386,7 +373,6 @@ export default function Settings() {
                     systemTimezone: settings.systemTimezone,
                     dateFormat: settings.dateFormat,
                     language: settings.language,
-                    theme: settings.theme,
                   })
                 }
                 disabled={savingSection === "system"}

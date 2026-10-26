@@ -1,4 +1,7 @@
-﻿const router = require("express").Router();
+﻿const fs = require("fs");
+const path = require("path");
+const crypto = require("crypto");
+const router = require("express").Router();
 const pool = require("../config/db");
 const asyncHandler = require("../utils/asyncHandler");
 const ApiError = require("../utils/apiError");
@@ -157,6 +160,31 @@ router.get(
     );
     if (!rows[0]) throw new ApiError(404, "Product not found.");
     res.json(rows[0]);
+  })
+);
+
+const IMAGE_TYPES = {
+  "image/png": { ext: "png", magic: [0x89, 0x50, 0x4e, 0x47] },
+  "image/jpeg": { ext: "jpg", magic: [0xff, 0xd8, 0xff] },
+  "image/webp": { ext: "webp", magic: [0x52, 0x49, 0x46, 0x46] },
+};
+
+// POST /products/image  { dataUrl } -> { imageUrl: "uploads/<file>" }
+router.post(
+  "/image",
+  asyncHandler(async (req, res) => {
+    const match = /^data:(image\/(?:png|jpeg|webp));base64,([A-Za-z0-9+/=]+)$/.exec(String(req.body.dataUrl || ""));
+    if (!match) throw new ApiError(400, "Upload a PNG, JPG or WebP image.");
+    const type = IMAGE_TYPES[match[1]];
+    const buffer = Buffer.from(match[2], "base64");
+    if (!buffer.length || buffer.length > 2 * 1024 * 1024) throw new ApiError(400, "Image must be under 2 MB.");
+    if (!type.magic.every((byte, i) => buffer[i] === byte)) throw new ApiError(400, "The file is not a valid image.");
+
+    const dir = path.join(__dirname, "../uploads");
+    await fs.promises.mkdir(dir, { recursive: true });
+    const name = `product-${Date.now()}-${crypto.randomBytes(4).toString("hex")}.${type.ext}`;
+    await fs.promises.writeFile(path.join(dir, name), buffer);
+    res.status(201).json({ imageUrl: `uploads/${name}` });
   })
 );
 

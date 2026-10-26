@@ -4,6 +4,7 @@ import "./AddProductModal.css";
 import { Settings } from "lucide-react";
 import ManageProductLookup from "./ManageProductLookup";
 import { apiRequest } from "./api";
+import { resolveProductImage } from "./utils/productImages";
 
 const emptyForm = {
   productName: "",
@@ -30,6 +31,7 @@ export default function AddProductModal({ isOpen, onClose, onSaved, selectedProd
   const [form, setForm] = useState(emptyForm);
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [error, setError] = useState("");
+  const [isUploading, setIsUploading] = useState(false);
 
   const [manager, setManager] = useState(null);
   const [customName, setCustomName] = useState(false);
@@ -85,6 +87,39 @@ export default function AddProductModal({ isOpen, onClose, onSaved, selectedProd
   if (!isOpen) return null;
 
   const updateField = (field, value) => setForm((prev) => ({ ...prev, [field]: value }));
+
+  const handleImageChange = async (e) => {
+    const file = e.target.files?.[0];
+    e.target.value = "";
+    if (!file) return;
+    if (!["image/png", "image/jpeg", "image/webp"].includes(file.type)) {
+      setError("Choose a PNG, JPG or WebP image.");
+      return;
+    }
+    if (file.size > 2 * 1024 * 1024) {
+      setError("Image must be under 2 MB.");
+      return;
+    }
+    setError("");
+    setIsUploading(true);
+    try {
+      const dataUrl = await new Promise((resolve, reject) => {
+        const reader = new FileReader();
+        reader.onload = () => resolve(reader.result);
+        reader.onerror = () => reject(new Error("Could not read the image."));
+        reader.readAsDataURL(file);
+      });
+      const result = await apiRequest("/products/image", {
+        method: "POST",
+        body: JSON.stringify({ dataUrl }),
+      });
+      updateField("imageUrl", result.imageUrl);
+    } catch (err) {
+      setError(err.message || "Failed to upload image.");
+    } finally {
+      setIsUploading(false);
+    }
+  };
 
   const resetAndClose = () => {
     setForm(emptyForm);
@@ -285,14 +320,22 @@ export default function AddProductModal({ isOpen, onClose, onSaved, selectedProd
               </select>
             </div>
             <div className="form-field">
-              <label>Image URL</label>
-              <input
-                type="text"
-                placeholder="gasul-50kg.png or https://example.com/image.png"
-                value={form.imageUrl}
-                onChange={(e) => updateField("imageUrl", e.target.value)}
-              />
-              <small className="form-field-hint">Use filename (e.g., gasul-50kg.png) or full https URL.</small>
+              <label>Product Image</label>
+              <div className="product-image-upload">
+                {form.imageUrl && (
+                  <img className="product-image-preview" src={resolveProductImage({ imageUrl: form.imageUrl })} alt="Product preview" />
+                )}
+                <div className="product-image-actions">
+                  <label className="btn-file-upload">
+                    {isUploading ? "Uploading…" : form.imageUrl ? "Change image" : "Upload image"}
+                    <input type="file" accept="image/png,image/jpeg,image/webp" hidden disabled={isUploading} onChange={handleImageChange} />
+                  </label>
+                  {form.imageUrl && (
+                    <button type="button" className="product-name-reset" onClick={() => updateField("imageUrl", "")}>Remove</button>
+                  )}
+                </div>
+              </div>
+              <small className="form-field-hint">PNG, JPG or WebP, up to 2 MB.</small>
             </div>
           </div>
 
@@ -312,7 +355,7 @@ export default function AddProductModal({ isOpen, onClose, onSaved, selectedProd
             <button type="button" className="btn-modal-cancel" onClick={resetAndClose}>
               Cancel
             </button>
-            <button type="submit" className="btn-modal-add" disabled={isSubmitting}>
+            <button type="submit" className="btn-modal-add" disabled={isSubmitting || isUploading}>
               {isSubmitting ? "Saving…" : isEditing ? "Save" : "Add"}
             </button>
           </div>

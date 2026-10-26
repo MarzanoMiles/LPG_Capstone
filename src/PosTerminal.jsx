@@ -745,7 +745,11 @@ function DeliveryModal({ isOpen, onClose, onSave, initialData, orderTotal = 0 })
       setEstimate(data);
     } catch (err) {
       setEstimate(null);
-      setError(err.message || "Failed to estimate the delivery distance.");
+      setError(
+        err.message && err.message !== "Request failed"
+          ? err.message
+          : "The distance service did not respond. Check your connection and try again."
+      );
     } finally {
       setIsEstimating(false);
     }
