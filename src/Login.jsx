@@ -166,6 +166,8 @@ export default function Login({ onLogin, onRegisterSuccess, sessionError }) {
     message: "",
   });
 
+  const [contactStatus, setContactStatus] = useState({ sending: false, error: "", success: "" });
+
   React.useEffect(() => {
     if (!legalModalKey) return;
 
@@ -275,10 +277,19 @@ export default function Login({ onLogin, onRegisterSuccess, sessionError }) {
     setContactForm((prev) => ({ ...prev, [name]: value }));
   };
 
-  const handleContactSubmit = (e) => {
+  const handleContactSubmit = async (e) => {
     e.preventDefault();
-    alert("Thank you! Your message has been sent.");
-    setContactForm({ firstName: "", lastName: "", email: "", subject: "", message: "" });
+    setContactStatus({ sending: true, error: "", success: "" });
+    try {
+      const result = await apiRequest("/contact", {
+        method: "POST",
+        body: JSON.stringify(contactForm),
+      });
+      setContactStatus({ sending: false, error: "", success: result.message });
+      setContactForm({ firstName: "", lastName: "", email: "", subject: "", message: "" });
+    } catch (err) {
+      setContactStatus({ sending: false, error: err.message || "Failed to send your message.", success: "" });
+    }
   };
 
   return (
@@ -731,8 +742,10 @@ export default function Login({ onLogin, onRegisterSuccess, sessionError }) {
                   ></textarea>
                 </div>
 
-                <button type="submit" className="contact-submit-btn">
-                  Send Message
+                {contactStatus.error && <p className="login-error" role="alert">{contactStatus.error}</p>}
+                {contactStatus.success && <p style={{ color: "#16a34a", fontWeight: 600, margin: 0 }} role="status">{contactStatus.success}</p>}
+                <button type="submit" className="contact-submit-btn" disabled={contactStatus.sending}>
+                  {contactStatus.sending ? "Sending…" : "Send Message"}
                 </button>
               </form>
             </div>

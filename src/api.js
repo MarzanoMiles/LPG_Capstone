@@ -1,5 +1,5 @@
 const API_BASE_URL = import.meta.env.VITE_API_BASE_URL;
-const PUBLIC_AUTH_PATHS = new Set(['/auth/login', '/auth/register', '/auth/forgot-password', '/auth/reset-password', '/auth/reset-password/validate']);
+const PUBLIC_AUTH_PATHS = new Set(['/auth/login', '/auth/register', '/auth/forgot-password', '/auth/reset-password', '/auth/reset-password/validate', '/contact']);
 const SESSION_MESSAGE = 'Your session is missing or expired. Please sign in again.';
 
 function expireSession(token) {

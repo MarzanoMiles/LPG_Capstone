@@ -187,47 +187,52 @@ function HeldCartsModal({ isOpen, onClose, heldCarts, onRestore, onDiscard }) {
 // Customer Creation Modal
 // ---------------------------------------------------------------------------
 function AddCustomerModal({ isOpen, onClose, onCustomerCreated }) {
-  const [name, setName] = useState("");
-  const [phone, setPhone] = useState("");
-  const [address, setAddress] = useState("");
-  const [customerType, setCustomerType] = useState("Residential");
+  const emptyForm = { customerType: "Residential", companyName: "", firstName: "", lastName: "", phone: "", address: "" };
+  const [form, setForm] = useState(emptyForm);
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [error, setError] = useState("");
 
+  useEffect(() => {
+    if (isOpen) { setForm(emptyForm); setError(""); }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [isOpen]);
+
   if (!isOpen) return null;
 
+  const update = (key) => (e) => setForm((prev) => ({ ...prev, [key]: e.target.value }));
+  const commercial = form.customerType === "Commercial";
+
   const handleSave = async () => {
-    if (!name.trim() || !phone.trim()) {
-      setError("Customer name and phone are required.");
+    const required = [form.firstName, form.lastName, form.phone, form.address];
+    if (required.some((v) => !v.trim()) || (commercial && !form.companyName.trim())) {
+      setError(
+        commercial
+          ? "Company Name, First Name, Last Name, Contact Number and Address are required."
+          : "First Name, Last Name, Contact Number and Address are required."
+      );
       return;
     }
 
     setIsSubmitting(true);
     setError("");
-
     try {
-      const response = await apiRequest("/customers", {
-        method: "POST",
-        body: JSON.stringify({
-          name: name.trim(),
-          phone: phone.trim(),
-          address: address.trim() || "N/A",
-          customerType,
-        }),
-      });
+      const payload = {
+        companyName: commercial ? form.companyName.trim() : null,
+        firstName: form.firstName.trim(),
+        lastName: form.lastName.trim(),
+        phone: form.phone.trim(),
+        address: form.address.trim(),
+        customerType: form.customerType,
+      };
+      const response = await apiRequest("/customers", { method: "POST", body: JSON.stringify(payload) });
 
       onCustomerCreated({
-        id: response.id || response.CustomerID || response._id,
-        customerName: name.trim(),
-        contactNumber: phone.trim(),
-        address: address.trim() || "N/A",
-        customerCategory: customerType,
+        id: response.id,
+        customerName: commercial ? payload.companyName : `${payload.firstName} ${payload.lastName}`,
+        contactNumber: payload.phone,
+        address: payload.address,
+        customerCategory: payload.customerType,
       });
-
-      setName("");
-      setPhone("");
-      setAddress("");
-      setCustomerType("Residential");
       onClose();
     } catch (err) {
       setError(err.message || "Failed to save customer.");
@@ -236,29 +241,16 @@ function AddCustomerModal({ isOpen, onClose, onCustomerCreated }) {
     }
   };
 
+  const labelStyle = { fontSize: "0.8rem", fontWeight: 600, color: "#374151", display: "block", marginBottom: 4 };
+  const fieldStyle = { width: "100%", padding: "8px 10px", borderRadius: 6, border: "1px solid #d1d5db", fontSize: "0.85rem", boxSizing: "border-box", fontFamily: "inherit" };
+
   return (
     <div
-      style={{
-        position: "fixed",
-        inset: 0,
-        background: "rgba(17,24,39,0.55)",
-        display: "flex",
-        alignItems: "center",
-        justifyContent: "center",
-        zIndex: 10000,
-        padding: 16,
-      }}
+      style={{ position: "fixed", inset: 0, background: "rgba(17,24,39,0.55)", display: "flex", alignItems: "center", justifyContent: "center", zIndex: 10000, padding: 16 }}
       onClick={onClose}
     >
       <div
-        style={{
-          background: "#fff",
-          borderRadius: 12,
-          padding: "24px 28px",
-          width: "100%",
-          maxWidth: 420,
-          boxShadow: "0 20px 50px rgba(0,0,0,0.3)",
-        }}
+        style={{ background: "#fff", borderRadius: 12, padding: "24px 28px", width: "100%", maxWidth: 480, maxHeight: "92vh", overflowY: "auto", boxShadow: "0 20px 50px rgba(0,0,0,0.3)" }}
         onClick={(e) => e.stopPropagation()}
       >
         <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 14 }}>
@@ -269,63 +261,71 @@ function AddCustomerModal({ isOpen, onClose, onCustomerCreated }) {
         </div>
 
         {error && (
-          <div style={{ background: "#fef2f2", color: "#dc2626", padding: "8px 12px", borderRadius: 6, fontSize: "0.8rem", marginBottom: 12, fontWeight: 600 }}>
+          <div role="alert" style={{ background: "#fef2f2", color: "#dc2626", padding: "8px 12px", borderRadius: 6, fontSize: "0.8rem", marginBottom: 12, fontWeight: 600 }}>
             {error}
           </div>
         )}
 
         <div style={{ display: "flex", flexDirection: "column", gap: 12 }}>
           <div>
-            <label style={{ fontSize: "0.8rem", fontWeight: 600, color: "#374151", display: "block", marginBottom: 4 }}>
-              Customer Name
-            </label>
-            <input
-              type="text"
-              value={name}
-              onChange={(e) => setName(e.target.value)}
-              placeholder="Name"
-              style={{ width: "100%", padding: "8px 10px", borderRadius: 6, border: "1px solid #d1d5db", fontSize: "0.85rem" }}
-            />
+            <label style={labelStyle}>Customer ID</label>
+            <input disabled value="Auto-generated (CUST-001)" style={{ ...fieldStyle, background: "#f1f5f9", color: "#64748b" }} />
           </div>
 
           <div>
-            <label style={{ fontSize: "0.8rem", fontWeight: 600, color: "#374151", display: "block", marginBottom: 4 }}>
-              Phone Number
-            </label>
-            <input
-              type="text"
-              value={phone}
-              onChange={(e) => setPhone(e.target.value)}
-              placeholder="Phone Number"
-              style={{ width: "100%", padding: "8px 10px", borderRadius: 6, border: "1px solid #d1d5db", fontSize: "0.85rem" }}
-            />
-          </div>
-
-          <div>
-            <label style={{ fontSize: "0.8rem", fontWeight: 600, color: "#374151", display: "block", marginBottom: 4 }}>
-              Address
-            </label>
-            <textarea
-              value={address}
-              onChange={(e) => setAddress(e.target.value)}
-              placeholder="Street, Brgy, City, Province, Zip Code"
-              rows={2}
-              style={{ width: "100%", padding: "8px 10px", borderRadius: 6, border: "1px solid #d1d5db", fontSize: "0.85rem", resize: "none" }}
-            />
-          </div>
-
-          <div>
-            <label style={{ fontSize: "0.8rem", fontWeight: 600, color: "#374151", display: "block", marginBottom: 4 }}>
-              Customer Type
-            </label>
-            <select
-              value={customerType}
-              onChange={(e) => setCustomerType(e.target.value)}
-              style={{ width: "100%", padding: "8px 10px", borderRadius: 6, border: "1px solid #d1d5db", fontSize: "0.85rem" }}
-            >
+            <label style={labelStyle}>Customer Type</label>
+            <select value={form.customerType} onChange={update("customerType")} style={fieldStyle}>
               <option value="Residential">Residential</option>
               <option value="Commercial">Commercial</option>
             </select>
+          </div>
+
+          {commercial && (
+            <>
+              <div>
+                <label style={labelStyle}>Company Name</label>
+                <input required maxLength={150} value={form.companyName} onChange={update("companyName")} style={fieldStyle} />
+              </div>
+              <h4 style={{ margin: "4px 0 0", fontSize: "0.9rem", color: "#111827" }}>Contact Person</h4>
+            </>
+          )}
+
+          <div>
+            <label style={labelStyle}>First Name</label>
+            <input required maxLength={75} value={form.firstName} onChange={update("firstName")} style={fieldStyle} />
+          </div>
+
+          <div>
+            <label style={labelStyle}>Last Name</label>
+            <input required maxLength={75} value={form.lastName} onChange={update("lastName")} style={fieldStyle} />
+          </div>
+
+          <div>
+            <label style={labelStyle}>Contact Number</label>
+            <input required maxLength={30} value={form.phone} onChange={update("phone")} placeholder="Phone Number" style={fieldStyle} />
+          </div>
+
+          <div>
+            <label style={labelStyle} htmlFor="pos-customer-address">Address</label>
+            <input
+              id="pos-customer-address"
+              required
+              maxLength={255}
+              value={form.address}
+              onChange={update("address")}
+              placeholder="Complete Address"
+              aria-describedby="pos-customer-address-format"
+              style={fieldStyle}
+            />
+            <div
+              id="pos-customer-address-format"
+              style={{ marginTop: 6, padding: "10px 12px", background: "#f8fafc", border: "1px solid #e2e8f0", borderRadius: 8, fontSize: 12, lineHeight: 1.6, color: "#64748b", overflowWrap: "anywhere" }}
+            >
+              <span style={{ display: "block", marginBottom: 3, fontWeight: 600, color: "#475569" }}>Address format</span>
+              <p style={{ margin: 0 }}>
+                House / Unit / Building / Lot &amp; Block No., Street Name, Subdivision / Village / Sitio / Purok, Brgy. Barangay, City / Municipality, ZIP Code Province
+              </p>
+            </div>
           </div>
         </div>
 
@@ -341,7 +341,7 @@ function AddCustomerModal({ isOpen, onClose, onCustomerCreated }) {
             type="button"
             onClick={handleSave}
             disabled={isSubmitting}
-            style={{ padding: "8px 18px", borderRadius: 6, border: "none", background: "#1d6bf3", color: "#fff", fontWeight: 600, cursor: "pointer", fontSize: "0.85rem" }}
+            style={{ padding: "8px 18px", borderRadius: 6, border: "none", background: "#1d6bf3", color: "#fff", fontWeight: 600, cursor: "pointer", fontSize: "0.85rem", opacity: isSubmitting ? 0.6 : 1 }}
           >
             {isSubmitting ? "Saving…" : "Save"}
           </button>
@@ -1009,6 +1009,7 @@ export default function PosTerminal() {
   const [products, setProducts] = useState([]);
   const [warehouses, setWarehouses] = useState([]);
   const [selectedWarehouseId, setSelectedWarehouseId] = useState("");
+  const [warehouseInitialized, setWarehouseInitialized] = useState(false);
   const [isLoadingProducts, setIsLoadingProducts] = useState(true);
   const [loadError, setLoadError] = useState("");
 
@@ -1088,10 +1089,16 @@ export default function PosTerminal() {
         );
         setWarehouses(activeWarehouses);
 
-        const stillValid = activeWarehouses.some((w) => w.id === selectedWarehouseId);
-        const nextWarehouseId = stillValid ? selectedWarehouseId : activeWarehouses[0]?.id || "";
-        if (nextWarehouseId !== selectedWarehouseId) {
-          setSelectedWarehouseId(nextWarehouseId);
+        // "" means All Warehouses. Default to the first warehouse only on the very first load,
+        // and clear a stale warehouse that no longer exists for this company.
+        if (!warehouseInitialized) {
+          setWarehouseInitialized(true);
+          if (activeWarehouses[0]?.id) {
+            setSelectedWarehouseId(activeWarehouses[0].id);
+            return;
+          }
+        } else if (selectedWarehouseId && !activeWarehouses.some((w) => w.id === selectedWarehouseId)) {
+          setSelectedWarehouseId("");
           return;
         }
 
