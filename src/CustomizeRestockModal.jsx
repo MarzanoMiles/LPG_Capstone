@@ -1,6 +1,7 @@
-﻿import React, { useEffect, useState } from "react";
+﻿import React, { useEffect, useRef, useState } from "react";
 import "./CustomizeRestockModal.css";
 import { apiRequest } from "./api";
+
 
 export default function CustomizeRestockModal({ isOpen, onClose, items, onApplied }) {
   const [rows, setRows] = useState([]); // [{restockId, productId, productName, suggestedQty, preferredQty, costPrice}]
@@ -8,8 +9,12 @@ export default function CustomizeRestockModal({ isOpen, onClose, items, onApplie
   const [error, setError] = useState("");
   const [overrideReason, setOverrideReason] = useState("");
 
+  const wasOpen = useRef(false);
+
+  // Seed the rows only on the closed -> open transition. `items` gets a new identity on
+  // every parent render, so depending on it would overwrite what the user has typed.
   useEffect(() => {
-    if (isOpen) {
+    if (isOpen && !wasOpen.current) {
       setRows(
         items.map((it) => ({
           restockId: it.restockId,
@@ -20,10 +25,12 @@ export default function CustomizeRestockModal({ isOpen, onClose, items, onApplie
           costPrice: it.costPrice,
         }))
       );
-      setError("");
       setOverrideReason("");
+      setError("");
     }
-  }, [isOpen, items]);
+    wasOpen.current = isOpen;
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [isOpen]);
 
   if (!isOpen) return null;
 

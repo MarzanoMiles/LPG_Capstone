@@ -348,6 +348,20 @@ export default function Restocking() {
             <div className="restocking-table-wrap">
               <div className="paginated-table-scroll">
                 <table className="restocking-table restocking-recs-table">
+                  <colgroup>
+                    <col style={{ width: 48 }} />
+                    <col style={{ width: 110 }} />
+                    <col style={{ width: 120 }} />
+                    <col style={{ width: 260 }} />
+                    <col style={{ width: 90 }} />
+                    <col style={{ width: 90 }} />
+                    <col style={{ width: 100 }} />
+                    <col style={{ width: 100 }} />
+                    <col style={{ width: 90 }} />
+                    <col style={{ width: 100 }} />
+                    <col style={{ width: 100 }} />
+                    <col style={{ width: 140 }} />
+                  </colgroup>
                   <thead>
                     <tr>
                       <th>
@@ -360,7 +374,7 @@ export default function Restocking() {
                       </th>
                       <th>Restock ID</th>
                       <th>Product ID</th>
-                      <th>Product Name</th>
+                      <th className="col-name">Product Name</th>
                       <th>Current Stock</th>
                       <th>Reorder Level</th>
                       <th>Suggested Qty</th>
@@ -386,7 +400,7 @@ export default function Restocking() {
                       paginatedRecommendations.map((item) => {
                         const isSelected = selectedRows.includes(item.restockId);
                         return (
-                          <tr key={item.restockId} className={isSelected ? "selected-row" : ""} title={`${item.productName} Â· ${item.supplierName}`}>
+                          <tr key={item.restockId} className={isSelected ? "selected-row" : ""}>
                             <td>
                               <input
                                 type="checkbox"
@@ -406,12 +420,14 @@ export default function Restocking() {
                               </button>
                             </td>
                             <td>{item.productId}</td>
-                            <td title={item.budgetCapped ? "Reduced to fit the budget cap" : undefined}>
-                              {item.suggestedQty}
-                              {item.budgetCapped ? <span className="restocking-capped"> capped</span> : null}
+                            <td className="col-name">
+                              <span className="restocking-product-name">
+                                {item.productName && String(item.productName).trim()
+                                  ? item.productName
+                                  : `Unnamed product (${item.productId})`}
+                              </span>
+                              {item.priorityTag === "High" && <span className="restocking-tag-high">High priority</span>}
                             </td>
-                            <td>{item.predictedDemand ?? "—"}</td>
-                            <td>{item.safetyStock ?? "—"}</td>
                             <td>{item.currentStock}</td>
                             <td>{item.reorderLevel}</td>
                             <td title={item.budgetCapped ? "Reduced to fit the budget cap" : undefined}>
@@ -422,31 +438,17 @@ export default function Restocking() {
                             <td>{item.safetyStock ?? "—"}</td>
                             <td>{item.confidence != null ? `${Number(item.confidence).toFixed(0)}%` : "—"}</td>
                             <td>
-                              <span className={`restocking-priority-pill ${item.priority.toLowerCase()}`}>
-                                {item.priority}
-                              </span>
+                              <span className={`restocking-priority-pill ${item.priority.toLowerCase()}`}>{item.priority}</span>
                             </td>
                             <td>
                               <div className="restocking-action-icons">
-                                <button
-                                  className="restocking-action-icon adjust"
-                                  title="Customize"
-                                  onClick={() => handleOpenSingleCustomize(item)}
-                                >
+                                <button className="restocking-action-icon adjust" title="Customize" onClick={() => handleOpenSingleCustomize(item)}>
                                   <Sliders size={16} />
                                 </button>
-                                <button
-                                  className="restocking-action-icon package"
-                                  title="Build Purchase Order"
-                                  onClick={() => handlePackageSingle(item)}
-                                >
+                                <button className="restocking-action-icon package" title="Build Purchase Order" onClick={() => handlePackageSingle(item)}>
                                   <Package size={16} />
                                 </button>
-                                <button
-                                  className="restocking-action-icon delete"
-                                  title="Delete"
-                                  onClick={() => handleDeleteRecommendation(item)}
-                                >
+                                <button className="restocking-action-icon delete" title="Delete" onClick={() => handleDeleteRecommendation(item)}>
                                   <Trash2 size={16} />
                                 </button>
                               </div>
