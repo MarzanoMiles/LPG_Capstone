@@ -169,6 +169,12 @@ router.post(
         const details = req.body.deliveryDetails;
         if (typeof details?.address !== "string" || !details.address.trim() || details.address.length > 255) throw new ApiError(400, "Enter a delivery address (maximum 255 characters).");
         if (details.instructions && (typeof details.instructions !== "string" || details.instructions.length > 255)) throw new ApiError(400, "Delivery notes must be at most 255 characters.");
+        if (paymentMethod === "Cash on Delivery") {
+          const [typeRows] = await conn.query("SELECT CustomerType FROM Customer WHERE CustomerID=:id", { id: customerId });
+          if (typeRows[0]?.CustomerType === "Commercial") {
+            throw new ApiError(400, "Cash on Delivery is not available for Commercial customers.");
+          }
+        }
         if (details.riderId) {
           const [drivers] = await conn.query("SELECT u.UserID FROM User u JOIN Role r ON r.RoleID=u.RoleID WHERE u.UserID=:id AND u.CompanyID=:companyId AND u.Status='Active' AND LOWER(r.RoleName) IN ('driver','drivers') FOR UPDATE", { id: details.riderId, companyId: req.user.companyId });
           if (!drivers.length) throw new ApiError(400, "Select an active delivery driver in your company.");
@@ -588,22 +594,27 @@ router.delete(
       if (pickupRows[0]?.OrderType === "Pickup") throw new ApiError(409, "Use pickup status actions; pickup settlement is deferred to Stage 2.");
 
       const [deliveryRows] = await conn.query(
-        `SELECT DeliveryID FROM Delivery WHERE SaleID = :id`,
+        `SELECT DeliveryID, DeliveryStatus, RestockedAt FROM Delivery WHERE SaleID = :id FOR UPDATE`,
         { id: req.params.id }
       );
-      if (deliveryRows[0]) {
+      const delivery = deliveryRows[0];
+      if (delivery && delivery.DeliveryStatus !== "Cancelled") {
         throw new ApiError(
           400,
           "This sale has an active delivery record. Cancel the delivery first before voiding the sale."
         );
       }
+      // A cancelled delivery has already put its stock back into inventory.
+      const stockAlreadyRestored = !!(delivery && delivery.RestockedAt);
 
       await settleCancellation(conn, req.user, orderId);
 
-      const [items] = await conn.query(
-        `SELECT ProductID, Quantity FROM OrderDetails WHERE OrderID = :orderId`,
-        { orderId }
-      );
+      const [items] = stockAlreadyRestored
+        ? [[]]
+        : await conn.query(
+          `SELECT ProductID, Quantity FROM OrderDetails WHERE OrderID = :orderId`,
+          { orderId }
+        );
 
       for (const item of items) {
         const [invRows] = await conn.query(
@@ -624,6 +635,10 @@ router.delete(
         }
       }
 
+      if (delivery) {
+        await conn.query(`DELETE FROM DeliveryAction WHERE DeliveryID = :deliveryId`, { deliveryId: delivery.DeliveryID });
+        await conn.query(`DELETE FROM Delivery WHERE DeliveryID = :deliveryId`, { deliveryId: delivery.DeliveryID });
+      }
       await conn.query(`DELETE FROM Payment WHERE SaleID = :id`, { id: req.params.id });
       await conn.query(`DELETE FROM Sales WHERE SaleID = :id`, { id: req.params.id });
       await conn.query(`DELETE FROM OrderDetails WHERE OrderID = :orderId`, { orderId });

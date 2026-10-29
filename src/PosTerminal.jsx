@@ -672,6 +672,7 @@ function DeliveryModal({ isOpen, onClose, onSave, initialData, orderTotal = 0 })
         id: initialData.customerId || "",
         customerName: initialData.customerName || "",
         contactNumber: initialData.contactNumber || "",
+        customerCategory: initialData.customerCategory || "Residential",
       });
       setAddress(initialData.address || "");
       setInstructions(initialData.instructions || "");
@@ -725,6 +726,7 @@ function DeliveryModal({ isOpen, onClose, onSave, initialData, orderTotal = 0 })
       id: cust.id || cust._id || cust.CustomerID,
       customerName: cust.name || cust.CustomerName || "",
       contactNumber: cust.contactNumber || cust.phone || cust.ContactNo || "",
+      customerCategory: cust.type || cust.customerType || cust.CustomerType || "Residential",
     });
     setAddress(cust.address || cust.Address || "");
     setEstimate(null);
@@ -782,6 +784,7 @@ function DeliveryModal({ isOpen, onClose, onSave, initialData, orderTotal = 0 })
       customerId: selectedCustomer.id,
       customerName: selectedCustomer.customerName,
       contactNumber: selectedCustomer.contactNumber,
+      customerCategory: selectedCustomer.customerCategory || "Residential",
       address: address.trim(),
       instructions: instructions.trim(),
       vehicleType,
@@ -993,6 +996,7 @@ function DeliveryModal({ isOpen, onClose, onSave, initialData, orderTotal = 0 })
             id: newCust.id || newCust.CustomerID,
             customerName: newCust.customerName,
             contactNumber: newCust.contactNumber,
+            customerCategory: newCust.customerCategory || "Residential",
           });
           setAddress(newCust.address || "");
           setEstimate(null);
@@ -1022,10 +1026,7 @@ export default function PosTerminal() {
   const [showPaymentModal, setShowPaymentModal] = useState(false);
   const [completedSale, setCompletedSale] = useState(null);
   const [referenceNo, setReferenceNo] = useState("");
-  const availablePaymentMethods = paymentMethods.filter((method) =>
-    customerType === "Walk-in" ? method !== "Cash on Delivery" :
-      customerType === "Pickup" ? !["Cash", "Cash on Delivery"].includes(method) : method !== "Cash"
-  );
+
   useEffect(() => {
     setPaymentMethod("");
     setReferenceNo("");
@@ -1042,6 +1043,21 @@ export default function PosTerminal() {
   const [showDeliveryModal, setShowDeliveryModal] = useState(false);
   const [deliveryDetails, setDeliveryDetails] = useState(null);
 
+  const isCommercialDelivery = customerType === "Delivery" && deliveryDetails?.customerCategory === "Commercial";
+  const availablePaymentMethods = paymentMethods.filter((method) =>
+    customerType === "Walk-in" ? method !== "Cash on Delivery" :
+      customerType === "Pickup" ? !["Cash", "Cash on Delivery"].includes(method) :
+        method !== "Cash" && !(isCommercialDelivery && method === "Cash on Delivery")
+  );
+
+  useEffect(() => {
+    if (paymentMethod && !availablePaymentMethods.includes(paymentMethod)) {
+      setPaymentMethod("");
+      setReferenceNo("");
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [isCommercialDelivery]);
+  
   useEffect(() => {
     saveHeldCarts(heldCarts);
   }, [heldCarts]);
