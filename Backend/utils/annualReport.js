@@ -16,12 +16,19 @@ const MONTH_LABELS = [
 // Matches "11KG", "2.7 kg", "0.17Kg", etc. in a product name and snaps it to
 // the nearest standard DOE cylinder size (within a small tolerance), since
 // the form's columns are fixed and can't display an arbitrary size.
-function extractStandardSize(productName) {
-  const match = productName.match(/(\d+(?:\.\d+)?)\s*kg/i);
-  if (!match) return null;
-  const raw = parseFloat(match[1]);
-  const closest = STANDARD_SIZES.find((s) => Math.abs(s - raw) < 0.01);
-  return closest ?? null;
+function snapToStandard(raw) {
+  if (!Number.isFinite(raw)) return null;
+  return STANDARD_SIZES.find((s) => Math.abs(s - raw) < 0.01) ?? null;
+}
+
+// Prefer the product's structured Unit/UnitValue; fall back to a "11KG" style product name.
+function extractStandardSize(productName, unit, unitValue) {
+  if (String(unit || "").trim().toLowerCase() === "kg" && unitValue != null && unitValue !== "") {
+    const fromValue = snapToStandard(parseFloat(unitValue));
+    if (fromValue != null) return fromValue;
+  }
+  const match = String(productName || "").match(/(\d+(?:\.\d+)?)\s*kg/i);
+  return match ? snapToStandard(parseFloat(match[1])) : null;
 }
 
 function colLetter(n) {
@@ -42,28 +49,39 @@ async function getAnnualReportData(pool, brandId, year) {
   const [[brandRow]] = await pool.query(`SELECT Brand FROM Brand WHERE BrandID = :id`, { id: brandId });
   if (!brandRow) throw new Error("Brand not found.");
 
-  const [products] = await pool.query(
-    `SELECT ProductID, ProductName FROM ProductHistory WHERE BrandID = :brandId`,
-    { brandId }
-  );
+  let products;
+  try {
+    [products] = await pool.query(
+      `SELECT ProductID, ProductName, Unit, UnitValue FROM ProductHistory WHERE BrandID = :brandId`,
+      { brandId }
+    );
+  } catch {
+    // ProductHistory without the unit columns: names only.
+    [products] = await pool.query(
+      `SELECT ProductID, ProductName FROM ProductHistory WHERE BrandID = :brandId`,
+      { brandId }
+    );
+  }
 
   // Map each product to a standard size; group product IDs by size.
   const sizeToProductIds = new Map();
   for (const p of products) {
-    const size = extractStandardSize(p.ProductName);
+    const size = extractStandardSize(p.ProductName, p.Unit, p.UnitValue);
     if (size == null) continue;
     if (!sizeToProductIds.has(size)) sizeToProductIds.set(size, []);
     sizeToProductIds.get(size).push(p.ProductID);
   }
 
-  const usedSizes = STANDARD_SIZES.filter((s) => sizeToProductIds.has(s));
-  if (usedSizes.length === 0) {
-    throw new Error(
-      "No products under this brand have a recognizable DOE cylinder size in their name (e.g. \"11KG\")."
-    );
-  }
+  // Always print every DOE size column. Sizes with no product simply report zeros.
+  const usedSizes = [...STANDARD_SIZES];
+  for (const s of usedSizes) if (!sizeToProductIds.has(s)) sizeToProductIds.set(s, []);
 
   const allProductIds = usedSizes.flatMap((s) => sizeToProductIds.get(s));
+  if (allProductIds.length === 0) {
+    throw new Error(
+      "No products under this brand have a recognizable DOE cylinder size (set Unit to kg with a Unit Value such as 11)."
+    );
+  }
 
   const [currentStockRows] = await pool.query(
     `SELECT ProductID, SUM(StockOnHand) AS stock FROM Inventory
@@ -391,7 +409,7 @@ function buildAnnualReportPdf(data, meta) {
   const { companyName, contactEmail, preparedBy } = meta;
 
   return new Promise((resolve, reject) => {
-    const doc = new PDFDocument({ margin: 24, size: "A4", layout: "landscape" });
+    const doc = new PDFDocument({ margin: 16, size: "A4", layout: "landscape" });
     const chunks = [];
     doc.on("data", (chunk) => chunks.push(chunk));
     doc.on("end", () => resolve(Buffer.concat(chunks)));

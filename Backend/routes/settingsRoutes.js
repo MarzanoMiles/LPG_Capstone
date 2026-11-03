@@ -28,7 +28,7 @@ function mapRow(row) {
     allowIssueRefund: toBool(row.AllowIssueRefund),
     enableCancellationFee: toBool(row.EnableCancellationFee),
     cancellationFeeType: row.CancellationFeeType,
-    cancellationFeeValue: Number(row.CancellationFeeValue),
+    cancellationFeeValue: Math.round(Number(row.CancellationFeeValue) * 100) / 100,
     taxRate: Number(row.TaxRate),
     taxEnabled: toBool(row.TaxEnabled),
     currency: row.Currency,
@@ -78,14 +78,14 @@ router.put('/vehicle-rates', authorize('Admin'), asyncHandler(async (req, res) =
   const conn = await pool.getConnection();
   try {
     await conn.beginTransaction();
-    await conn.query('SELECT CompanyID FROM CompanySettings WHERE CompanyID=:companyId FOR UPDATE', {companyId:req.user.companyId});
-    await require('../utils/vehicleRateStorage').syncVehicleRateTable(conn,req.user.companyId,vehicleRates);
+    await conn.query('SELECT CompanyID FROM CompanySettings WHERE CompanyID=:companyId FOR UPDATE', { companyId: req.user.companyId });
+    await require('../utils/vehicleRateStorage').syncVehicleRateTable(conn, req.user.companyId, vehicleRates);
     await conn.query('UPDATE CompanySettings SET VehicleRates = :vehicleRates WHERE CompanyID = :companyId', {
       companyId: req.user.companyId, vehicleRates: JSON.stringify(vehicleRates),
     });
     await conn.commit();
-  } catch (err) {await conn.rollback(); throw err;}
-  finally {conn.release();}
+  } catch (err) { await conn.rollback(); throw err; }
+  finally { conn.release(); }
   res.json({ message: 'Delivery fee & vehicle rates saved.', vehicleRates });
 }));
 
@@ -97,12 +97,12 @@ router.put(
     const { businessDays, openingTime, closingTime, pickupExpirationDays, maxDeliveryAttempts } = req.body;
     const days = ["Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday", "Sunday"];
     if (!Array.isArray(businessDays) || !businessDays.length ||
-        businessDays.some((day) => !days.includes(day)) || new Set(businessDays).size !== businessDays.length) {
+      businessDays.some((day) => !days.includes(day)) || new Set(businessDays).size !== businessDays.length) {
       throw new ApiError(400, "Select at least one valid business day without duplicates.");
     }
     const timePattern = /^([01]\d|2[0-3]):[0-5]\d$/;
     if (typeof openingTime !== "string" || typeof closingTime !== "string" ||
-        !timePattern.test(openingTime) || !timePattern.test(closingTime) || openingTime >= closingTime) {
+      !timePattern.test(openingTime) || !timePattern.test(closingTime) || openingTime >= closingTime) {
       throw new ApiError(400, "Opening time must be earlier than closing time on the same day.");
     }
     if (![pickupExpirationDays, maxDeliveryAttempts].every((value) =>
@@ -114,8 +114,10 @@ router.put(
       `UPDATE CompanySettings SET BusinessDays = :businessDays, OpeningTime = :openingTime,
        ClosingTime = :closingTime, PickupExpirationDays = :pickupExpirationDays,
        MaxDeliveryAttempts = :maxDeliveryAttempts WHERE CompanyID = :companyId`,
-      { companyId: req.user.companyId, businessDays: days.filter((day) => businessDays.includes(day)).join(","),
-        openingTime, closingTime, pickupExpirationDays, maxDeliveryAttempts }
+      {
+        companyId: req.user.companyId, businessDays: days.filter((day) => businessDays.includes(day)).join(","),
+        openingTime, closingTime, pickupExpirationDays, maxDeliveryAttempts
+      }
     );
     const row = await ensureRow(req.user.companyId);
     res.json({ message: "Business operations & order policies saved.", settings: mapRow(row) });
