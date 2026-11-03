@@ -350,17 +350,17 @@ export default function Restocking() {
                 <table className="restocking-table restocking-recs-table">
                   <colgroup>
                     <col style={{ width: 48 }} />
-                    <col style={{ width: 110 }} />
-                    <col style={{ width: 120 }} />
+                    <col style={{ width: 112 }} />
+                    <col style={{ width: 112 }} />
                     <col style={{ width: 260 }} />
-                    <col style={{ width: 90 }} />
-                    <col style={{ width: 90 }} />
                     <col style={{ width: 100 }} />
                     <col style={{ width: 100 }} />
-                    <col style={{ width: 90 }} />
                     <col style={{ width: 100 }} />
+                    <col style={{ width: 110 }} />
                     <col style={{ width: 100 }} />
-                    <col style={{ width: 140 }} />
+                    <col style={{ width: 110 }} />
+                    <col style={{ width: 100 }} />
+                    <col style={{ width: 150 }} />
                   </colgroup>
                   <thead>
                     <tr>

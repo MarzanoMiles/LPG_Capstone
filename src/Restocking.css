@@ -968,8 +968,7 @@
 
 
 /* Recommendations table: fixed layout so header and cells always line up */
-.restocking-table.restocking-recs-table { table-layout: fixed; width: 100%; min-width: 1348px; }
-.restocking-table.restocking-recs-table > thead > tr > th,
+.restocking-table.restocking-recs-table { table-layout: fixed; width: 100%; min-width: 1402px; }
 .restocking-table.restocking-recs-table > tbody > tr > td {
   padding: 12px 10px;
   text-align: center;
@@ -977,6 +976,18 @@
   white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;
+  box-sizing: border-box;
+}
+.restocking-table.restocking-recs-table > thead > tr > th {
+  padding: 12px 10px;
+  text-align: center;
+  vertical-align: middle;
+  white-space: normal;
+  overflow: visible;
+  text-overflow: clip;
+  overflow-wrap: normal;
+  word-break: normal;
+  line-height: 1.3;
   box-sizing: border-box;
 }
 .restocking-table.restocking-recs-table > thead > tr > th.col-name,
@@ -992,3 +1003,10 @@
   display: flex; align-items: center; justify-content: center; gap: 14px; flex-wrap: nowrap;
 }
 .restocking-table.restocking-recs-table .restocking-action-icon { flex: 0 0 auto; padding: 4px; }
+
+.restocking-table.restocking-dead-table > thead > tr > th,
+.restocking-table.restocking-dead-table > tbody > tr > td {
+  padding: 12px 14px; text-align: center; vertical-align: middle; overflow-wrap: normal;
+}
+.restocking-table.restocking-dead-table > tbody > tr > td { white-space: nowrap; }
+.restocking-table.restocking-dead-table > thead > tr > th { white-space: normal; line-height: 1.3; }

@@ -73,12 +73,13 @@ router.post(
     if (!reportName || !reportType || !periodLabel || !periodStart || !periodEnd || !dueDate) {
       throw new ApiError(400, "reportName, reportType, periodLabel, periodStart, periodEnd and dueDate are required.");
     }
-    const [result] = await pool.query(
-      `INSERT INTO ComplianceReport (ReportName, ReportType, PeriodLabel, PeriodStart, PeriodEnd, DueDate, Status)
-       VALUES (:reportName, :reportType, :periodLabel, :periodStart, :periodEnd, :dueDate, 'Upcoming')`,
-      { reportName, reportType, periodLabel, periodStart, periodEnd, dueDate }
+    const id = await nextId(pool, "ComplianceReport");
+    await pool.query(
+      `INSERT INTO ComplianceReport (ReportID, ReportName, ReportType, PeriodLabel, PeriodStart, PeriodEnd, DueDate, Status)
+       VALUES (:id, :reportName, :reportType, :periodLabel, :periodStart, :periodEnd, :dueDate, 'Upcoming')`,
+      { id, reportName, reportType, periodLabel, periodStart, periodEnd, dueDate }
     );
-    res.status(201).json({ id: result.insertId });
+    res.status(201).json({ id });
   })
 );
 

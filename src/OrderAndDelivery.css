@@ -530,3 +530,17 @@
   .od-customer-profile { grid-template-columns: 1fr; padding: 18px; gap: 20px; }
   .od-customer-view-tabs { gap: 20px; }
 }
+
+.od-address-note {
+  margin-top: 4px;
+  padding: 10px 12px;
+  background: #f8fafc;
+  border: 1px solid #e2e8f0;
+  border-radius: 8px;
+  font-size: 12px;
+  line-height: 1.6;
+  color: #64748b;
+  overflow-wrap: anywhere;
+}
+.od-address-note-title { display: block; margin-bottom: 3px; font-weight: 600; color: #475569; }
+.od-address-note p { margin: 0; }

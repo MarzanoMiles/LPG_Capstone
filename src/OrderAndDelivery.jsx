@@ -197,8 +197,8 @@ function PickupSettlementModal({ order, onClose, onSettled }) {
     event.preventDefault(); if (busy || !quote) return;
     setBusy(true); setError("");
     try {
-      await apiRequest(delivery ? `/deliveries/${order.deliveryId}/settle` : endpoint, { method: "POST", body: JSON.stringify({ ...form, requestId, quote: { eligibleAmount: quote.eligibleAmount, cancellationFee: quote.cancellationFee, refundAmount: quote.refundAmount } }) });
-      onSettled();
+      const quoteBody = { eligibleAmount: quote.eligibleAmount, cancellationFee: quote.cancellationFee, refundAmount: quote.refundAmount };
+      await apiRequest(delivery ? `/deliveries/${order.deliveryId}/settle` : endpoint, { method: "POST", body: JSON.stringify(quote.refundEnabled === false ? { requestId, quote: quoteBody } : { ...form, requestId, quote: quoteBody }) }); onSettled();
     } catch (err) { setError(err.message); }
     finally { setBusy(false); }
   };
@@ -210,7 +210,7 @@ function PickupSettlementModal({ order, onClose, onSettled }) {
     {error && <p role="alert" style={{ color: "#dc2626" }}>{error}</p>}
     {quote && <>
       <div className="od-totals"><Row label="Original Paid Amount" value={money(quote.eligibleAmount)} /><Row label="Cancellation/Unclaimed Fee" value={money(quote.cancellationFee)} /><Row label="Net Refund Amount" value={money(quote.refundAmount)} bold /></div>
-      {quote.refundEnabled === false ? <p>Refunds are disabled. Confirm manager settlement without refund; payment remains unchanged.</p> : <>
+      {quote.refundEnabled === false ? <p><strong>No Refund</strong>. Refunds are disabled. Confirm manager settlement without refund; payment remains unchanged.</p> : <>
         <Field label="Refund Method"><select value={form.refundMethod} onChange={update("refundMethod")} disabled={busy}><option>GCash</option><option>Card</option><option>Bank Transfer</option></select></Field>
         <Field label="Account Name"><input value={form.accountName} onChange={update("accountName")} required maxLength={150} autoComplete="off" disabled={busy} /></Field>
         <Field label="Account/Mobile Number"><input type="text" inputMode={form.refundMethod === "GCash" ? "tel" : "numeric"} value={form.accountNumber} onChange={update("accountNumber")} required maxLength={34} autoComplete="off" pattern={form.refundMethod === "GCash" ? "(09[0-9]{9}|[+]639[0-9]{9})" : form.refundMethod === "Card" ? "[0-9]{12,19}" : "[0-9]{6,34}"} title={form.refundMethod === "GCash" ? "09 followed by 9 digits, or +639 followed by 9 digits" : form.refundMethod === "Card" ? "12 to 19 digits" : "6 to 34 digits"} disabled={busy} /></Field>
@@ -218,7 +218,6 @@ function PickupSettlementModal({ order, onClose, onSettled }) {
       </>}
     </>}
     <div className="od-modal-actions"><button type="button" className="od-btn od-btn-outline" onClick={onClose} disabled={busy}>Close</button>
-      {error && <button type="button" className="od-btn od-btn-outline" onClick={loadQuote} disabled={busy || loading}>Reload Quote</button>}
       <button type="submit" className="od-btn od-btn-primary" disabled={busy || loading || !quote}>{busy ? "Settling?" : "Confirm Settlement"}</button>
     </div>
   </form></div>;
@@ -719,7 +718,11 @@ export default function OrderAndDelivery() {
               <input required maxLength={30} value={customerModal.phone} onChange={(e) => setCustomerModal({ ...customerModal, phone: e.target.value })} placeholder="Phone Number" />
             </Field>
             <Field label="Address">
-              <textarea required maxLength={255} value={customerModal.address} onChange={(e) => setCustomerModal({ ...customerModal, address: e.target.value })} placeholder="Street, Brgy, City, Province, Zip Code" />
+              <textarea required maxLength={255} value={customerModal.address} onChange={(e) => setCustomerModal({ ...customerModal, address: e.target.value })} placeholder="Complete Address" aria-describedby="customer-address-format" />
+              <div id="customer-address-format" className="od-address-note">
+                <span className="od-address-note-title">Address format</span>
+                <p>House / Unit / Building / Lot &amp; Block No., Street Name, Subdivision / Village / Sitio / Purok, Brgy. Barangay, City / Municipality, ZIP Code Province</p>
+              </div>
             </Field>
 
             <div className="od-modal-actions">

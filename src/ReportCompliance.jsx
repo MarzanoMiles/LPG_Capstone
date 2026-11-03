@@ -81,7 +81,7 @@ function StatCard({ label, value, sub, tone, icon: Icon }) {
   );
 }
 
-function ReportRow({ report, onGenerate, onSubmit, onDelete, isBusy }) {
+function ReportRow({ report, onGenerate, onSubmit, onDelete, isBusy, history = false }) {
   const tone = statusIconTone(report.status);
   const [menuOpen, setMenuOpen] = useState(false);
 
@@ -96,8 +96,19 @@ function ReportRow({ report, onGenerate, onSubmit, onDelete, isBusy }) {
         <p className="report-size">{report.fileName || "Not generated yet"}</p>
       </div>
       <div className="report-due">
-        <p className={`report-due-date ${tone}`}>Due: {new Date(report.dueDate).toLocaleDateString()}</p>
-        <p className={`report-relative ${tone}`}>{relativeLabel(report.dueDate)}</p>
+        {history ? (
+          <>
+            <p className="report-due-date success">
+              Submitted: {report.submittedAt ? new Date(report.submittedAt).toLocaleDateString() : "—"}
+            </p>
+            <p className="report-relative success">Due: {new Date(report.dueDate).toLocaleDateString()}</p>
+          </>
+        ) : (
+          <>
+            <p className={`report-due-date ${tone}`}>Due: {new Date(report.dueDate).toLocaleDateString()}</p>
+            <p className={`report-relative ${tone}`}>{relativeLabel(report.dueDate)}</p>
+          </>
+        )}
       </div>
       <span className={statusPillClass(report.status)}>{report.status}</span>
       <button
@@ -294,6 +305,7 @@ export default function ReportCompliance() {
   const [viewYear, setViewYear] = useState(today.getFullYear());
   const [viewMonth, setViewMonth] = useState(today.getMonth());
   const [selectedDate, setSelectedDate] = useState(toISODate(today));
+  const [tab, setTab] = useState("all");
 
   const loadData = () => {
     setIsLoading(true);
@@ -320,6 +332,16 @@ export default function ReportCompliance() {
     });
     return map;
   }, [reports]);
+
+  const activeReports = useMemo(() => reports.filter((r) => r.status !== "Submitted"), [reports]);
+  const historyReports = useMemo(
+    () =>
+      reports
+        .filter((r) => r.status === "Submitted")
+        .sort((a, b) => new Date(b.submittedAt || 0) - new Date(a.submittedAt || 0)),
+    [reports]
+  );
+  const visibleReports = tab === "history" ? historyReports : activeReports;
 
   const cells = useMemo(() => buildCalendarGrid(viewYear, viewMonth), [viewYear, viewMonth]);
 
@@ -395,145 +417,155 @@ export default function ReportCompliance() {
   return (
     <PageLayout className="rc-page" contentClassName="rc-inner">
 
-        <PageHeader title="Report and Compliance">
-          <button
-            onClick={() => setIsNewReportOpen(true)}
-            style={{ background: "#2563eb", color: "#fff", border: "none", borderRadius: 8, padding: "10px 18px", fontWeight: 700, cursor: "pointer" }}
-          >
-            + Schedule Report
-          </button>
-        </PageHeader>
+      <PageHeader title="Report and Compliance">
+        <button
+          onClick={() => setIsNewReportOpen(true)}
+          style={{ background: "#2563eb", color: "#fff", border: "none", borderRadius: 8, padding: "10px 18px", fontWeight: 700, cursor: "pointer" }}
+        >
+          + Schedule Report
+        </button>
+      </PageHeader>
 
-        {loadError && <p style={{ color: "#dc2626", fontWeight: 600 }}>{loadError}</p>}
-        {actionError && <p style={{ color: "#dc2626", fontWeight: 600 }}>{actionError}</p>}
+      {loadError && <p style={{ color: "#dc2626", fontWeight: 600 }}>{loadError}</p>}
+      {actionError && <p style={{ color: "#dc2626", fontWeight: 600 }}>{actionError}</p>}
 
-        {/* Stat Cards */}
-        <div className="rc-stat-grid">
-          {statCards.map((card) => (
-            <StatCard key={card.label} {...card} />
-          ))}
-        </div>
+      {/* Stat Cards */}
+      <div className="rc-stat-grid">
+        {statCards.map((card) => (
+          <StatCard key={card.label} {...card} />
+        ))}
+      </div>
 
-        {/* Main Panel Grid */}
-        <div className="rc-layout">
-          {/* Recent Reports Table */}
-          <div className="rc-panel">
-            <h2 className="rc-panel-title">ALL REPORTS</h2>
-            <div className="report-table-header">
-              <div></div>
-              <span>Report</span>
-              <span className="header-due">Due Date</span>
-              <span className="header-status">Status</span>
-              <div></div>
-            </div>
-            <div className="report-list">
-              {isLoading && <p style={{ padding: "16px 0", color: "#9ca3af" }}>Loading…</p>}
-              {!isLoading && reports.length === 0 && (
-                <p style={{ padding: "16px 0", color: "#9ca3af" }}>No reports scheduled yet.</p>
-              )}
-              {!isLoading &&
-                reports.map((report) => (
-                  <ReportRow
-                    key={report.id}
-                    report={report}
-                    onGenerate={handleGenerate}
-                    onSubmit={handleSubmit}
-                    onDelete={handleDelete}
-                    isBusy={busyId === report.id}
-                  />
-                ))}
-            </div>
+      {/* Main Panel Grid */}
+      <div className="rc-layout">
+        {/* Recent Reports Table */}
+        <div className="rc-panel">
+          <div className="rc-tabs" role="tablist" aria-label="Report lists">
+            <button type="button" role="tab" aria-selected={tab === "all"} className={`rc-tab ${tab === "all" ? "active" : ""}`} onClick={() => setTab("all")}>
+              All Reports <span className="rc-tab-count">{activeReports.length}</span>
+            </button>
+            <button type="button" role="tab" aria-selected={tab === "history"} className={`rc-tab ${tab === "history" ? "active" : ""}`} onClick={() => setTab("history")}>
+              Report History <span className="rc-tab-count">{historyReports.length}</span>
+            </button>
           </div>
-
-          {/* Calendar Widget */}
-          <div className="rc-panel">
-            <div className="calendar-header">
-              <h2 className="calendar-title">{monthLabel}</h2>
-              <div className="calendar-nav">
-                <button type="button" className="calendar-nav-btn" onClick={goToPrevMonth} aria-label="Previous month">
-                  <ChevronLeft size={16} />
-                </button>
-                <button type="button" className="calendar-nav-btn" onClick={goToNextMonth} aria-label="Next month">
-                  <ChevronRight size={16} />
-                </button>
-                <button type="button" className="calendar-today-btn" onClick={goToToday}>
-                  Today
-                </button>
-              </div>
-            </div>
-
-            <div className="calendar-weekdays">
-              {WEEKDAYS.map((d) => <span key={d}>{d}</span>)}
-            </div>
-
-            <div className="calendar-grid">
-              {cells.map((cellDate) => {
-                const iso = toISODate(cellDate);
-                const inCurrentMonth = cellDate.getMonth() === viewMonth;
-                const isSelected = iso === selectedDate;
-                const dayReports = reportsByDate[iso] || [];
-                const dotTone = dayReports.length ? statusIconTone(dayReports[0].status) : null;
-
-                return (
-                  <button
-                    type="button"
-                    key={iso}
-                    className={`calendar-cell ${inCurrentMonth ? "" : "muted"} ${isSelected ? "selected" : ""}`}
-                    onClick={() => setSelectedDate(iso)}
-                  >
-                    <span>{cellDate.getDate()}</span>
-                    {dotTone && !isSelected && <span className={`calendar-dot ${dotTone}`} />}
-                    {dotTone && isSelected && <span className="calendar-dot selected-dot" />}
-                  </button>
-                );
-              })}
-            </div>
-
-            {/* Reports Due Section */}
-            <div className="selected-date-section">
-              <h3 className="selected-date-title">Reports Due on Selected Date</h3>
-              {selectedReports.length === 0 ? (
-                <p className="selected-date-empty">No reports due on this date.</p>
-              ) : (
-                selectedReports.map((report) => {
-                  const tone = statusIconTone(report.status);
-                  return (
-                    <div key={report.id} className="selected-report-row">
-                      <div className={`report-icon small ${tone}`}>
-                        <FileText size={16} />
-                      </div>
-                      <div className="selected-report-info">
-                        <p className="report-name">{report.name}</p>
-                        <p className={`report-due-date ${tone}`}>Due: {new Date(report.dueDate).toLocaleDateString()}</p>
-                      </div>
-                      <span className={statusPillClass(report.status)}>{report.status}</span>
-                    </div>
-                  );
-                })
-              )}
-            </div>
-
-            {/* Legend */}
-            <div className="calendar-legend">
-              <span><span className="legend-dot danger" /> Due Soon / Overdue</span>
-              <span><span className="legend-dot warning" /> Upcoming</span>
-              <span><span className="legend-dot success" /> Submitted</span>
-            </div>
+          <div className="report-table-header">
+            <div></div>
+            <span>Report</span>
+            <span className="header-due">{tab === "history" ? "Submitted" : "Due Date"}</span>
+            <span className="header-status">Status</span>
+            <div></div>
           </div>
-        </div>
-
-        {/* Banner */}
-        <div className="rc-banner">
-          <div className="rc-banner-left">
-            <Info size={22} className="rc-banner-icon" />
-            <div>
-              <p className="rc-banner-title">Stay Compliant</p>
-              <p className="rc-banner-text">
-                Submit reports on time to ensure compliance and avoid penalties.
+          <div className="report-list">
+            {isLoading && <p style={{ padding: "16px 0", color: "#9ca3af" }}>Loading…</p>}
+            {!isLoading && visibleReports.length === 0 && (
+              <p style={{ padding: "16px 0", color: "#9ca3af" }}>
+                {tab === "history" ? "No submitted reports yet. Reports you mark as submitted appear here." : "No reports scheduled yet."}
               </p>
-            </div>
+            )}
+            {!isLoading &&
+              visibleReports.map((report) => (
+                <ReportRow
+                  key={report.id}
+                  history={tab === "history"}
+                  report={report}
+                  onGenerate={handleGenerate}
+                  onSubmit={handleSubmit}
+                  onDelete={handleDelete}
+                  isBusy={busyId === report.id}
+                />
+              ))}
           </div>
         </div>
+
+        {/* Calendar Widget */}
+        <div className="rc-panel">
+          <div className="calendar-header">
+            <h2 className="calendar-title">{monthLabel}</h2>
+            <div className="calendar-nav">
+              <button type="button" className="calendar-nav-btn" onClick={goToPrevMonth} aria-label="Previous month">
+                <ChevronLeft size={16} />
+              </button>
+              <button type="button" className="calendar-nav-btn" onClick={goToNextMonth} aria-label="Next month">
+                <ChevronRight size={16} />
+              </button>
+              <button type="button" className="calendar-today-btn" onClick={goToToday}>
+                Today
+              </button>
+            </div>
+          </div>
+
+          <div className="calendar-weekdays">
+            {WEEKDAYS.map((d) => <span key={d}>{d}</span>)}
+          </div>
+
+          <div className="calendar-grid">
+            {cells.map((cellDate) => {
+              const iso = toISODate(cellDate);
+              const inCurrentMonth = cellDate.getMonth() === viewMonth;
+              const isSelected = iso === selectedDate;
+              const dayReports = reportsByDate[iso] || [];
+              const dotTone = dayReports.length ? statusIconTone(dayReports[0].status) : null;
+
+              return (
+                <button
+                  type="button"
+                  key={iso}
+                  className={`calendar-cell ${inCurrentMonth ? "" : "muted"} ${isSelected ? "selected" : ""}`}
+                  onClick={() => setSelectedDate(iso)}
+                >
+                  <span>{cellDate.getDate()}</span>
+                  {dotTone && !isSelected && <span className={`calendar-dot ${dotTone}`} />}
+                  {dotTone && isSelected && <span className="calendar-dot selected-dot" />}
+                </button>
+              );
+            })}
+          </div>
+
+          {/* Reports Due Section */}
+          <div className="selected-date-section">
+            <h3 className="selected-date-title">Reports Due on Selected Date</h3>
+            {selectedReports.length === 0 ? (
+              <p className="selected-date-empty">No reports due on this date.</p>
+            ) : (
+              selectedReports.map((report) => {
+                const tone = statusIconTone(report.status);
+                return (
+                  <div key={report.id} className="selected-report-row">
+                    <div className={`report-icon small ${tone}`}>
+                      <FileText size={16} />
+                    </div>
+                    <div className="selected-report-info">
+                      <p className="report-name">{report.name}</p>
+                      <p className={`report-due-date ${tone}`}>Due: {new Date(report.dueDate).toLocaleDateString()}</p>
+                    </div>
+                    <span className={statusPillClass(report.status)}>{report.status}</span>
+                  </div>
+                );
+              })
+            )}
+          </div>
+
+          {/* Legend */}
+          <div className="calendar-legend">
+            <span><span className="legend-dot danger" /> Due Soon / Overdue</span>
+            <span><span className="legend-dot warning" /> Upcoming</span>
+            <span><span className="legend-dot success" /> Submitted</span>
+          </div>
+        </div>
+      </div>
+
+      {/* Banner */}
+      <div className="rc-banner">
+        <div className="rc-banner-left">
+          <Info size={22} className="rc-banner-icon" />
+          <div>
+            <p className="rc-banner-title">Stay Compliant</p>
+            <p className="rc-banner-text">
+              Submit reports on time to ensure compliance and avoid penalties.
+            </p>
+          </div>
+        </div>
+      </div>
 
 
       <NewReportModal isOpen={isNewReportOpen} onClose={() => setIsNewReportOpen(false)} onCreated={loadData} />

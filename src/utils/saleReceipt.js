@@ -6,6 +6,8 @@ export function buildSaleReceipt(full) {
     unitPrice: Number(it.costPrice),
     subtotal: Number(it.subtotal),
   }));
+  const blank = (v) => (typeof v === "string" && v.trim() === "\u2014") || v == null || v === "" ? "" : v;
+  const customerName = blank(full.customerName);
   return {
     ...full,
     orderType: full.type,
@@ -15,5 +17,21 @@ export function buildSaleReceipt(full) {
     discount: Number(full.discount || 0),
     deliveryFee: Number(full.deliveryFee || 0),
     totalAmount: Number(full.amount || 0),
+    customerName,
+    customerPhone: full.customerPhone || "",
+    customerAddress: full.customerAddress || "",
+    deliveryDetails: {
+      customerName,
+      contactNumber: full.customerPhone || "",
+      address: full.deliveryAddress || full.customerAddress || "",
+      riderName: full.driverName || "",
+      vehicleType: full.vehicleType || "",
+      notes: full.deliveryNotes || "",
+    },
+    pickupDetails: {
+      customerName,
+      contactNumber: full.customerPhone || "",
+      address: full.customerAddress || "",
+    },
   };
 }
